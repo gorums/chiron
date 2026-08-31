@@ -1,0 +1,37 @@
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/*__CSS__*/
+</style>
+
+<div class="readbar" id="readbar" style="width:0"></div>
+<div id="app">
+  <aside id="sidebar"></aside>
+  <div id="main">
+    <div class="topbar">
+      <button class="iconbtn" id="menubtn" aria-label="Menu">☰</button>
+      <button class="searchbtn" id="opensearch">
+        <span>Search everything…</span><kbd>/</kbd>
+      </button>
+      <span style="flex:1"></span>
+      <button class="btn sm" id="reviewbtn" style="display:none"></button>
+      <button class="iconbtn" id="themebtn" title="Theme (t)">◐</button>
+      <button class="iconbtn" id="helpbtn" title="Shortcuts (?)">?</button>
+    </div>
+    <div class="view" id="view"></div>
+  </div>
+  <aside id="rail" class="hidden"></aside>
+  <button id="railtoggle" onclick="toggleRail()">Ask Claude</button>
+</div>
+<div class="toast" id="toast"></div>
+<div id="modalhost"></div>
+
+<script>
+const CFG = /*__CONFIG__*/;
+const DATA = /*__DATA__*/;
+</script>
+<script>
+/*__JS__*/
+</script>

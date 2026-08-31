@@ -1,0 +1,83 @@
+{
+  "id": "marketing",
+  "title": "Marketing Mastery",
+  "tagline": "30 hours · beginner to practitioner",
+  "subject": "marketing",
+  "practitioner": "marketer",
+  "audience": "a complete beginner",
+  "hours": 30,
+  "output": "marketing-course",
+  "folderLabel": "Marketing\\marketing-mastery",
+  "tutorPersona": "You are a sharp, plain-spoken marketing tutor.",
+
+  "parts": [
+    {
+      "id": "p1",
+      "name": "Foundations",
+      "hours": 8,
+      "dir": "01-foundations",
+      "blurb": "The part that does not expire. Channels change every 18 months; this does not."
+    },
+    {
+      "id": "p2",
+      "name": "Digital core",
+      "hours": 14,
+      "dir": "02-digital-core",
+      "blurb": "The channels. This is where your money and your hours actually go."
+    },
+    {
+      "id": "p3",
+      "name": "Expert layer",
+      "hours": 8,
+      "dir": "03-expert-layer",
+      "blurb": "What separates a junior who runs campaigns from a senior who allocates budget."
+    }
+  ],
+
+  "shortTitles": {
+    "M01": "What marketing actually is",
+    "M02": "Customers, ICP & JTBD",
+    "M03": "Positioning & messaging",
+    "M04": "Offer, price, place",
+    "M05": "Funnels & unit economics",
+    "M06": "Marketing strategy",
+    "M07": "Websites & CRO",
+    "M08": "SEO & AI search",
+    "M09": "Content & social",
+    "M10": "Paid search",
+    "M11": "Paid social & creative",
+    "M12": "Email & lifecycle",
+    "M13": "Analytics & measurement",
+    "M14": "Experimentation",
+    "M15": "Budget & incrementality",
+    "M16": "B2B vs B2C",
+    "M17": "Retention & growth loops",
+    "M18": "AI-native marketing",
+    "M19": "Capstone: GTM plan"
+  },
+
+  "milestones": [
+    { "after": 0, "text": "Nothing completed yet. The first module is 60 minutes." },
+    { "after": 1, "text": "You are in the foundations. This is the part that does not expire — the channel tactics in Part 2 depend on it." },
+    { "after": 6, "text": "You are through the fundamentals and into the channels. Watch for the confidence bump around here: knowing the vocabulary feels a lot like competence and is not the same thing." },
+    { "after": 13, "text": "You are in the expert layer. This is the part most self-taught marketers skip, and it is the reason they stay junior." },
+    { "after": 19, "text": "All 19 done. What is missing now is reps with real money. plan/path-to-expert.md in your folder maps hours 30 to 500." }
+  ],
+
+  "library": {
+    "glossary": "reference/glossary.md",
+    "models": "reference/mental-models.md",
+    "resources": "reference/resources.md",
+    "templates": "templates",
+    "plan": {
+      "curriculum": "plan/curriculum.md",
+      "how": "plan/how-to-study.md",
+      "expert": "plan/path-to-expert.md"
+    }
+  },
+
+  "data": {
+    "assessments": "data/assessments",
+    "suggestions": "data/suggestions"
+  }
+}

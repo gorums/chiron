@@ -1,0 +1,170 @@
+{
+  "M11": [
+    [
+      "Why is creating demand harder than harvesting existing intent?",
+      "What does creative-as-targeting look like for a tiny business?",
+      "When is paid social simply the wrong channel for me?"
+    ],
+    [
+      "Why does interruption force longer copy than a search ad needs?",
+      "Show me a hook that proves the problem before it sells anything",
+      "If Advantage+ decides delivery, when should I still narrow targeting?"
+    ],
+    [
+      "Walk me through the CPM to CPA chain more slowly",
+      "Run that CPA maths with a EUR 15 CPM and 0.8% CTR",
+      "Chase a cheaper CPM or a better CTR first, and why?"
+    ],
+    [
+      "What does server-side CAPI capture that the pixel misses?",
+      "Which first-party signals can I send with only 200 customers?",
+      "How do I judge fifty AI-made variants without burning budget?"
+    ],
+    [
+      "Why does splitting budget across ad sets cause learning limited?",
+      "How many conversions before I am allowed to kill an ad?",
+      "My team hates the ad that works: how do I defend it?"
+    ],
+    [
+      "What makes a concept genuinely distinct, not just a new script?",
+      "Give me a belief-before and belief-after for a local service",
+      "How do I write a kill criterion I cannot argue myself out of?"
+    ],
+    [
+      "What does a high hook rate with a low hold rate tell me?",
+      "Quiz me on the concept, angle, format, variation hierarchy",
+      "Why does retargeting ROAS overstate what retargeting earned?"
+    ],
+    [
+      "What does the idea deciding who shows up mean in practice?",
+      "How do I tell whether my hook or my landing page is the problem?",
+      "When is targeting, rather than the hook, the actually broken part?"
+    ]
+  ],
+  "M12": [
+    [
+      "Why do a handful of automated flows out-earn all my campaigns?",
+      "How small can a list be and still be worth the work?",
+      "What could still take an owned email list away from me?"
+    ],
+    [
+      "Why does a voucher magnet wreck revenue per recipient?",
+      "What would an adjacent lead magnet be for a service business?",
+      "How does one bought list damage my whole sending domain?"
+    ],
+    [
+      "Why does one flow improvement beat one extra campaign?",
+      "What does the Monday check look like with real numbers?",
+      "I only have 90 minutes a week: what do I drop from this rhythm?"
+    ],
+    [
+      "What do SPF, DKIM and DMARC each actually do for me?",
+      "Which numbers replace open rate on my weekly report?",
+      "How is hashed email used for customer match audiences?"
+    ],
+    [
+      "Why do unengaged subscribers suppress delivery to engaged ones?",
+      "What complaint rate should make me stop and investigate?",
+      "Segmenting shrinks my send count: how do I check revenue held up?"
+    ],
+    [
+      "How short should each of the three welcome emails really be?",
+      "What counts as my strongest proof for email two?",
+      "I do not know my biggest objection yet: how do I find it?"
+    ],
+    [
+      "Remind me of the five flows and what belongs in each",
+      "Give me one action each for a lapsed and a champion RFM segment",
+      "Why is an unsubscribe better news than a spam complaint?"
+    ],
+    [
+      "How can sending less to fewer people raise total revenue?",
+      "Show me revenue per recipient beating open rate on real figures",
+      "When do campaigns matter more than flows for a business like mine?"
+    ]
+  ],
+  "M13": [
+    [
+      "What does stating your confidence sound like to a CFO?",
+      "Show me one sentence answering what the spend produced",
+      "Why is a confidently wrong number worse than no number?"
+    ],
+    [
+      "How do I choose the one metric that matters for my business?",
+      "Build me a metric tree for a small ecommerce shop",
+      "What if my tree branches into things I cannot influence?"
+    ],
+    [
+      "Why are weekly numbers for trends rather than verdicts?",
+      "What goes in the three cause-and-effect bullets?",
+      "How do I stop daily anomaly checks becoming daily panic?"
+    ],
+    [
+      "What is media mix modelling, in plain terms, at my size?",
+      "How would a clean holdout test look for my business?",
+      "Why does non-incremental spend hide in branded search?"
+    ],
+    [
+      "Why can I not add up conversions reported by each platform?",
+      "What does traffic dumped into (other) cost me later?",
+      "How do I stop last-click defunding my demand-creation channels?"
+    ],
+    [
+      "How do I tell a leading node from a lagging one in my tree?",
+      "Which three to six GA4 events fit a small service business?",
+      "Why must allowed utm_medium values be a closed list?"
+    ],
+    [
+      "What are the five UTM parameters and the two protective rules?",
+      "How does GA4's event model differ from Universal Analytics?",
+      "What does view-through over-credit, and at whose expense?"
+    ],
+    [
+      "Which direction does each lens lie in: platform, MMM, holdout?",
+      "Rewrite one of my metrics as a decision a manager can act on",
+      "How do I admit uncertainty without losing budget over it?"
+    ]
+  ],
+  "M14": [
+    [
+      "Why does randomisation give a causal answer when nothing else does?",
+      "How much weekly traffic makes testing possible at all?",
+      "What replaces a test when my numbers are far too small?"
+    ],
+    [
+      "Why is the because clause the part that decides a test's worth?",
+      "Turn my checkout drop-off into the four-part hypothesis format",
+      "What counts as evidence if I have no session recordings?"
+    ],
+    [
+      "What belongs in the what-we-now-believe column?",
+      "Show me a filled-in test log row for a test that lost",
+      "How do I keep velocity high without the method going sloppy?"
+    ],
+    [
+      "Why are Meta's A/B results directional rather than evidence?",
+      "What does PMax reallocating delivery mid-test do to my result?",
+      "Variants are free now: how do I decide which ideas to skip?"
+    ],
+    [
+      "Why is stopping the moment it hits 95% a manufactured win?",
+      "Which guardrail metrics should I watch beside lead volume?",
+      "How do I check upfront that a test could detect my effect?"
+    ],
+    [
+      "How is the sample size for a 10% relative lift calculated?",
+      "Baseline 2%, 500 visits a week: what can I realistically test?",
+      "The maths says forty weeks. What are my honest options?"
+    ],
+    [
+      "What does a p-value of 0.04 specifically not mean?",
+      "In which two cases is a before-after comparison acceptable?",
+      "What has to be inside a stopping rule written in advance?"
+    ],
+    [
+      "How do I actually run the sample size calc before designing?",
+      "What does a bigger swing look like instead of a small test?",
+      "How do I write up a judgment call so it stays defensible later?"
+    ]
+  ]
+}

@@ -1,0 +1,751 @@
+[
+  {
+    "id": "M07",
+    "predict": "If a landing page converts at 1% instead of 3%, what happens to what you pay for each customer, and can better ad targeting fix it?",
+    "quiz": [
+      {
+        "q": "A campaign generates 400 sales in a month but collects no email addresses, no reviews, and produces no returning-visitor cohort. What is the strategic criticism the module makes of this outcome?",
+        "options": [
+          "The campaign's attribution was almost certainly broken",
+          "Paid spend should never exceed earned media spend",
+          "It bought revenue without building an owned asset, because paid and earned are supposed to feed owned",
+          "Social followers should have been counted as an owned asset"
+        ],
+        "answer": 2,
+        "why": "The rule in the module is that paid and earned should feed owned; revenue with no list, reviews or returning cohort leaves nothing behind when spending stops. The tempting wrong answer about followers fails because the module explicitly says followers are not owned - platforms can throttle reach to them and repeatedly have."
+      },
+      {
+        "q": "You run a blog post ranking on page one for an informational query. Someone suggests replacing it with a stripped-down landing page to lift conversion. Why is that a mistake?",
+        "options": [
+          "Landing pages cannot carry structured data",
+          "Organic search traffic expects depth, and a stripped landing page has no internal links and nothing to rank for",
+          "Landing pages always load slower than site pages",
+          "Google penalises landing pages that carry navigation"
+        ],
+        "answer": 1,
+        "why": "The module says to use site pages when intent is exploratory or the traffic is organic search that expects depth, precisely because a landing page has no internal links and nothing to rank for. The speed answer is tempting but the module never claims landing pages are inherently slower - stacked third-party scripts are the speed culprit."
+      },
+      {
+        "q": "Paid traffic to a page is 12,000 sessions a month, LCP on mobile is 6.1 seconds, and the page carries a chat widget, a popup, a cookie banner and a review carousel. According to the module's order of payoff, which fix comes first?",
+        "options": [
+          "Rewrite the headline for better message match",
+          "Move the page to a new design system",
+          "Add a sticky mobile CTA bar",
+          "Compress and correctly size images, then strip unused third-party scripts"
+        ],
+        "answer": 3,
+        "why": "The module lists practical speed wins in order of payoff - compress and size images correctly, lazy-load below-the-fold media, remove unused third-party scripts - and names chat widgets and tag managers as the usual offenders. Rewriting the headline is valuable work but the module says slow pages lose people before they read anything, so at 6.1 second LCP the copy is not yet the binding constraint."
+      },
+      {
+        "q": "Your sales reps are idle and complaining they have nothing to call. Your lead form asks for name, email, company, phone, company size, budget and timeline. What does the module's form-length logic say to do?",
+        "options": [
+          "Shorten the form, accepting lower lead quality, because the bottleneck is volume not rep capacity",
+          "Keep the form and increase ad spend, since form length is not a conversion factor",
+          "Add a qualifying question so reps only speak to good fits",
+          "Split the form across three steps but keep all seven fields"
+        ],
+        "answer": 0,
+        "why": "The module states the trade-off directly: shorter forms raise conversion rate and lower lead quality, so the right length depends on your bottleneck - if reps are idle, shorten. Adding a qualifying question is the correct move for the opposite situation, when reps are drowning in junk."
+      },
+      {
+        "q": "A colleague says you should stop worrying about analytics gaps because third-party cookies are being deprecated and everything is moving cookieless anyway. What is the accurate correction?",
+        "options": [
+          "Third-party cookies were removed from Chrome in 2025, so the gaps are now permanent and unfixable",
+          "Privacy Sandbox replaced cookies successfully, so measurement is more accurate than before",
+          "Chrome kept third-party cookies; the real, unchanged constraints are consent, Safari's ITP and ad blockers",
+          "Server-side tagging eliminates measurement gaps entirely"
+        ],
+        "answer": 2,
+        "why": "Google confirmed in April 2025 that third-party cookies stay and in October 2025 announced it was retiring most Privacy Sandbox technologies; the real constraints named are consent under GDPR and ePrivacy, Safari's ITP and ad blockers. The server-side tagging option is tempting because the module does say it helps, but it explicitly adds that nothing makes measurement exact."
+      },
+      {
+        "q": "A page gets 40 visits a month and converts at 1.5%. Your manager wants an A/B test of two headline variants. What does the module say to do?",
+        "options": [
+          "Run the test but extend it to four days to gather enough data",
+          "Run the test at 50/50 and call the winner once one variant leads",
+          "Pick this page for testing because low-converting pages have the most upside",
+          "Do not test - the page has too little traffic to learn from; make the change and compare periods, accepting weaker evidence"
+        ],
+        "answer": 3,
+        "why": "The module says you cannot learn from a page with 40 visits a month, and that below roughly a few hundred conversions a month you should make the change and compare periods rather than run a test you cannot power. The upside answer is tempting but the module's selection rule is most traffic multiplied by worst conversion rate, not worst rate alone."
+      }
+    ],
+    "cards": [
+      {
+        "front": "What is the rule connecting owned, earned and paid media?",
+        "back": "Paid and earned should feed owned. A campaign producing revenue but no email addresses, reviews or returning-visitor cohort bought revenue without building an asset."
+      },
+      {
+        "front": "What three questions must a visitor answer above the fold in about five seconds?",
+        "back": "What is this, is it for me, and what do I do next."
+      },
+      {
+        "front": "What is information scent, and what breaks it?",
+        "back": "The visitor's confidence they are still on the trail toward what they wanted. It breaks when the page does not repeat the ad's promise in near-identical words - the message-match defect."
+      },
+      {
+        "front": "Name the three Core Web Vitals, what each measures, and its target.",
+        "back": "LCP, when main content appears, under 2.5s. INP, responsiveness to interaction, under 200ms. CLS, visual stability, under 0.1."
+      },
+      {
+        "front": "What is the four-step order for diagnosing conversion?",
+        "back": "Where do people leave (GA4 funnel, segmented by device and source); what are they doing on the page (replays, heatmaps); where does the form die (last field touched); what do the words say."
+      },
+      {
+        "front": "Why are published average conversion rates close to useless as targets?",
+        "back": "They mix branded with cold traffic, wildly different price points, incompatible conversion definitions and self-selected samples. Use them only to spot being wildly off; your benchmark is your own page last month."
+      }
+    ],
+    "elaborate": [
+      "Take the landing page you would actually send paid traffic to for your chosen business. Write down the three questions a visitor must answer above the fold, then answer each one using only words that appear on the page today. Where you cannot, name what is missing and whether it is a headline, a visual or a proof problem.",
+      "M01 and M04 argued that the offer can be wrong at any price. Describe one scenario in your chosen business where every CRO fix in this module would fail, explain how you would tell that from the diagnosis data rather than from opinion, and say what you would change instead."
+    ],
+    "transfer": {
+      "scenario": "A B2B software company spends 18,000 euros a month on Google Ads across five ad angles, all pointing at the homepage. Desktop converts visitors to demo requests at 2.8%; mobile converts at 0.4%, and mobile is 64% of paid sessions. Mobile LCP measured in PageSpeed Insights field data is 5.8 seconds, with a chat widget, a cookie banner and a review carousel loading above the fold. The demo form has nine fields including phone number and company size. The sales team says leads are good quality but there are not enough of them.",
+      "prompt": "Diagnose in the module's order and name the first three changes you would make, with the evidence behind each and the metric you would judge it by.",
+      "model": "The segment split does the diagnosis: this is a mobile problem, not a site problem, so the first move is to segment the GA4 funnel by device and source rather than redesign. Three changes follow. First, stop sending five ad angles to a homepage: build five landing pages with headlines that repeat each ad's promise in near-identical words, judged by paid mobile conversion rate. Second, strip the chat widget, carousel and unneeded scripts and compress the hero image; 5.8 second LCP loses people before they read anything, judged by field LCP and mobile bounce. Third, cut the form, because sales reports good quality and insufficient volume - the bottleneck is volume, so shorten and qualify on the next screen, judged by form completion and last-field-abandoned data. Install Clarity first for a replay baseline, then change one thing at a time."
+    }
+  },
+  {
+    "id": "M08",
+    "predict": "If roughly 60% of Google searches now end without anyone clicking a result, what do you think the goal of SEO becomes instead of ranking first?",
+    "quiz": [
+      {
+        "q": "Search Console shows a page as \"Crawled - currently not indexed.\" Which stage failed, and what does it usually mean?",
+        "options": [
+          "Ranking failed; the page is indexed but too weak to compete",
+          "Indexing failed; Google fetched the page and judged it low-value or duplicative",
+          "Crawling failed; robots.txt is blocking the URL",
+          "Rendering failed; the page relies on JavaScript Google cannot execute"
+        ],
+        "answer": 1,
+        "why": "The module names crawl, index and rank as three separate failure points and gives this exact status as the signature of the index stage failing, usually because Google judged the page low-value or duplicative. The crawl answer is tempting but the word \"crawled\" in the status confirms the bot reached it - robots.txt was not the blocker."
+      },
+      {
+        "q": "You are choosing where to spend 90 days of SEO effort for a new site. Which keyword set does the module's business-value logic favour?",
+        "options": [
+          "One term at 5,000 monthly searches that dominates the category",
+          "A navigational term for the market-leading competitor's login page",
+          "The 20,000-volume informational term that brings students to the site",
+          "Twenty long-tail terms at roughly 40 searches a month converting at 8%"
+        ],
+        "answer": 3,
+        "why": "The module states that twenty terms at 40 searches a month converting at 8% beat one term at 5,000 you will never rank for, and that long tail is the entire viable strategy for a new site. The 20,000-volume term fails the business-value axis - a high-volume term that brings students is worth less than a low-volume term that brings buyers."
+      },
+      {
+        "q": "You search your target term and nine of the ten results are comparison listicles. You have written a product page. What does the module tell you to do?",
+        "options": [
+          "Match the format or pick a different query, because the SERP tells you what Google believes the intent is",
+          "Add FAQ schema to the product page so it can be extracted into an AI Overview",
+          "Build more backlinks to the product page until it outranks the listicles",
+          "Publish the product page anyway and refresh it monthly until it climbs"
+        ],
+        "answer": 0,
+        "why": "The module is explicit: if nine results are comparison listicles your product page will not rank there no matter how good it is, so match the format or pick a different query. The schema answer is a named common mistake - stuffing FAQ schema to optimise for AI Overviews, when citation follows genuine authority and clear answers, not markup tricks."
+      },
+      {
+        "q": "Over six months, Search Console shows impressions stable-to-rising while clicks fall steadily. What is the most likely reading?",
+        "options": [
+          "A manual action has suppressed the site's organic visibility",
+          "Core Web Vitals have degraded and Google is demoting the pages",
+          "The signature of answer-engine displacement - you are still visible but the answer absorbs the click",
+          "Keyword cannibalisation is splitting rankings across duplicate pages"
+        ],
+        "answer": 2,
+        "why": "The module names this exact pattern - stable or rising impressions with falling clicks - as the Search Console signature of answer-engine displacement. The manual action option is tempting because it also produces falling clicks, but a manual action removes the organic channel outright and would take impressions down with it."
+      },
+      {
+        "q": "An agency offers a package of 40 backlinks a month from its network for a fixed monthly fee. What is the module's economic objection?",
+        "options": [
+          "Guest posting on real publications is always cheaper per link",
+          "Links are no longer a ranking signal, so any spend on them is wasted",
+          "Google will ignore the links, so the money produces nothing either way",
+          "You pay recurring money for an asset one algorithm update can devalue, from networks selling to your competitors, with detectable footprints and manual-action risk to your whole organic channel"
+        ],
+        "answer": 3,
+        "why": "The module frames buying links as a bad trade economically rather than morally: recurring cost, an asset one update can devalue, networks selling to everyone including competitors, detectable footprints, and a manual action that can remove your entire organic channel overnight. The claim that links no longer matter is wrong - backlinks from credible, topically relevant sites remain a strong signal."
+      },
+      {
+        "q": "You want to be cited when a buyer asks an answer engine about your category. Which combination does the module actually support?",
+        "options": [
+          "Deep 300-word introductions before the answer, so the passage has context to be understood",
+          "Extractable 40-80 word answers under question-shaped headings, plus presence on review sites and third-party mentions off-site",
+          "FAQ schema applied site-wide, plus a higher publishing cadence of category explainers",
+          "Consistent entity data on your own site only, since third-party pages are outside your control"
+        ],
+        "answer": 1,
+        "why": "The module calls for answer-first writing of 40-80 self-contained words directly under the question heading, and names third-party mentions - listicles, review sites, directories - as functioning like a ranking signal for LLM retrieval even without a link. Restricting entity consistency to your own site is wrong: answer engines assemble their picture from many sources, and inconsistency makes you a fuzzy entity that does not get cited."
+      }
+    ],
+    "cards": [
+      {
+        "front": "How do answer engines work mechanically, and what are the three consequences for SEO?",
+        "back": "Retrieval plus synthesis plus citation. Passages compete rather than pages; one answer replaces ten links so positions 2-10 lose value; citation becomes the unit of reward."
+      },
+      {
+        "front": "Which of the four SEO pillars is usually the binding constraint, and which do beginners over-invest in?",
+        "back": "Authority is usually the constraint. Beginners over-invest in on-page because it is the only pillar you can finish in an afternoon."
+      },
+      {
+        "front": "Which search intent type is the highest-value SEO territory in 2026, and why?",
+        "back": "Commercial investigation - best X, X vs Y, X pricing. High purchase intent, and answer engines lean heavily on comparison and review content."
+      },
+      {
+        "front": "What is answer-first writing, in specifics?",
+        "back": "A direct, self-contained 40-80 word answer immediately under the heading that asks the question, then elaborate. That is the part that gets extracted."
+      },
+      {
+        "front": "What is share of answer and how do you measure it?",
+        "back": "Your visibility inside AI answers. Pick 20-30 buyer queries, run them monthly across ChatGPT, Perplexity, Gemini and Google AI Overviews, and log mentioned, cited with link, or absent - plus which competitors appear."
+      },
+      {
+        "front": "Why does entity consistency across LinkedIn, Crunchbase and directories matter for citation?",
+        "back": "Answer engines assemble their picture of you from many sources. Inconsistent name, description or founder details make you a fuzzy entity, and fuzzy entities do not get cited."
+      }
+    ],
+    "elaborate": [
+      "For your chosen business, list the three commercial-investigation queries a buyer would type before choosing a vendor. Run each one in an answer engine, log who is cited, and write what those cited sources have that you do not - then say which of the four pillars that gap belongs to.",
+      "M07 argued that a website's job includes answering the questions that block a purchase. Take one objection you identified in the M07 audit and show how the same content would be written twice: once for a human reading the page, once as a 60-word extractable answer under a question-shaped heading."
+    ],
+    "transfer": {
+      "scenario": "A payroll software company publishes three explainer articles a week. Over twelve months organic sessions fell 34%, while Search Console impressions rose 11%. Their top pages are \"what is PAYE\" and \"how does payroll tax work,\" which together carry 71% of organic sessions and produce four trial signups a year. They rank position 6-9 for \"best payroll software for contractors\" and are absent from G2, Capterra and every roundup in the category. Their marketing lead wants to double the article cadence to recover the sessions.",
+      "prompt": "Decide whether to approve the cadence increase, and set out what you would do instead for the next 90 days.",
+      "model": "Do not approve it. Rising impressions with falling clicks is the signature of answer-engine displacement, and the traffic that fell was informational content whose only job was to catch a click that no longer happens - four signups a year confirms those pages never produced buyers. More explainers add supply where competent content is free and worth near zero. Instead, shift to commercial intent: \"best payroll software for contractors\" already sits at 6-9, and improving it beats starting a new page at zero. Read the SERP first and match its page type. Get listed and reviewed on G2 and Capterra and pursue roundups, because answer engines lean on those for commercial queries and absence there is absence from the answer. Then replace organic sessions as the headline KPI with share of answer, branded search and conversions from organic."
+    }
+  },
+  {
+    "id": "M09",
+    "predict": "What do you think separates content that produces customers from content that produces lots of traffic and no customers?",
+    "quiz": [
+      {
+        "q": "A team publishes weekly explainers titled \"What is customer retention?\" and \"A guide to churn.\" Traffic is growing. What does the module call this and why does it fail?",
+        "options": [
+          "Creation content - it reaches people who are not looking but takes longer to pay off",
+          "Capture content - the format is right but the distribution is missing",
+          "Middle content - it captures nothing because the reader is not buying and creates nothing because it says nothing memorable",
+          "Product-led content - it needs the product woven in more explicitly"
+        ],
+        "answer": 2,
+        "why": "Generic explainers about the category are exactly what the module names middle content, and it says this is where content budgets die. Calling it creation content is the tempting error: creation content is opinion, original research, teardowns, video and newsletters - things that reach people not looking with something memorable, which a category explainer does not do."
+      },
+      {
+        "q": "You have five hours a week for content. The module's production system says to spend them how?",
+        "options": [
+          "One substantial pillar piece, cut into five or more derivatives, with roughly half the time spent distributing",
+          "Five short pieces, one per weekday, to maximise algorithmic surface area",
+          "Three pieces plus two hours of keyword research to find higher-volume topics",
+          "One long piece published on all five platforms simultaneously"
+        ],
+        "answer": 0,
+        "why": "The module prescribes pillar plus repurposing - one substantial thing per week cut into three to five short posts, a newsletter section, clips and sales quotes - and says roughly half your content time belongs to distribution. Publishing to five platforms is a named beginner error: pick two, one long-form home and one distribution surface, because you will sustain none of five."
+      },
+      {
+        "q": "You want to test a Reddit strategy for a B2B tool. Which approach matches the module?",
+        "options": [
+          "Post a helpful comment with a link to your guide, then repeat across ten relevant subreddits",
+          "Run two accounts - one to ask the question, one to answer it with your product",
+          "Participate for weeks first, read the rules, disclose your affiliation plainly, and answer fully in the comment rather than linking away",
+          "Skip Reddit; it is community-sensitive and the moderation risk outweighs the reach"
+        ],
+        "answer": 2,
+        "why": "The module's Reddit rules are participate for weeks before mentioning your product, read the subreddit rules, disclose affiliation plainly, answer fully in the comment rather than linking away, and never run multiple accounts. Skipping Reddit is wrong for a different reason: it is disproportionately read by both buyers and answer engines, so absence costs you."
+      },
+      {
+        "q": "You are choosing between a creator with 400,000 general followers and a newsletter with 4,000 subscribers who are precisely your buyer. What does the module say, and how would you de-risk it?",
+        "options": [
+          "Take the 400,000 for reach, then narrow with retargeting afterwards",
+          "Take the 4,000 - audience match beats size - and start with a small paid test using a tracked link or code, planning repeat exposures rather than one-off",
+          "Take the 4,000 and give them a full script so the message is controlled",
+          "Run both once and compare cost per click across the two"
+        ],
+        "answer": 1,
+        "why": "The module says a 4,000-subscriber newsletter for exactly your buyer beats 400,000 general followers, and to de-risk by asking for a past campaign result or starting with a small paid test and a tracked link or code, with repeat over one-off. The scripting option contradicts the module directly - give a brief with message and constraints, not a script, because over-scripting is why most collaborations fail."
+      },
+      {
+        "q": "Your LinkedIn company page posts three times a week and gets almost no engagement. Nobody on the team posts personally. What is the module's diagnosis?",
+        "options": [
+          "The posting cadence is too low for the algorithm to establish reach",
+          "LinkedIn is a poor fit for B2B and the budget should move to short video",
+          "The posts need links to the blog so readers have somewhere to go",
+          "Personal profiles outperform company pages by a wide margin, so the founder or a named employee should be posting"
+        ],
+        "answer": 3,
+        "why": "The module says personal profiles outperform company pages by a wide margin and names posting only from the company page while no named human posts as a common mistake. Adding links makes it worse: the module notes platforms suppress links, so post the content natively and put the link elsewhere."
+      },
+      {
+        "q": "Where does the module say AI belongs in a content workflow, and where does it not?",
+        "options": [
+          "Use it for outlines, transcription, repurposing, editing and headline variants - not for the argument, the data or the story",
+          "Use it to draft the argument, then have a human fact-check the data",
+          "Avoid it entirely, since generated content is penalised by search engines",
+          "Use it to increase publishing volume, since supply still beats quality on most platforms"
+        ],
+        "answer": 0,
+        "why": "The module allows AI for assembly - outlines, transcription, repurposing, editing, headline variants - and forbids it for substance, because substance is the only scarce part now. The volume answer inverts the 2026 reality check: AI made competent content free, so the supply of adequate articles is effectively infinite and worth near zero."
+      }
+    ],
+    "cards": [
+      {
+        "front": "Capture vs creation content: name two formats of each and the metric problem they share.",
+        "back": "Capture: comparison pages, alternatives-to-X, pricing, docs - low volume, high intent. Creation: opinion, original research, teardowns, video, newsletters. Both are measured wrongly by traffic; measure assisted conversions, signups, branded search lift, pipeline."
+      },
+      {
+        "front": "What one test decides whether a planned piece is worth writing?",
+        "back": "Who is the reader, and what do they do next? If the honest answer is \"a student, and nothing,\" do not write it - whatever the search volume."
+      },
+      {
+        "front": "How would you recognise content-market fit?",
+        "back": "People quote you back to yourself, competitors imitate the format, and sales calls open with \"I read your thing about X.\" You find it by publishing distinct bets and doubling down on disproportionate response."
+      },
+      {
+        "front": "Name four distribution actions that come after publishing.",
+        "back": "Post natively where the audience is, email your list, send it directly to ten specific people who would care, answer the question in the community where it was asked, pitch newsletters, re-share months later."
+      },
+      {
+        "front": "Why does organic reach decline on every platform, and what does that imply?",
+        "back": "Every platform gives generous reach to attract creators, then compresses it as inventory is monetised. Followers are access the platform rents you, so convert audience into email from day one."
+      },
+      {
+        "front": "What kind of content still earns links, citation and memory in 2026?",
+        "back": "Only what nobody else could make: proprietary data from your operations, customer stories with real numbers, first-hand testing, genuine opinion. Competent explainers have no scarcity value."
+      }
+    ],
+    "elaborate": [
+      "For your chosen business, name the one piece of proprietary content only you could produce - your data, your customers, your testing. Then write the reader and the next action in one sentence each, and say honestly whether you could produce that piece in your worst week of the quarter.",
+      "M08 said third-party mentions now function like a ranking signal for answer engines. Pick one piece from your content plan and describe how you would make it citable rather than merely visitable - the specific claims, numbers and author credentials that would make an LLM name your brand in an answer."
+    ],
+    "transfer": {
+      "scenario": "A three-person accounting practice has published 84 blog posts over two years, all category explainers such as \"understanding VAT thresholds.\" They get 9,000 monthly organic sessions. In two years the blog has produced two client enquiries. The founder posts nothing personally; everything goes out from the company LinkedIn page and is cross-posted to X, Instagram and Facebook. They have no email list. The founder can commit four hours a week and wants to know whether to keep going.",
+      "prompt": "Decide what to keep, what to kill, and what a sustainable four-hour week should look like.",
+      "model": "Nine thousand sessions producing two enquiries is the exact failure the module describes: traffic reported as success while producing no demand. Kill the category explainers - middle content, capturing nothing because the reader is not buying and creating nothing memorable. Cut from four platforms to two: one long-form home, plus LinkedIn with the founder posting under his own name rather than the company page. Replace the backlog with capture content that meets people already looking - pricing, who we are wrong for, comparison against local competitors - and one proprietary piece built on anonymised numbers from their own client base. Four hours means one pillar a week or two, cut into derivatives, with half the time spent distributing: sending it to ten specific people and answering questions where they were actually asked. Start an email list, because organic reach is rented. Judge on enquiries and replies, never sessions."
+    }
+  },
+  {
+    "id": "M10",
+    "predict": "In a Google Ads auction, do you think the advertiser with the highest bid always wins and always pays the most? Guess why or why not.",
+    "quiz": [
+      {
+        "q": "A competitor consistently appears above you and, you learn, pays less per click. What explains this?",
+        "options": [
+          "They are using exact match while you use phrase match",
+          "Their daily budget is larger, which raises their position in the auction",
+          "Ad Rank is roughly bid multiplied by ad quality plus expected asset impact, so better ads and a better landing page can outrank a higher bid at a lower price",
+          "They have been running longer, and account age is a ranking component"
+        ],
+        "answer": 2,
+        "why": "Ad Rank combines bid with expected CTR, ad relevance and landing page experience plus expected asset impact, and you pay roughly the minimum needed to beat the advertiser below you - so quality functions as a discount. Budget size is not an Ad Rank component; it caps how long you can show, not where you rank."
+      },
+      {
+        "q": "An account has 40 conversions a month split across 12 campaigns. Smart bidding is underperforming. What is the first structural fix?",
+        "options": [
+          "Consolidate into fewer, better-fed campaigns, splitting only where separate budget or separate targets are genuinely needed",
+          "Switch every campaign to target ROAS so the algorithm has a clearer goal",
+          "Break out single-keyword ad groups so each keyword gets its own signal",
+          "Move all keywords to exact match to reduce wasted spend"
+        ],
+        "answer": 0,
+        "why": "Smart bidding needs conversion volume per campaign to learn, and splitting 40 conversions across 12 campaigns starves every one of them; the modern default is fewer, better-fed campaigns split only by budget, target, geography or language. SKAGs are the named harmful old advice, and tROAS wants even more volume than the roughly 30 conversions a month smart bidding already needs."
+      },
+      {
+        "q": "Target CPA is 50 euros and the landing page converts clicks to leads at 4%. Keyword Planner shows top-of-page bids around 4 euros. What is your max CPC and what are your options?",
+        "options": [
+          "Max CPC is 12.50 euros; you have headroom, so raise bids and take more volume",
+          "Max CPC is 2.00 euros; raise conversion rate, raise what a conversion is worth, or do not run in this auction",
+          "Max CPC is 2.00 euros; rewrite the ad copy to close the gap",
+          "Max CPC is 0.50 euros; the auction is unwinnable at any conversion rate"
+        ],
+        "answer": 1,
+        "why": "Max CPC equals target CPA multiplied by conversion rate: 50 euros times 0.04 equals 2.00 euros, and against a 4 euro market price the module gives exactly three options - raise conversion rate, raise conversion value, or do not run. Ad copy is the tempting fourth option, but the module calls it a rounding error against a 2x gap."
+      },
+      {
+        "q": "A campaign shows healthy impressions and a 6% CTR, CPC is in line with the category, but CPA is triple target. Using the diagnostic ladder, where do you look?",
+        "options": [
+          "Rung 1, impressions - check budget, bids and approvals",
+          "Rung 2, CTR - test new headlines to lift click share",
+          "Rung 3, CPC - review Quality Score and match types",
+          "Rung 4 then rung 5 - landing page CVR first, then whether the offer itself is wrong"
+        ],
+        "answer": 3,
+        "why": "You go in order and stop at the first broken rung; impressions, CTR and CPC are all healthy here, so the break is at landing page conversion - message match, speed, form friction, trust - and if the page checks out, the offer. The module notes beginners spend their week on rung 2, but most real problems live on rungs 4 and 5."
+      },
+      {
+        "q": "Your brand campaign shows a 3 euro CPA against a 40 euro non-brand CPA and your manager wants to scale it. What is the honest position?",
+        "options": [
+          "Scale it - it is the most efficient campaign in the account",
+          "Pause it permanently, since branded search is never incremental",
+          "Most of it is probably not incremental, but there are legitimate reasons to run it - and the test is to pause brand in half your geographies for two weeks and watch total branded conversions, paid plus organic",
+          "Move the brand terms into Performance Max so the budget is allocated automatically"
+        ],
+        "answer": 2,
+        "why": "The module says a spectacular branded CPA is mostly non-incremental because those people were arriving via the organic result below, but names legitimate reasons - competitors bidding on you, a crowded SERP, message control, a fragile organic position - and gives the geo holdout as the test almost nobody runs. Pausing permanently overshoots; moving brand into PMax is worse, since PMax harvesting branded search and claiming credit is a named failure mode."
+      },
+      {
+        "q": "Someone advises you to build tightly controlled exact-match keyword lists so you only pay for the literal query. What is wrong with that in 2026?",
+        "options": [
+          "Exact match no longer means exact - it matches the same meaning including plurals, synonyms and reordering, so negatives are the real control surface",
+          "Exact match has been retired; only broad and phrase remain",
+          "Exact match still works literally, but it is too expensive for most accounts",
+          "Exact match prevents smart bidding from functioning at all"
+        ],
+        "answer": 0,
+        "why": "The module states that exact match now matches the same meaning - running shoes can serve sneakers for jogging - and that because match types leak, negative keywords are how you steer, across account, campaign and ad group layers. The retirement claim is false: all three match types still exist, they just behave semantically."
+      }
+    ],
+    "cards": [
+      {
+        "front": "State Ad Rank in words and explain what Quality Score is for.",
+        "back": "Roughly bid times ad quality (expected CTR, ad relevance, landing page experience) plus expected asset impact, filtered by context and thresholds. Quality Score reports the same three components as a diagnostic, not a vanity score."
+      },
+      {
+        "front": "What is the max CPC formula, and the three options when market price exceeds it?",
+        "back": "Max CPC equals target CPA times landing page conversion rate. Options: raise conversion rate, raise what a conversion is worth, or do not run in this auction. There is no fourth."
+      },
+      {
+        "front": "List the five rungs of the paid search diagnostic ladder in order.",
+        "back": "Impressions, CTR, CPC, landing page conversion rate, the offer. Go in order and stop at the first broken rung; most real problems sit on rungs four and five."
+      },
+      {
+        "front": "How much conversion volume does smart bidding need, and what do you do below it?",
+        "back": "Roughly 30 or more conversions per campaign per month; tROAS wants more. Below that use maximize conversions, or move the conversion action earlier in the funnel so there is signal."
+      },
+      {
+        "front": "Name four ways to control Performance Max.",
+        "back": "Brand exclusions so it does not eat free traffic, account-level negative keywords, separate asset groups per category or persona for readable results, audience signals as hints, and feed quality - which for ecommerce is the targeting."
+      },
+      {
+        "front": "How do you set a monthly budget cap in Google Ads, and how should you scale it?",
+        "back": "Daily budget times about 30.4 is the monthly cap; Google may overspend up to 2x on a day but not over the month. Raise budgets in 20-30% steps to avoid re-triggering learning."
+      }
+    ],
+    "elaborate": [
+      "Derive a target CPA for your chosen business from the CAC ceiling you set in M05, estimate your landing page conversion rate honestly, and compute your max CPC. Compare it to what Keyword Planner shows for your top three terms, then state which of the three levers you would pull first and what would have to be true for it to work.",
+      "M07 argued that message match is the most common fixable defect in paid campaigns. Write the query, the ad headline and the landing page headline for your highest-intent ad group so the three read as one continuous sentence, then explain which rung of the diagnostic ladder that fix is operating on."
+    ],
+    "transfer": {
+      "scenario": "A home services company spends 9,000 euros a month on Google Ads. Performance Max takes 6,000 of it and reports a 22 euro CPA; the non-brand Search campaign spends 3,000 at a 78 euro CPA. There is no brand exclusion on PMax and no account-level negative keyword list. The search terms report on the Search campaign shows 31% of spend on queries containing \"jobs,\" \"salary\" and \"how to.\" Conversion tracking fires on all form submits, and the office manager says roughly half the forms are spam or job applicants. Target CPA is 60 euros.",
+      "prompt": "Diagnose what the 22 euro PMax CPA actually represents and set out your first four changes in priority order.",
+      "model": "The 22 euro CPA is not trustworthy. With no brand exclusion, PMax is almost certainly harvesting branded search and claiming credit for people arriving anyway, and it grades its own homework - reporting is opaque by design. Worse, the conversion action is corrupt: optimising to all form submits when half are spam or job applicants teaches both campaigns to find more of the same, so every CPA here is understated. In order. First, fix the conversion action - qualified leads only, or import offline conversions - because everything downstream optimises on that signal. Second, add brand exclusions plus an account-level negative list covering jobs, salary and how-to, which addresses the 31% of Search spend going to non-buyers. Third, review the search terms report weekly for a month: promote, block or ignore each term. Fourth, validate PMax with a geo holdout rather than its own report."
+    }
+  },
+  {
+    "id": "M11",
+    "predict": "On Meta, if the platform decides who sees your ad, what is left for you to control that still determines who actually shows up?",
+    "quiz": [
+      {
+        "q": "A brand runs four Meta ad sets at 25 euros a day each, optimising for purchase. All four sit in \"Learning limited\" and CPA is erratic. What is the fix and why?",
+        "options": [
+          "Switch the optimisation event to link clicks so there is enough volume to exit learning",
+          "Consolidate into one ad set at 100 euros a day, because an ad set needs roughly 50 optimisation events in 7 days to exit learning",
+          "Add more creative to each ad set so the algorithm has more to test",
+          "Lower bids in each ad set to stretch the budget across more impressions"
+        ],
+        "answer": 1,
+        "why": "The learning phase needs roughly 50 optimisation events in 7 days, and four ad sets at 25 euros each will each fail to reach it where one at 100 euros would - consolidation is the module's explicit prescription. Switching to link clicks is the tempting shortcut but it tells the system to find cheap clickers rather than buyers, which is the objective error the module warns about."
+      },
+      {
+        "q": "CPM is 10 euros, CTR is 1%, and landing page CVR is 3%. What is CPA, and what happens if better creative doubles CTR to 2%?",
+        "options": [
+          "CPA is 33 euros, falling to 17 euros",
+          "CPA is 33 euros, falling to 20 euros",
+          "CPA is 100 euros, falling to 50 euros",
+          "CPA is 30 euros, falling to 15 euros"
+        ],
+        "answer": 0,
+        "why": "1,000 impressions cost 10 euros; 1% CTR gives 10 clicks; 3% CVR gives 0.3 conversions, so CPA is 10 divided by 0.3, or about 33 euros. Doubling CTR gives 20 clicks and 0.6 conversions, so CPA halves to about 17 euros - 20 euros is what you get instead by lifting landing page CVR from 3% to 5%, which is the other lever."
+      },
+      {
+        "q": "A video ad has a hook rate of 41% and a hold rate of 6%. What does that pattern tell you?",
+        "options": [
+          "The first frame failed and nothing downstream is diagnosable yet",
+          "The audience is saturated and frequency needs capping",
+          "The opening stops people but the ad cannot pay off what it promised - a clickbait opening",
+          "The optimisation event is set too deep in the funnel"
+        ],
+        "answer": 2,
+        "why": "Hook rate is 3-second views over impressions and hold rate is thru-plays over 3-second views; a high hook with a low hold means a clickbait opening the ad cannot pay off. A low hook rate would mean the first frame failed and nothing downstream is diagnosable - the opposite pattern to this one."
+      },
+      {
+        "q": "Your testing roadmap for next month is: three thumbnail variants, four caption rewrites, and two button texts. What does the module say about this plan?",
+        "options": [
+          "It is the correct place to start, since small tests are cheap and compound",
+          "It is testing variations at the bottom of the hierarchy; concepts produce the outliers that carry the account, so spend testing budget high in the hierarchy",
+          "It is fine provided each test reaches 50 conversions",
+          "It should be reordered to test formats first, then variations, then concepts"
+        ],
+        "answer": 1,
+        "why": "The hierarchy is concept, then angle, then format, then variation - variations produce small differences while concepts produce the outliers that carry the account, so testing budget belongs high in the hierarchy. Reaching 50 conversions does not rescue a variation test; you would be measuring a difference too small to matter regardless of sample."
+      },
+      {
+        "q": "An account reports a 9.4 ROAS on retargeting and a 1.8 ROAS on prospecting, and the team wants to shift budget into retargeting. What is the module's position?",
+        "options": [
+          "Shift the budget - retargeting is measurably more efficient",
+          "Shift the budget but cap frequency at 10 exposures per week",
+          "Retargeting ROAS is fabricated by the platform and should be ignored entirely",
+          "Retargeting is the most over-credited spend in most accounts; keep it, cap it, size it honestly, and prove its value with a geo or audience holdout rather than the platform's ROAS column"
+        ],
+        "answer": 3,
+        "why": "The module calls retargeting the most over-credited spend in most accounts because you are paying to reach people who already visited, many of whom would have returned anyway - so keep it, cap it, size it honestly and prove value with a holdout. Saying the number is fabricated overstates it: the conversions are real, they are just largely not incremental."
+      },
+      {
+        "q": "A B2B software brand assumes video always beats static and refuses to produce carousels or images. What does the module say?",
+        "options": [
+          "Correct for B2C, but B2B should use LinkedIn lead gen forms instead of any Meta creative",
+          "Correct - static formats no longer earn distribution on any major platform",
+          "Static images and carousels are cheap and fast to iterate and still win in many B2B and considered-purchase categories; do not assume video always beats static, test it",
+          "Video wins only when hook rate exceeds 30%, otherwise static is preferable"
+        ],
+        "answer": 2,
+        "why": "The module lists static image and carousel among formats that consistently perform, notes they are cheap and fast to iterate and still win in many B2B and considered-purchase categories, and says explicitly not to assume video always beats static. The hook rate threshold is invented - the module gives no such rule."
+      }
+    ],
+    "cards": [
+      {
+        "front": "Why is creative now the targeting mechanism on Meta?",
+        "back": "Advantage+ and broad targeting hand audience selection to the delivery system, which decides largely by watching who responds to this specific creative. You narrow with the hook, not with checkboxes."
+      },
+      {
+        "front": "What is the learning phase threshold, and what restarts learning?",
+        "back": "Roughly 50 optimisation events in 7 days per ad set. Significant edits restart it: budget changes over about 20%, new creative, or a changed optimisation event."
+      },
+      {
+        "front": "Distinguish concept, angle, format and variation with an example of each.",
+        "back": "Concept is a whole idea (the ad is a customer complaint about a competitor). Angle is the argument (speed vs price vs status). Format is the execution (UGC vs demo). Variation is thumbnail, caption, button."
+      },
+      {
+        "front": "What does the Conversions API do, and why does it improve performance as well as reporting?",
+        "back": "It sends events server-side from your backend, matched by hashed email, phone and click ID. Better matching means better attribution and better optimisation, because the algorithm learns from more complete data. Run pixel plus CAPI, deduplicated by shared event_id."
+      },
+      {
+        "front": "What does a usable creative brief name?",
+        "back": "The audience and their belief before the ad, the one thing they should believe after, the hook line, the proof, the offer, the call to action, format and duration, and the specific thing being tested."
+      },
+      {
+        "front": "What are the signs of creative fatigue and the refresh cadence at high spend?",
+        "back": "Rising CPM with falling CTR on the same ad as frequency climbs in a saturating audience. At high spend, plan a meaningful new concept every 2-4 weeks, with 3-5 fresh concepts a month as a baseline production rate."
+      }
+    ],
+    "elaborate": [
+      "Estimate CPM, CTR and landing page CVR for your chosen business's category, compute the expected CPA, and compare it to your CAC ceiling from M05. If the math does not work, name which of the three numbers has to move, by how much, and whether creative or the landing page is the cheaper place to move it.",
+      "Write two genuinely different concepts for your chosen business - different at the idea level, not two scripts of the same idea. For each, state the belief before and the belief after, then explain how M07's CRO work would need to change to keep message match with each one."
+    ],
+    "transfer": {
+      "scenario": "A direct-to-consumer sleep brand spends 40,000 euros a month on Meta. Prospecting sits at 25,000 with a 2.1 reported ROAS; retargeting takes 15,000 with a 11.4 reported ROAS against an audience of roughly 4,000 monthly site visitors. Every prospecting ad is a version of the same 30-second brand film cut to different lengths. CPM has risen from 12 to 19 euros over six weeks while CTR fell from 1.4% to 0.7%. The pixel is installed but there is no CAPI. The team's plan is to move 10,000 euros from prospecting into retargeting.",
+      "prompt": "Assess the plan and set out what you would do instead, in order.",
+      "model": "Reject the plan. Fifteen thousand euros against roughly 4,000 monthly visitors already means the same small pool sees the ads many times a week; the 11.4 ROAS is the most over-credited number in the account, since those people had already visited and many would have returned anyway. More budget inflates the reported figure while buying almost no incremental revenue. In order: first, treat rising CPM with falling CTR as textbook fatigue - cuts of one brand film are one concept, not several, and a TV-style film has the wrong pacing, no hook and no offer, so brief three to five genuinely distinct concepts at the idea level. Second, install CAPI alongside the pixel with event_id deduplication; you are optimising on partial data. Third, cap retargeting frequency and tighten the window. Fourth, prove retargeting's value with a geo or audience holdout before sizing it."
+    }
+  },
+  {
+    "id": "M12",
+    "predict": "Why might an email list be worth more to a business than a social following of the same size?",
+    "quiz": [
+      {
+        "q": "A roofing company is choosing a lead magnet. Which one does the module's logic favour, and why?",
+        "options": [
+          "A 50 euro Amazon voucher, because it maximises signup volume at the lowest friction",
+          "A monthly newsletter signup, because it sets expectations honestly from the start",
+          "A 20-point roof inspection checklist, because it is adjacent to the purchase and builds a list of people who own roofs and are worried about them",
+          "A prize draw for a free roof survey, because it combines volume with category relevance"
+        ],
+        "answer": 2,
+        "why": "The rule is that the magnet must be adjacent to the purchase, not merely popular - the voucher builds a list of people who want vouchers, and generic magnets produce big lists with near-zero revenue per recipient whose unengaged majority drags sender reputation down. The voucher option is tempting precisely because it wins on the metric the module says to optimise second, volume, rather than first, buyer adjacency."
+      },
+      {
+        "q": "Your monthly report leads with a 52% open rate, up from 41%. What is wrong with that headline number?",
+        "options": [
+          "Apple Mail Privacy Protection pre-fetches images and inflates opens, making them useless as an absolute measure and dangerous as an optimisation target",
+          "Open rate is accurate but lags clicks by roughly 48 hours",
+          "Open rate only counts HTML emails, so plain-text recipients are missing",
+          "Open rate is fine as a headline provided you exclude bounced sends"
+        ],
+        "answer": 0,
+        "why": "MPP pre-fetches images for Apple Mail users, so opens are inflated and can only be used for trend and relative comparison, never as a headline number or an optimisation target. The module goes further in Common mistakes: optimising subject lines for opens means optimising a broken metric, and clickbait subject lines raise complaints."
+      },
+      {
+        "q": "Your spam complaint rate has climbed to 0.38% and hard bounces are running at 2.4%. What is the situation and what do you do?",
+        "options": [
+          "Both are within normal ranges; monitor for another month",
+          "Complaints are fine but bounces mean you should send more often to re-warm the list",
+          "Both thresholds are breached - complaints should stay under 0.3% and ideally under 0.1%, and over about 2% hard bounces signals a hygiene problem; clean the list and suppress the unengaged",
+          "Add a double opt-in to future signups, which retroactively resolves both numbers"
+        ],
+        "answer": 2,
+        "why": "The module sets the complaint ceiling at 0.3%, ideally under 0.1%, and says crossing it collapses delivery; over roughly 2% hard bounces indicates a hygiene problem. Sending more often to a list in this state accelerates the collapse - the prescribed moves are removing hard bounces immediately and sunsetting subscribers with no opens or clicks in 6 or more months."
+      },
+      {
+        "q": "An ecommerce brand runs weekly campaigns to its whole list and has no automated flows. Where does the module say the money is, and what is the first flow to build?",
+        "options": [
+          "Campaigns and flows earn similarly; the first priority is a higher send frequency",
+          "Flows beat campaigns on revenue per recipient; build the welcome flow first, as it typically earns the most per recipient of anything you send",
+          "Flows beat campaigns; build the winback flow first, since lapsed customers are the largest segment",
+          "Campaigns are where the money is for ecommerce; flows matter mainly for SaaS onboarding"
+        ],
+        "answer": 1,
+        "why": "Flows beat campaigns on revenue per recipient because they arrive at the moment of relevance, and the module says the welcome or indoctrination flow typically earns the most per recipient of anything you send. Winback matters but sits at the lapse point, and its defining feature is a hard exit after three unengaged emails, not first priority."
+      },
+      {
+        "q": "A subscriber has a basket worth 380 euros abandoned at 9pm. Which contact does the module support?",
+        "options": [
+          "An SMS at 9pm, since abandoned cart windows close fast and SMS has the highest open rate",
+          "A push notification plus SMS plus email, to cover every channel while intent is live",
+          "Nothing until they return to the site, since any outreach at that hour risks a complaint",
+          "The cart flow's first email at roughly one hour, and SMS only if they gave separate explicit consent for it, given the high basket value"
+        ],
+        "answer": 3,
+        "why": "The cart sequence is three emails at roughly 1 hour, 24 hours and 72 hours, and SMS is reserved for time-critical, high-value moments such as an abandoned cart at high basket value - but it requires separate explicit opt-in, since an email signup gives no implied SMS consent. The 9pm SMS option ignores both the consent rule and the module's warning that one irrelevant 9pm text costs you the subscriber and possibly the customer."
+      },
+      {
+        "q": "Which authentication set does the module describe as effectively mandatory for bulk sending to Gmail and Yahoo, and what does each element do?",
+        "options": [
+          "SPF lists who may send for your domain, DKIM cryptographically proves the message was not altered, DMARC publishes what receivers should do when SPF or DKIM fail - plus one-click unsubscribe honoured within two days",
+          "SPF encrypts the message body, DKIM lists authorised senders, DMARC handles unsubscribe requests",
+          "DMARC alone is sufficient if you send from a dedicated subdomain",
+          "SPF and DKIM are required; DMARC is advisory and only affects reporting"
+        ],
+        "answer": 0,
+        "why": "The module defines SPF as the DNS record of who may send, DKIM as the cryptographic signature proving the message was not altered, and DMARC as the published policy plus reporting - all effectively mandatory under Gmail and Yahoo bulk sender requirements, alongside one-click unsubscribe honoured within two days. Treating DMARC as advisory is the outdated position the module explicitly corrects: without all three aligned, bulk mail does not arrive reliably."
+      }
+    ],
+    "cards": [
+      {
+        "front": "Name the five flows that make most of the money.",
+        "back": "Welcome/indoctrination, abandoned cart and browse, post-purchase/onboarding, winback, and replenishment or upgrade. Flows beat campaigns on revenue per recipient because they arrive at the moment of relevance."
+      },
+      {
+        "front": "What is the abandoned cart timing and content sequence?",
+        "back": "Three emails at roughly 1 hour, 24 hours and 72 hours: remind, handle the objection (shipping, returns, sizing), then incentivise only if margin allows. Browse abandonment is a softer nudge, not a chase."
+      },
+      {
+        "front": "What does RFM stand for and how do you act on two of its segments?",
+        "back": "Recency, Frequency, Monetary value. Champions get early access and referral asks; at-risk high-value customers get personal attention; one-time low-value buyers get a repeat-purchase nudge; never-engaged get a sunset sequence."
+      },
+      {
+        "front": "Which email metric should be your default for comparing a flow to a campaign to a segment?",
+        "back": "Revenue per recipient. It is the number that lets you compare them fairly. Click rate and click-to-open are the first honest engagement signals; open rate is unreliable since Apple MPP."
+      },
+      {
+        "front": "What separates useful personalisation from creepy merge tags?",
+        "back": "Useful personalisation changes the content - the size they bought, the plan they are on, the city when it affects delivery. A first name pasted into a subject line is neutral at best and unsettling when obviously automated."
+      },
+      {
+        "front": "Why is an unsubscribe better than a spam complaint?",
+        "back": "Complaints damage sender reputation and delivery for everyone on the domain; cross 0.3% and delivery collapses. Unsubscribes just shrink a number you like reporting. Make unsubscribing easy."
+      }
+    ],
+    "elaborate": [
+      "Write the lead magnet you would actually use for your chosen business and one sentence on why it is adjacent to the purchase. Then write the generic version someone would propose instead, and state concretely what the difference would do to revenue per recipient and to your sender reputation over a year.",
+      "M09 argued that organic reach declines on every platform because followers are access the platform rents you. Map how someone in your chosen business travels from a platform where you have no control to your email list, naming the collection point, the source field you would capture, and the first flow they enter."
+    ],
+    "transfer": {
+      "scenario": "A skincare ecommerce brand has 62,000 subscribers, built largely from a 100 euro gift-card prize draw run last year. They send three campaigns a week to the entire list. Reported open rate is 47%, click rate is 0.3%, unsubscribes are running at 1.1% per send and spam complaints at 0.34%. They have no automated flows at all. SPF and DKIM are configured; there is no DMARC record. Revenue from email is flat year on year despite the list tripling in size.",
+      "prompt": "Diagnose why a tripled list produced flat revenue and set out the first four actions in order.",
+      "model": "The list tripled with people who wanted a gift card, not skincare - a generic magnet producing a big list with near-zero revenue per recipient, which is exactly what a 0.3% click rate shows. The 47% open rate is decoration inflated by Apple MPP; the honest numbers are the click rate and the health metrics, and both are alarming. A 0.34% complaint rate is above the 0.3% ceiling where delivery collapses, so the unengaged majority is now suppressing delivery to the people who do buy. In order: stop blasting the whole list three times a week and segment by engagement recency; publish a DMARC record, since without all three aligned bulk mail to Gmail and Yahoo does not arrive reliably; build the welcome and abandoned cart flows, where the revenue per recipient is; then sunset the six-month unengaged and replace the prize draw with a purchase-adjacent magnet."
+    }
+  },
+  {
+    "id": "M13",
+    "predict": "If Meta, Google and TikTok each report the conversions they think they caused, what would happen if you added those numbers together?",
+    "quiz": [
+      {
+        "q": "Revenue is down 20% month on month. Which statement is actionable in the module's sense, and why?",
+        "options": [
+          "Revenue is down 20% and paid social ROAS declined",
+          "Revenue is down 20% because mobile conversion rate fell from 2.1% to 1.4% after a checkout release",
+          "Revenue is down 20% while impressions and reach both grew",
+          "Revenue is down 20% and last-click attribution shows organic weakening"
+        ],
+        "answer": 1,
+        "why": "The metric tree exists so you can say where a change came from; the checkout-release sentence names the branch, the magnitude and a plausible cause, so someone can pick it up as a ticket. The impressions and reach option is the trap - those are vanity metrics that only go up and connect to nothing, failing the test of whether you would do anything differently if they doubled."
+      },
+      {
+        "q": "A vendor proposes configuring a position-based attribution model in your GA4 property so demand-creation channels get fair credit. What is the correct response?",
+        "options": [
+          "Approve it, but pair it with a data-driven model for comparison",
+          "Approve it only if server-side tagging is already in place",
+          "GA4 retains only three models - data-driven attribution plus two last-click variants - so position-based does not exist there; the vendor is working from stale material",
+          "Position-based is available but only in GA4 360, so check your licence tier"
+        ],
+        "answer": 2,
+        "why": "GA4 retains data-driven attribution plus two last-click variants; first-click, linear, time-decay and position-based were removed in November 2023 and are not coming back. The licence-tier answer is plausible-sounding but invented - the removal was not a paywall, and the module says anyone offering a position-based model in GA4 is working from stale material."
+      },
+      {
+        "q": "Your paid social row in GA4 splits across \"Facebook / paid_social\" and \"facebook / Paid_Social,\" and a third of traffic sits in (other). What went wrong?",
+        "options": [
+          "GA4's channel groupings changed and need remapping in the admin settings",
+          "UTMs are case-sensitive, so inconsistent casing created duplicate rows, and there is no shared convention for allowed source and medium values",
+          "The GTM container is firing the GA4 tag twice per pageview",
+          "Referral exclusions are missing for the payment gateway"
+        ],
+        "answer": 1,
+        "why": "The module says to lowercase everything because UTMs are case-sensitive - Facebook and facebook become two rows - and names having no UTM convention as the reason half your traffic sits in (other) and nothing can be reconstructed later. Duplicate tag firing is a real problem but it inflates event counts rather than splitting source and medium rows."
+      },
+      {
+        "q": "A weekly report shows conversions down 15% versus last week, on a base of 40 conversions. The team wants to pause the worst-performing ad set immediately. What does the module say?",
+        "options": [
+          "Pause it - a 15% decline sustained for a week is a reliable signal",
+          "Pause it and restart it Monday to re-enter the learning phase cleanly",
+          "Do not react - ask how many conversions the difference is based on and whether a coin flip could have produced it; weekly numbers are for spotting breakage, monthly numbers are for decisions",
+          "Do not react, but increase the budget instead, since low volume is the underlying cause"
+        ],
+        "answer": 2,
+        "why": "The module states that a 15% week-on-week swing on 40 conversions is nothing and warns against reacting to noise and restarting learning phases every Monday - weekly numbers spot breakage, monthly numbers drive decisions. Increasing budget is equally a reaction to noise, just in the opposite direction."
+      },
+      {
+        "q": "Your ROAS report shows impossible numbers - one campaign at 41x with a modest spend. Before blaming attribution, what does the module say to check?",
+        "options": [
+          "Whether the key event fires exactly once per conversion, since duplicate purchase events are the most common cause of impossible-looking ROAS",
+          "Whether Consent Mode v2 is misconfigured and inflating modelled conversions",
+          "Whether the campaign is benefiting from view-through credit on display placements",
+          "Whether third-party cookie deprecation has broken the conversion path"
+        ],
+        "answer": 0,
+        "why": "Under data hygiene the module names duplicate purchase events as the most common cause of impossible-looking ROAS, alongside filtering internal traffic and adding referral exclusions for payment gateways. The cookie-deprecation answer is doubly wrong: Chrome kept third-party cookies, and deprecation would suppress measured conversions rather than inflate them."
+      },
+      {
+        "q": "A CFO asks which measurement evidence he should weight most heavily when deciding next year's allocation. What does the module say about the three legs of triangulation?",
+        "options": [
+          "Platform attribution, because it is closest to the actual buying event",
+          "Media mix modelling, because it is the only method that includes offline spend",
+          "GA4 data-driven attribution, because it is modelled rather than rules-based",
+          "Independent incrementality testing - senior decision-makers trust it more than MMM or in-platform reporting, so a clean holdout carries more credibility than the prettiest dashboard"
+        ],
+        "answer": 3,
+        "why": "The module names three lenses - MMM for the portfolio view including offline, incrementality testing for causal ground truth, and platform attribution for tactical in-flight signal - and states that senior decision-makers trust independent incrementality testing most. MMM is tempting because of its offline coverage, but the module ranks it below incrementality on trust."
+      }
+    ],
+    "cards": [
+      {
+        "front": "What is a metric tree and what does it let you say that a raw metric cannot?",
+        "back": "The one metric that matters decomposed into inputs you control - e.g. Revenue = Sessions x Conversion rate x AOV. It tells you where a change came from, turning \"revenue down 20%\" into a ticket someone can pick up."
+      },
+      {
+        "front": "Name three ways GA4's model differs from Universal Analytics.",
+        "back": "Everything is an event with parameters, and some are key events. There is no old bounce rate - engagement rate instead, from engaged sessions (10+ seconds, a key event, or 2+ pageviews). Sessions are counted differently and will not reconcile."
+      },
+      {
+        "front": "What does last-click over-credit, and what does view-through over-credit?",
+        "back": "Last-click over-credits capture channels - branded search, retargeting, anything catching people already on their way in. View-through over-credits display and video, where an unseen impression counts as influence."
+      },
+      {
+        "front": "Name two UTM rules that prevent broken data.",
+        "back": "Lowercase everything, because UTMs are case-sensitive. Never UTM-tag internal links - it starts a new session and destroys attribution. Also: keep a shared list of allowed source and medium values, and auto-tag Google Ads with GCLID."
+      },
+      {
+        "front": "What is self-reported attribution, what does it catch, and how is it biased?",
+        "back": "A \"How did you hear about us?\" field at checkout or on the lead form. It catches podcast, word-of-mouth and offline exposure no pixel sees, and is biased toward the most recent memorable touch."
+      },
+      {
+        "front": "What are the six sections of a monthly report a non-marketer can act on?",
+        "back": "Headline number vs target and last month in currency; three cause-and-effect bullets; a channel table with spend, outcomes, cost per outcome and change; what we learned; what we are changing; a confidence note naming where the numbers are shaky."
+      }
+    ],
+    "elaborate": [
+      "Build the metric tree for your chosen business two levels deep, mark each node leading or lagging, and circle the two nodes you could actually influence next month. Then write the one sentence you would say in a budget review if the top number fell 20%.",
+      "M10 and M11 both warned that platform-reported numbers overstate branded search and retargeting. Write the confidence note you would append to next month's report for your chosen business, naming the specific places your numbers are shaky and the one test you would run next quarter to shrink that uncertainty."
+    ],
+    "transfer": {
+      "scenario": "A subscription box company reports 1,240 orders in Shopify for the month. Meta claims 610 conversions, Google Ads claims 520, and TikTok claims 290 - a total of 1,420. Half of paid traffic in GA4 sits under (other) because campaign links were tagged by three different people with no shared convention. The finance director wants to cut the channel with the worst ROAS, and TikTok's platform ROAS is lowest at 1.4 against Meta's 4.2. The company has never run a holdout test and has no self-reported attribution question at checkout.",
+      "prompt": "Explain to the finance director what the numbers can and cannot prove, and recommend what to do before cutting anything.",
+      "model": "The 1,420 claimed conversions against 1,240 actual orders is not a bug to fix - it is a property of walled gardens self-reporting, each claiming the same conversion. The platform ROAS figures are therefore not comparable, and cutting TikTok on 1.4 versus Meta's 4.2 compares two numbers computed by interested parties on overlapping credit. Meta's is the flattered one, capturing more retargeting and last-click-style credit, which over-credits capture channels. Before cutting: fix the UTM convention - one owner, a closed medium list, lowercase, a shared spreadsheet - because with half of paid traffic in (other) nothing can be reconstructed later. Add the \"How did you hear about us?\" question at checkout; it takes an afternoon and catches what no pixel sees. Then run a geo holdout on TikTok, because incrementality is the only causal evidence here and what senior decision-makers trust most."
+    }
+  }
+]

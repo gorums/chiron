@@ -1,0 +1,644 @@
+[
+  {
+    "id": "M01",
+    "predict": "Before reading: if marketing is not the same thing as advertising, what else do you think it includes? Write one sentence with your best guess.",
+    "quiz": [
+      {
+        "q": "According to the module's definition, which activity is LEAST likely to be counted as marketing work?",
+        "options": [
+          "Deciding what price to charge for the product",
+          "Deciding where the product can be bought and how it gets there",
+          "Choosing which group of people the product is built for",
+          "Negotiating the payment schedule with the company that prints the packaging"
+        ],
+        "answer": 3,
+        "why": "The definition covers understanding a group of people and then building, pricing, placing and describing something for them, so price and place are explicitly marketing decisions. Pricing is the most tempting answer to exclude because it feels like a finance job, but the module says directly that what you build and what you charge are marketing decisions, not just engineering and finance ones."
+      },
+      {
+        "q": "A tool company has spent two years exclusively on search ads and SEO. Revenue grew, then flattened for six months even though rankings and ad positions held. The most likely cause is:",
+        "options": [
+          "The ads have creative fatigue and need new copy",
+          "They have saturated existing demand and built no demand creation engine to refill it",
+          "Their conversion rate has quietly collapsed",
+          "Competitors have outbid them on the same keywords"
+        ],
+        "answer": 1,
+        "why": "Search ads and SEO are demand capture, which is capped by how many people are already searching, so growth stops once that pool is worked out. Competitor bidding is tempting but the question states positions held, and capture channels stall on the demand ceiling even when nothing else changes."
+      },
+      {
+        "q": "Which pairing correctly matches a channel to its category and its expected economics?",
+        "options": [
+          "Comparison sites, demand creation, cheap attention and low conversion",
+          "Paid social, demand capture, high conversion and high cost per click",
+          "Review sites, demand capture, high conversion rates but capped by how many people are searching",
+          "SEO, demand creation, expands the size of the market"
+        ],
+        "answer": 2,
+        "why": "Review sites are listed as capture, and capture is described as high conversion, high cost per click, capped by existing search volume. Paid social is the tempting mismatch because it is expensive, but the module classes it as creation with low conversion and cheap attention."
+      },
+      {
+        "q": "The module says beginners over-weight Promotion among the 4 Ps. What is the argument for why Place deserves more attention than it gets?",
+        "options": [
+          "Place is cheaper to change than Product or Price",
+          "Place is the only P that platforms still let you control in 2026",
+          "If Place is wrong, nobody can act on the demand you generated, and distribution historically beats promotion more often than not",
+          "Place determines the physical evidence buyers use to judge trust"
+        ],
+        "answer": 2,
+        "why": "The module states that with Place wrong nobody can act on generated demand, and that distribution beats promotion more often than not. Physical evidence is the tempting confusion, but that belongs to the extended 7 Ps for services and software, not to Place."
+      },
+      {
+        "q": "A founder says: our brand is strong, so we do not need to spend on brand any more. Using the module's definitions, the flaw is that:",
+        "options": [
+          "Brand is a memory structure that lowers the cost of everything else you do, so letting it decay raises the cost of all other activity",
+          "Brand and growth are the same budget line, so cutting one cuts the other",
+          "Brand cannot be measured, so no claim about its strength can be made at all",
+          "Brand only matters for companies that also run a sales team"
+        ],
+        "answer": 0,
+        "why": "The module defines brand as what people believe about you before you speak, a memory structure that lowers the cost of everything else. The measurement answer is tempting because the module does say marketing is hard to measure, but weak measurability is a reason it gets underfunded, not a reason the claim is meaningless."
+      },
+      {
+        "q": "Which statement best captures why the module says the 2026 shifts make fundamentals more valuable rather than less?",
+        "options": [
+          "AI writing tools produce worse copy than humans, so the human skill premium rose",
+          "Answer engines reward whoever publishes the highest volume of content",
+          "Ad platforms restored manual targeting, so marketers must relearn segmentation",
+          "Execution volume is no longer a moat now that AI made production cheap, and black-box ad platforms leave offer, creative and optimisation targets as the only inputs you control"
+        ],
+        "answer": 3,
+        "why": "The module argues that cheap production removes volume as a moat and that Performance Max and Advantage plus took targeting away, leaving your inputs as the job. The volume answer inverts the argument, since higher output is exactly what stopped being a differentiator."
+      }
+    ],
+    "cards": [
+      {
+        "front": "State the module's definition of marketing in one sentence.",
+        "back": "The work of understanding a group of people well enough to build, price, place and describe something they will choose over the alternatives, profitably and repeatedly."
+      },
+      {
+        "front": "Why does a business that only runs demand capture eventually stall?",
+        "back": "Capture intercepts people already searching, so it is capped by existing demand. Once that pool is saturated there is no creation engine refilling it, and growth flattens."
+      },
+      {
+        "front": "Name the toughest competitor most offers face, and why it counts as a competitor.",
+        "back": "Doing nothing. Marketing is always comparative, and the status quo is a real alternative the buyer can choose over you."
+      },
+      {
+        "front": "Which of the 4 Ps do beginners over-weight, and which one historically beats it?",
+        "back": "Beginners over-weight Promotion. Place, meaning distribution, beats promotion more often than not, because without it nobody can act on the demand you generate."
+      },
+      {
+        "front": "What do the extended 7 Ps add, and which addition matters most online?",
+        "back": "People, Process and Physical evidence. Online, physical evidence dominates: reviews, case studies, certifications and a credible site, because trust is the real conversion bottleneck."
+      },
+      {
+        "front": "Why is marketing full of confidently-stated nonsense, per the module?",
+        "back": "Its effects are slow, cumulative and hard to attribute. Real long-run effects paired with weak short-run measurability leave room for unfalsifiable claims."
+      }
+    ],
+    "elaborate": [
+      "In two sentences, explain to a friend why buying customers at a loss is a subsidy rather than marketing, using a real product you or they have bought recently.",
+      "Take the business you chose for the exercises and split its current activity into demand capture and demand creation. In three sentences, say what the split is and what would break first if the capture side saturated."
+    ],
+    "transfer": {
+      "scenario": "A two-person company sells a paid scheduling app for dental practices. All of their acquisition is Google search ads on terms like dental scheduling software, which convert at 4% and cost them roughly the same per customer every month. They have been flat at about 40 new customers a month for five months, and adding budget just raised cost per click without raising volume. The founder wants to hire a copywriter to rewrite the ads.",
+      "prompt": "Diagnose what is actually constraining this business and say whether the copywriter is the right next hire.",
+      "model": "The plateau has the signature of a saturated capture channel, not weak ads. Search ads are demand capture, capped by how many practice managers type that query each month, so extra budget buys the same finite clicks at a higher price rather than more customers. Rewriting the ads optimises the last ten percent of marketing while the constraint sits upstream. One check comes first: is the offer or price wrong for the practices who saw the ad and did not buy, since an offer problem looks like an ad problem from the dashboard. If the offer holds up, the missing piece is demand creation, aimed at practices who have not yet framed their scheduling pain as something software fixes. That work converts worse and measures badly, but it is the only thing that expands the pool the search ads later harvest."
+    }
+  },
+  {
+    "id": "M02",
+    "predict": "Before reading: what is the single question you would ask a stranger to find out whether they would actually buy your product? Write it down, then see how the module judges questions like it.",
+    "quiz": [
+      {
+        "q": "A team splits its market into Women 25 to 34 and Women 35 to 50 and calls them segments. By the module's test, what is wrong?",
+        "options": [
+          "The groups are too large to serve on a small budget",
+          "There is no evidence they would say anything different to the two groups, so these are labels rather than segments",
+          "Age is illegal to target on most ad platforms in 2026",
+          "Two segments is too few to cover a market"
+        ],
+        "answer": 1,
+        "why": "The module's test for a real segment is whether you would say something different to the group, not whether the people resemble each other. Size is a targeting criterion rather than the definition of a segment, so the large-groups answer confuses the later concept with the current one."
+      },
+      {
+        "q": "Which segmentation basis does the module rank strongest, and why?",
+        "options": [
+          "Behavioural, because you already own the data",
+          "Psychographic, because it explains motivation rather than surface traits",
+          "Situation or need, because the situation itself creates the purchase",
+          "Firmographic, because it correlates with budget"
+        ],
+        "answer": 2,
+        "why": "The table rates situation or need strongest on the grounds that the situation creates the purchase. Behavioural is the tempting answer because it is rated highly as predictive and cheaply available, but it sits below situation in the module's ranking."
+      },
+      {
+        "q": "Which line would earn a persona its place, per the module?",
+        "options": [
+          "Marketing Mary, 34, enjoys yoga and podcasts on her commute",
+          "Mid-market operations lead, typically reports to the COO",
+          "Skews female, urban, household income above average",
+          "Currently tracks this in a spreadsheet a former employee built, and says I am terrified we are already reporting the wrong numbers"
+        ],
+        "answer": 3,
+        "why": "A persona earns its place only if it carries the trigger, the current alternative, the decision criteria, the objections and the customer's own words, and this option gives the current alternative plus verbatim anxiety. The reporting-line option feels more businesslike than the yoga cliche but is still decoration, since it changes no decision."
+      },
+      {
+        "q": "A gym owner benchmarks pricing and features against the three other gyms in town and cannot work out why sign-ups are flat. Applying jobs-to-be-done, the most likely blind spot is:",
+        "options": [
+          "The competitive set is defined by the job, so a running app and doing nothing are also competitors",
+          "The gym has not segmented by demographics finely enough",
+          "The gym is priced below the category norm and reads as low quality",
+          "Members buy on habit, so no messaging change will move them"
+        ],
+        "answer": 0,
+        "why": "The module says your competitive set is defined by the job rather than the category, so the real alternatives include a running app and putting up with things. Finer demographic segmentation is tempting as a research fix, but the module treats demographics as the weakest basis and the problem here is the frame of comparison."
+      },
+      {
+        "q": "A B2B product has strong push and pull: users complain constantly about their current tool and love the demo. Deals still stall for months. The module predicts the block is:",
+        "options": [
+          "Insufficient differentiation on features against the incumbent",
+          "The wrong economic buyer was targeted from the start",
+          "Anxiety and habit, which beginners neglect because they keep adding to pull",
+          "Weak triggers, meaning nobody in the market is in a buying window"
+        ],
+        "answer": 2,
+        "why": "The four forces say push and pull create demand while anxiety and habit block it, and deals are usually lost to the latter two. More features is exactly the pull-side response the module warns against, since the demo already lands and the friction is migration risk and inertia."
+      },
+      {
+        "q": "Which pair of research moves is most consistent with the module's guidance?",
+        "options": [
+          "Survey 500 prospects on willingness to pay, then read 5-star reviews for language",
+          "Run a persona workshop with the sales team, then validate it with a synthetic AI panel",
+          "Interview 20 current customers about desired features, then average the findings",
+          "Interview 5 to 8 people per segment about specific past behaviour, then mine 3-star reviews for analytical detail"
+        ],
+        "answer": 3,
+        "why": "The module prescribes 5 to 8 interviews per segment using past-behaviour questions, and singles out 3-star reviews as the analytical ones while 1 and 5-star reviews are emotional. The willingness-to-pay survey is the tempting near-miss, because asking what someone would pay is precisely the hypothetical the Mom Test rules out."
+      }
+    ],
+    "cards": [
+      {
+        "front": "What single test tells you whether a group is a real segment or just a label?",
+        "back": "Would you say something different to this group? If not, it is a label. Similarity between people is not the test; different marketing treatment is."
+      },
+      {
+        "front": "What distinguishes an ICP from a persona, and which lines in an ICP are most valuable?",
+        "back": "An ICP describes the account or household type that gets most value and is cheapest to serve, kept observable. Its disqualifiers are the most valuable lines, stopping teams chasing deals that would churn."
+      },
+      {
+        "front": "State the Mom Test rule in one sentence, and why it holds.",
+        "back": "Ask about specific past behaviour, never hypothetical future interest. People are unreliable about what they will do and reliable about what they did."
+      },
+      {
+        "front": "Give the jobs-to-be-done sentence format and what it implies about competitors.",
+        "back": "When situation, I want to motivation, so I can outcome. The job defines the competitive set, so a gym competes with a running app and with doing nothing."
+      },
+      {
+        "front": "Name the four forces of progress and say which two beginners neglect.",
+        "back": "Push, pull, anxiety, habit. Push and pull create demand; anxiety and habit block it. Beginners overspend on pull through more features and louder claims."
+      },
+      {
+        "front": "Why does the module say much of what looks like a targeting problem is really timing?",
+        "back": "A trigger, such as a new job, funding round, failed audit or house move, moves people from passive to active. People carry a problem for years and buy in a narrow window afterwards."
+      }
+    ],
+    "elaborate": [
+      "Write one job for your chosen business in the When, I want to, so I can format, then explain in two sentences how it changes who you consider a competitor compared with your category view.",
+      "Connect this module to M01: in three sentences, explain how segmenting on situation rather than demographics changes which of the 4 Ps you would work on first for your business."
+    ],
+    "transfer": {
+      "scenario": "A company sells backup software to small accountancy firms. Their marketing runs on a persona built in a workshop three years ago: Cautious Colin, 48, a partner who values reliability. Trials start at a decent rate but only 8% convert, and sales calls stall after the technical evaluation. The three closed deals last quarter all came from firms that had just failed a client data audit. Nobody on the team has spoken to a lost prospect this year.",
+      "prompt": "Diagnose the research gap and specify what you would do in the next two weeks, and what you expect it to change.",
+      "model": "Three faults compound here. Colin is an invented persona, assumed in a workshop and quoted as fact since, carrying no trigger, no current alternative and no objections, so he changes no decision. Second, the only real signal is being ignored: all three wins share a situation, a failed client data audit, which is the strongest segmentation basis available. Third, research covers only people who already chose them, while the growth sits with the trials that stalled. In two weeks I would run five to eight interviews with trial abandoners and lost deals using past-behaviour questions only: walk me through the last time you worried about losing client files, what did you do, what else did you look at. Stalling after technical evaluation suggests anxiety and habit rather than weak pull, so I expect the fix to be proof and migration help, not another feature."
+    }
+  },
+  {
+    "id": "M03",
+    "predict": "Before reading: what do you think is the difference between a company being different from its rivals and a company being recognisable? Guess in one sentence.",
+    "quiz": [
+      {
+        "q": "Dunford's five components must be worked in order. Which failure does the module say most positioning work suffers from?",
+        "options": [
+          "Starting at competitive alternatives, which anchors everything to rivals rather than customers",
+          "Starting at unique attributes, which produces feature lists",
+          "Starting at market category, choosing one they like and reverse-engineering the rest",
+          "Starting at who cares most, which narrows the segment too early"
+        ],
+        "answer": 2,
+        "why": "The module says most positioning work fails because people start at step 5, picking a category they like, then reverse-engineer everything else. Starting at alternatives is actually the correct first step, which makes that option a trap for anyone who remembers the list but not the order."
+      },
+      {
+        "q": "A B2B software firm with 40 customers copies a soft-drink brand's approach: one distinctive colour, one repeated phrase, no claims of substantive difference. What does the module say about this?",
+        "options": [
+          "Correct, since Sharp shows buyers do not perceive brands as very different in any category",
+          "Incorrect, because distinctiveness only works when paired with a category design play",
+          "Correct, because mental availability is the sole driver of growth",
+          "Incorrect, because Sharp's evidence is strongest in large, low-involvement, repeat-purchase consumer categories, while B2B and considered purchases need real differentiation and a specific ICP"
+        ],
+        "answer": 3,
+        "why": "The module explicitly warns against over-applying Sharp, limiting the strongest evidence to large low-involvement repeat-purchase categories and calling for real differentiation in B2B, niches and expensive considered purchases. Option A is tempting because it quotes Sharp accurately, but drops the scope condition that makes the advice wrong here."
+      },
+      {
+        "q": "Which line survives the module's delete test?",
+        "options": [
+          "Cuts month-end close from a week to a day for firms running Xero across more than five entities, evidenced by three named clients",
+          "The world-class platform for modern finance teams",
+          "Seamless, next-generation reconciliation built for scale",
+          "We are the best at what we do, and our customers agree"
+        ],
+        "answer": 0,
+        "why": "The delete test strikes every line a competitor could also claim, and only the specific outcome with a named segment and proof would be false in a rival's mouth. The other options are superiority claims without a comparison set, segment or proof, which the module classes as noise."
+      },
+      {
+        "q": "A startup's homepage claims speed, security and low price with equal weight. Bounce rate is fine but nobody in user tests can say what the product does. The message hierarchy diagnosis is:",
+        "options": [
+          "The pillars lack proof, so the claims read as noise",
+          "There are three core messages instead of one, and if you have three you have none",
+          "The category label is wrong for the segment being targeted",
+          "The tagline is carrying feeling rather than stating the position"
+        ],
+        "answer": 1,
+        "why": "A hierarchy has one core message with three supporting pillars underneath it; three co-equal claims means nothing lands. Missing proof is the module's other favourite diagnosis and is genuinely common, but the symptom described is failure to recall what the product is, which points to competing core messages."
+      },
+      {
+        "q": "Which correctly orders feature, benefit and outcome as the module defines them?",
+        "options": [
+          "Feature: you close the month in a day. Benefit: automatic bank-feed reconciliation. Outcome: your books stay accurate.",
+          "Feature: your books stay accurate. Benefit: you close the month in a day. Outcome: automatic bank-feed reconciliation.",
+          "Feature: automatic bank-feed reconciliation. Benefit: your books stay accurate without manual entry. Outcome: you close the month in a day instead of a week.",
+          "Feature: automatic bank-feed reconciliation. Benefit: you close the month in a day. Outcome: your books stay accurate."
+        ],
+        "answer": 2,
+        "why": "The module gives exactly this chain: the mechanism is the feature, the direct effect on the work is the benefit, and the change in the buyer's world is the outcome. The last option is the tempting near-miss because it starts correctly but swaps benefit and outcome, treating accuracy as the end state rather than the step that produces the faster close."
+      },
+      {
+        "q": "Why does the module say ambiguous positioning has become more costly in 2026?",
+        "options": [
+          "AI-generated homepage copy is penalised by search engines",
+          "Answer engines assemble summaries from how you and others describe you, so a site that never plainly states X is a category for segment gives a model nothing unambiguous to lift",
+          "Buyers now read more comparison articles than homepages, so homepages matter less",
+          "Category design has become cheaper, so entry positions are less defensible"
+        ],
+        "answer": 1,
+        "why": "The module frames ambiguity as a retrieval failure, not only a comprehension failure, because models lift a plain category-and-segment statement from your site and third-party sources. The comparison-article option is tempting since the module does stress third-party corroboration, but its point is repetition across sources, not that homepages stopped mattering."
+      }
+    ],
+    "cards": [
+      {
+        "front": "List Dunford's five positioning components in order.",
+        "back": "Competitive alternatives, unique attributes, value, who cares most, market category. The order is the method; starting at category and reverse-engineering is the classic failure."
+      },
+      {
+        "front": "Fill in the positioning statement template.",
+        "back": "For best-fit segment who trigger, product is the category that key value, unlike primary alternative, because unique attribute. An internal alignment tool; if it does not fit one line, positioning is undecided."
+      },
+      {
+        "front": "Differentiation versus distinctiveness: which affects what?",
+        "back": "Differentiation is being meaningfully different on something buyers value, affecting choice. Distinctiveness is being recognisable through colours, logos, phrases or formats, affecting whether you are noticed and correctly attributed."
+      },
+      {
+        "front": "What is mental availability, and what builds it?",
+        "back": "Coming to mind in a buying situation. Distinctive assets repeated consistently build it; its partner is physical availability, being easy to buy. Sharp attributes growth to both."
+      },
+      {
+        "front": "Name the three layers of a message hierarchy and the one usually missing.",
+        "back": "One core message, three supporting pillars, proof under each. Proof is almost always missing; a claim with a number and a named customer reads as fact rather than noise."
+      },
+      {
+        "front": "Why does We are the best fail as positioning?",
+        "back": "It has no comparison set, segment or proof, and any competitor could claim it. Positioning must be falsifiable, which means it must exclude someone."
+      }
+    ],
+    "elaborate": [
+      "Take your own business or one you know well, run the delete test on its homepage headline, and explain in two sentences what survived and why a competitor could not say it.",
+      "Using the customer quotes or language you gathered in M02, write your one-line positioning statement, then say in two sentences which Dunford step was hardest and what that reveals about the business."
+    ],
+    "transfer": {
+      "scenario": "A four-year-old company sells a tool that reconciles supplier invoices for independent restaurants. The homepage says The next-generation operating system for hospitality. Sales reps each pitch it differently: one as accounting software, one as an inventory tool, one as a cost-control platform. Prospects who convert almost always mention they were drowning in paper invoices after opening a second site. Marketing wants to launch a new campaign every quarter because the team gets bored of the message.",
+      "prompt": "Diagnose the positioning problem and set out what you would decide and in what order.",
+      "model": "This is a positioning failure being treated as a copy problem. Three reps inventing three pitches, and a headline nobody can decode, are the textbook symptoms; no campaign fixes them downstream. I would run Dunford's steps in order rather than picking a category. Alternatives first, drawn from buyers: paper and a shoebox, a part-time bookkeeper, doing nothing. Then unique attributes as facts, then the value each produces, then who cares most, which the data already suggests is independents opening a second site, since that is the trigger converts keep naming. Category comes last, and it should be the one buyers search in and that an answer engine can lift, not an operating system for hospitality. Then one core message, three pillars, proof under each. Finally, kill the quarterly campaign churn: internal fatigue arrives long before customer awareness, so the same unambiguous line must run everywhere for far longer than feels comfortable."
+    }
+  },
+  {
+    "id": "M04",
+    "predict": "Before reading: if you had to raise profit without selling more units or cutting costs, what lever would you pull? Guess in one sentence.",
+    "quiz": [
+      {
+        "q": "Two firms sell the identical product at the same price, but one converts far better. The module's explanation is that:",
+        "options": [
+          "One has an offer and the other has a price list, since the offer includes terms, risk reversal, bundle, onboarding, urgency and proof",
+          "One has a stronger brand, which lowers acquisition cost",
+          "One has a real structural cost advantage and can therefore price cheaply",
+          "One is on more marketplaces, so it has greater physical availability"
+        ],
+        "answer": 0,
+        "why": "The module states plainly that two businesses can sell an identical product at very different conversion rates because one has an offer and the other has a price list. Distribution is a real lever but changes where you are bought rather than the conversion rate at an identical decision point."
+      },
+      {
+        "q": "A consultancy charges 40% less than every rival and finds its enquiries are low-quality and support-heavy. The module's reading is:",
+        "options": [
+          "Their elasticity assumption was right but their targeting was wrong",
+          "Buyers read price as quality information, a price far below the norm reads as something is wrong, and cheap without a structural cost advantage attracts the least loyal, highest-support customers",
+          "They should discount further to build volume and reach scale",
+          "They should switch from value-based to competitor-based pricing"
+        ],
+        "answer": 1,
+        "why": "Price is a positioning signal, especially for services which buyers cannot evaluate beforehand, and cheap without a cost advantage is a smaller margin funding the same work while drawing the worst customers. Deeper discounting compounds the problem, since discounts come entirely out of margin and train buyers to wait."
+      },
+      {
+        "q": "A product sells at $100 with a $60 cost. Management proposes 20% off. What does the module say this requires?",
+        "options": [
+          "33% more volume, because margin falls from $40 to $30",
+          "The same volume, since the discount is funded by the marketing budget",
+          "Twice the volume, because margin falls from $40 to $20",
+          "50% more volume, because price falls from $100 to $80"
+        ],
+        "answer": 2,
+        "why": "A discount comes entirely out of margin: at $80 the margin is $20, half of $40, so you need double the units for the same gross profit. The 33% answer is the module's other worked figure, but that is the 10% discount case where margin falls to $30."
+      },
+      {
+        "q": "Which situation best matches the module's description of an inelastic market?",
+        "options": [
+          "A price-visible marketplace listing many near-identical suppliers",
+          "A discretionary consumer good with many substitutes and easy comparison",
+          "An emergency plumbing call-out, a small share of the household budget, with few available substitutes",
+          "A subscription with a low monthly fee and easy cancellation"
+        ],
+        "answer": 2,
+        "why": "Inelastic conditions are urgent problems, a small share of budget, few substitutes, high switching cost or someone else paying, and the call-out hits three of these. The cheap easy-cancel subscription is tempting because low price feels insensitive, but easy cancellation lowers switching cost, which pushes toward elastic."
+      },
+      {
+        "q": "When does the module say a permanent free tier makes sense?",
+        "options": [
+          "When the product is self-serve and its value is obvious within a short window",
+          "When free users generate referrals, network effects or data and serving them is nearly free",
+          "When you need to undercut a competitor who has no free tier",
+          "When you have three paid tiers and need an entry point below the cheapest"
+        ],
+        "answer": 1,
+        "why": "Freemium is described as a distribution strategy, not a pricing one, working only when free users generate referrals, network effects or data and cost almost nothing to serve; otherwise you have bought a support obligation. Obvious fast value and self-serve is the condition for a time-limited free trial, which is the tempting confusion."
+      },
+      {
+        "q": "A brand sells only through a large marketplace, has healthy margins and no email list. What risk does the module flag, and what does it prescribe?",
+        "options": [
+          "Fee and algorithm risk, so raise prices to offset future fee increases",
+          "Loss of message control, so invest in partner and affiliate channels instead",
+          "Listing fees and slow payment, so move to retail and wholesale",
+          "They rent a customer base and carry live platform risk, so build an owned channel in parallel from day one; an owned email list is cheap insurance"
+        ],
+        "answer": 3,
+        "why": "Marketplaces bring existing demand and trust but cost fees, the customer relationship and platform risk, so the module says marketplace-only businesses rent a customer base and must build an owned channel in parallel. Switching to another intermediated channel like retail or affiliates does not fix ownership, it just changes whose rules you live under."
+      }
+    ],
+    "cards": [
+      {
+        "front": "Name six offer components beyond the product itself.",
+        "back": "Price and payment terms, risk reversal such as a guarantee or easy cancellation, the bundle, onboarding and support, real urgency, and proof. Most are anxiety-reducers rather than new benefits."
+      },
+      {
+        "front": "Why are cost-plus and competitor-based pricing both bad, in one line each?",
+        "back": "Cost-plus: your costs are irrelevant to the buyer, it penalises efficiency and caps you at your own cost structure. Competitor-based: it outsources strategy to a rival whose costs and segment you do not know."
+      },
+      {
+        "front": "What question does value-based pricing actually ask?",
+        "back": "What does the buyer's next-best option cost in money, time and risk, and what is our improvement worth? Cost sets the floor and contribution margin, never the price."
+      },
+      {
+        "front": "At a $100 price and $60 cost, what does a 20% discount cost you in volume terms?",
+        "back": "Margin drops from $40 to $20, so you need twice the volume for the same gross profit. A 10% discount leaves $30 and needs 33% more volume."
+      },
+      {
+        "front": "Why prefer bonuses and bundles over discounts when moving volume?",
+        "back": "They cost you at your cost, not at retail, and leave the price intact. Discounts train buyers to wait and habitual sales permanently reset the reference price."
+      },
+      {
+        "front": "Why does fixing distribution usually beat raising ad spend?",
+        "back": "Being easy to buy beats being loudly advertised. Eye-level shelf space, a listing where the category is searched, or an integration inside software the buyer uses converts demand promotion would otherwise have to create."
+      }
+    ],
+    "elaborate": [
+      "Run the discount arithmetic on your own real or estimated margin, then explain to a colleague in two sentences why a 20% off promotion is or is not affordable for you.",
+      "Using the biggest anxiety you identified in M02, design one risk-reversal component for your offer and explain in two sentences why it should outperform a price cut of equivalent perceived value."
+    ],
+    "transfer": {
+      "scenario": "A studio sells a six-week online course at $400. Variable cost per student is $80. Sales stalled at about 25 students per cohort, so the founder ran a 25% off launch week, which filled the cohort to 40 but produced no better completion or referrals. She now wants to make the discount permanent and add a free forever tier so people can sample lesson one. There is no guarantee, no payment plan, and testimonials sit on a page nobody visits.",
+      "prompt": "Evaluate her two proposals and recommend what to change instead, showing the arithmetic that supports your view.",
+      "model": "Take the discount first. At $400 with $80 variable cost the margin is $320. At 25% off the price is $300 and the margin $220, so 40 discounted students yield $8,800 against 25 full-price students at $8,000. The uplift is marginal and carries a permanent cost, because habitual discounting resets the reference price and trains buyers to wait for launch week. Making it permanent is a price cut with no structural cost advantage, which invites the least committed students. The free tier is a distribution strategy, not a pricing one, and only pays if free users generate referrals, network effects or data at near-zero serving cost, which is not established here. The real gap is that she has a price list rather than an offer. Add risk reversal, a payment plan and visible proof, which reduce anxiety at her cost rather than at retail and leave the price intact."
+    }
+  },
+  {
+    "id": "M05",
+    "predict": "Before reading: if you knew a customer was worth $600 to you, how would you work out the most you could afford to pay for one click on an ad? Sketch your guess in one sentence.",
+    "quiz": [
+      {
+        "q": "A store gets 10,000 visitors, 6% add to cart, 50% begin checkout, 60% complete, at $80 average order value. Which action produces the larger revenue gain, and why?",
+        "options": [
+          "Doubling traffic to 20,000, because a linear gain is more reliable than a conversion gain",
+          "Raising checkout completion from 60% to 75%, worth 45 extra purchases against the 180 baseline, and it also makes every future ad dollar more efficient",
+          "Raising add-to-cart from 6% to 7%, because the top of the funnel multiplies through every later step",
+          "Raising average order value from $80 to $100, because it needs no engineering work"
+        ],
+        "answer": 1,
+        "why": "The worked example gives 180 purchases and $14,400 at baseline; lifting checkout completion to 75% gives 225 purchases and $18,000, a 25% gain from a one-off change with no ongoing cost, and the module notes it makes future ad spend more efficient. Doubling traffic yields more absolute revenue but costs double the ad spend, and the second batch of traffic is usually worse, so it is rented rather than permanent."
+      },
+      {
+        "q": "A subscription charges $50 a month at 80% gross margin, retains customers 20 months, and has a CAC of $200. Which reading is correct?",
+        "options": [
+          "LTV is $1,000, LTV to CAC is 5 to 1, payback is 4 months",
+          "LTV is $800, LTV to CAC is 4 to 1, payback is 5 months",
+          "LTV is $800, LTV to CAC is 4 to 1, payback is 20 months",
+          "LTV is $1,000, LTV to CAC is 4 to 1, payback is 5 months"
+        ],
+        "answer": 1,
+        "why": "Contribution is $40 a month, so LTV over 20 months is $800 in contribution, giving 4 to 1 against a $200 CAC, and payback is $200 divided by $40, which is 5 months. The $1,000 answers use revenue rather than contribution margin, which the module calls the most common error in the discipline."
+      },
+      {
+        "q": "Target CAC is $200, lead-to-customer conversion is 10%, and click-to-lead conversion is 5%. The maximum affordable cost per click is:",
+        "options": [
+          "$10.00",
+          "$4.00",
+          "$1.00",
+          "$0.10"
+        ],
+        "answer": 2,
+        "why": "Max cost per lead is $200 times 10%, which is $20, and max cost per click is $20 times 5%, which is $1.00. The $10 answer comes from applying only one conversion step, which is the usual mistake when people stop the chain one link early."
+      },
+      {
+        "q": "A founder reports blended CAC flat at $90 for a year while paid CAC has climbed from $110 to $260. What is happening?",
+        "options": [
+          "Attribution is undercounting paid conversions and the paid figure should be ignored",
+          "Organic and word-of-mouth customers are diluting the blended figure and carrying the business while paid quietly fails",
+          "The business is healthy, because blended CAC is the figure that determines whether growth is affordable",
+          "Contribution margin must have improved, offsetting the paid increase"
+        ],
+        "answer": 1,
+        "why": "The module says blended always looks better because organic customers dilute it, and tells you to watch exactly this gap: flat blended with rising paid CAC means organic is carrying you. Blended does answer whether the business can afford to grow, but that does not make a widening gap benign, it hides which engine is failing."
+      },
+      {
+        "q": "Which business is in the more dangerous cash position, per the module?",
+        "options": [
+          "LTV to CAC of 5 to 1 with a 30-month payback period",
+          "LTV to CAC of 3 to 1 with an 8-month payback period",
+          "LTV to CAC of 3 to 1 with a 12-month payback period",
+          "LTV to CAC of 4 to 1 with a 6-month payback period"
+        ],
+        "answer": 0,
+        "why": "The module says outright that a business with 5 to 1 LTV to CAC and a 30-month payback can go bankrupt while growing, because payback says how long cash is locked up and over 18 months means every new customer worsens cash first. The 3 to 1 options look weaker on the headline ratio, but both sit inside the comfortable payback window."
+      },
+      {
+        "q": "Total revenue is rising month on month, yet the head of growth insists retention is deteriorating. Which analysis would settle it?",
+        "options": [
+          "Comparing blended CAC across the same months",
+          "Summing platform-reported conversions across ad accounts",
+          "Recalculating LTV using a 24-month window instead of 12",
+          "A cohort table grouping customers by join month and tracking each over time"
+        ],
+        "answer": 3,
+        "why": "The module warns that aggregates lie: total revenue can rise while every cohort worsens, masked by growing volume, and a cohort table is the only reliable way to see it. Extending the LTV window changes the assumption rather than testing it, and would make a deteriorating base look better, not clearer."
+      }
+    ],
+    "cards": [
+      {
+        "front": "Name the five modern lifecycle stages and say where profit lives.",
+        "back": "Awareness, consideration, conversion, retention, advocacy. Profit lives in retention and advocacy; acquisition usually loses money on the first purchase and the business is made on the second and the tenth."
+      },
+      {
+        "front": "Why is the funnel a fiction, and why keep using it?",
+        "back": "Real journeys loop through Google's messy middle, entering mid-way and returning months later. Keep it as a measurement device: it locates where people are lost and sizes the opportunity."
+      },
+      {
+        "front": "Why does blended CAC flatter a business?",
+        "back": "It divides all acquisition spend by all new customers, so organic and word-of-mouth customers dilute it. It answers whether the business can afford growth but hides whether paid is working."
+      },
+      {
+        "front": "Name three ways LTV gets overstated.",
+        "back": "Using revenue instead of contribution margin, assuming optimistic lifetimes a young company cannot evidence, and ignoring time value. Use a conservative 12 or 24-month contribution window."
+      },
+      {
+        "front": "Give the chain from target CAC to maximum cost per click.",
+        "back": "Max cost per lead equals target CAC times lead-to-customer rate. Max cost per click equals max cost per lead times click-to-lead rate. Run it backwards before launching any channel."
+      },
+      {
+        "front": "If your ceiling CPC is below the market price of traffic, what are your four options?",
+        "back": "Raise the price, improve lead conversion, improve click-to-lead conversion, or find cheaper traffic. Three of the four are not bidding less; no creative fixes broken arithmetic."
+      }
+    ],
+    "elaborate": [
+      "Work out the contribution margin per customer for your chosen business and explain to a friend in two sentences why marketing decisions must be made in that number rather than revenue.",
+      "Connect this to M04: run your max affordable cost per click, then explain in three sentences whether a price increase or a conversion-rate fix would make your best channel affordable faster."
+    ],
+    "transfer": {
+      "scenario": "A B2B tool charges $200 a month with a 75% gross margin and average retained life of 18 months. CAC is $1,800. Trials convert to paid at 8%, and 4% of clicks become trials. The team has been running search ads at $6 a click and wants to double the budget because LTV to CAC looks acceptable. The company has nine months of cash and cannot raise more.",
+      "prompt": "Work the arithmetic, judge whether doubling the budget is defensible, and name the levers you would pull.",
+      "model": "Contribution is $150 a month, so LTV over 18 months is $2,700 and LTV to CAC is 1.5 to 1, well under the 3 to 1 rule of thumb. Payback is $1,800 divided by $150, which is 12 months, against nine months of cash. So every new customer worsens the cash position for a full year and the company runs out before payback lands. Doubling spend accelerates the failure rather than growth. The channel arithmetic confirms it: at a $1,800 target CAC, max cost per trial is $1,800 times 8%, which is $144, and max cost per click is $144 times 4%, which is $5.76. Traffic costs $6, so the channel is already unaffordable at break-even, before overhead. Bidding less is not one of the four ways out. Raise the price, lift trial-to-paid conversion, lift click-to-trial conversion, or find cheaper traffic. Given the cash clock, price and trial conversion move fastest."
+    }
+  },
+  {
+    "id": "M06",
+    "predict": "Before reading: what is the difference between a marketing strategy and a list of things you plan to do? Write your best one-sentence guess.",
+    "quiz": [
+      {
+        "q": "Which of these is a diagnosis in Rumelt's sense rather than a goal or a guiding policy?",
+        "options": [
+          "Move spend from broad paid social into intent-based search and partnerships in one vertical",
+          "We generate enough leads, but 70% are outside our ICP because our only channel rewards volume",
+          "Grow revenue 40% by the end of the financial year",
+          "Become the default choice for independent physio clinics"
+        ],
+        "answer": 1,
+        "why": "Diagnosis names what is actually going on and identifies the critical obstacle, which the lead-quality statement does with evidence and a cause. The spend-shift line is the module's own example of a guiding policy, and it is tempting because it sounds decisive, but it is the response to a diagnosis rather than the diagnosis itself."
+      },
+      {
+        "q": "A plan lists eleven initiatives across eight channels, opens with market-leading ambition and states a 40% growth target. Which bad-strategy symptoms apply?",
+        "options": [
+          "Fluff and mistaking goals for strategy only",
+          "A scatter of unrelated objectives only",
+          "Fluff, mistaking goals for strategy, and a scatter of unrelated objectives competing for the same people and money",
+          "Failure to face the problem only"
+        ],
+        "answer": 2,
+        "why": "The module lists fluff, failure to face the problem, mistaking goals for strategy, and a scatter of unrelated objectives, and this plan displays at least three of them at once. Picking a single symptom is tempting because each is individually visible, but the module's point is that bad strategy usually shows several together."
+      },
+      {
+        "q": "Which item qualifies as a KPI rather than a metric, using the module's distinction?",
+        "options": [
+          "Impressions delivered this month",
+          "Follower growth on the main social account",
+          "Total sessions on the website",
+          "CAC payback period"
+        ],
+        "answer": 3,
+        "why": "A real KPI changes a decision when it moves, and CAC payback directly governs whether you can afford more acquisition. Sessions and impressions are countable and often reported, but the module says impressions almost never change a decision, which makes them metrics with ambition."
+      },
+      {
+        "q": "A business with a small budget spreads it across eight channels and reports that none is working. The module's explanation is:",
+        "options": [
+          "Every channel carries a fixed learning cost, so splitting a small budget eight ways pays eight learning costs and clears no minimum spend thresholds",
+          "Eight channels create attribution conflicts that make results unreadable",
+          "The budget was allocated 70/20/10 instead of 60/40",
+          "Channel dependence risk requires at least two channels, so eight is merely excessive rather than wrong"
+        ],
+        "answer": 0,
+        "why": "The module identifies the fixed learning cost per channel, time to understand it, creative to build, and a minimum spend before data means anything, as the reason spread fails on a small budget. Dependence risk is real but is the module's argument for adding a deliberate second channel once the first works, not for starting with eight."
+      },
+      {
+        "q": "An early-stage company with no working acquisition loop proposes putting 60% of its small budget into brand building, citing Binet and Field. What is the strongest objection from the module?",
+        "options": [
+          "The 60/40 split applies only to B2C, and this is a B2B company",
+          "Brand spend cannot be measured, so it should never be funded before revenue exists",
+          "The 60/40 finding is an average across many campaigns, assumes enough budget for brand work to reach anyone, and early-stage businesses need a working acquisition loop first",
+          "70/20/10 should be used instead, since the two heuristics are alternatives"
+        ],
+        "answer": 2,
+        "why": "The module gives three caveats: it is an average, it presumes enough scale for brand work to reach anyone, and brand-heavy spend before product-market fit buys awareness for something people do not yet want. The B2C claim is a distortion of a real caveat, since the module says B2B sits nearer 50/50 in later work rather than being excluded."
+      },
+      {
+        "q": "A seasonal retailer sees weak channel performance in its trough month and plans to cut that channel, then launch its big campaign in the peak week. What does the module advise?",
+        "options": [
+          "Cut the channel now and reinvest in the peak week, since peak-week traffic converts best",
+          "Keep the channel but shift it into the peak week, where costs are justified by intent",
+          "Cut the channel and replace it with a brand campaign in the trough",
+          "Never diagnose a channel on a seasonal trough, compare year on year, and advertise into the season rather than during it, since awareness needs lead time and peak week means highest costs against finished consideration"
+        ],
+        "answer": 3,
+        "why": "The module gives two seasonality rules exactly: advertise into the season rather than during it, and never diagnose a channel on a trough, comparing year on year instead. The peak-week options are tempting because intent genuinely is highest then, but by that point consideration is finished and costs are at their worst."
+      }
+    ],
+    "cards": [
+      {
+        "front": "Name Rumelt's three parts of a strategy and the test that separates strategy from a wish list.",
+        "back": "Diagnosis, guiding policy, coherent actions. The test: does your strategy say what you will not do? If not, it is a wish list."
+      },
+      {
+        "front": "Give three recognisable symptoms of bad strategy.",
+        "back": "Fluff, impressive words with no content; failure to face the problem; mistaking goals for strategy; and a scatter of unrelated objectives quietly competing for the same people and money."
+      },
+      {
+        "front": "Distinguish objective, goal and KPI with one example each.",
+        "back": "Objective: the qualitative outcome, become the default for independent physio clinics. Goal: measurable with a number and date, 120 clinics by 31 December. KPI: the metric you steer by, CAC payback."
+      },
+      {
+        "front": "What does 70/20/10 allocate, and which two failure modes does it block?",
+        "back": "70% proven, 20% promising things being scaled, 10% genuine experiments. It blocks over-investing in unproven ideas and never testing anything until the proven channel decays."
+      },
+      {
+        "front": "What is 60/40, where does it come from, and what is one caveat?",
+        "back": "Roughly 60% long-term brand, 40% short-term activation, from Binet and Field's IPA effectiveness databank. Caveat: it is an average, and B2B and considered purchases sit nearer 50/50."
+      },
+      {
+        "front": "Give two questions that let you decline a request well.",
+        "back": "What would we stop to do this? And which objective does this serve, and what would we see if it worked? A third converts the argument into a capped experiment: can we test it inside the 10%?"
+      }
+    ],
+    "elaborate": [
+      "Write the one-paragraph diagnosis for your chosen business without using the words increase, improve or grow, then explain in two sentences what your guiding policy therefore excludes.",
+      "Pick one action from your plan and connect it back to M05: state the kill criterion in numbers, what should be visible by day 90, and what result would make you stop."
+    ],
+    "transfer": {
+      "scenario": "You have been handed the marketing plan of a company selling scheduling software to independent physio clinics. It opens with We will become the leading innovator in clinic technology, sets a target of growing revenue 40%, and lists eleven activities across eight channels with the annual budget split evenly between them. There are no KPIs beyond impressions and followers, no statement of what the company will not do, and nothing about when an initiative should be stopped. The company has 200 customers and a small budget.",
+      "prompt": "Rewrite this as a defensible strategy in outline: say what you would cut, what structure you would impose, and how you would present it to the board.",
+      "model": "This is a tactics list with a budget attached, showing most bad-strategy symptoms at once: fluff in the opening line, a goal presented as strategy in the 40% target, a scatter of eleven initiatives, and no kill criteria. I would start over with the kernel. Diagnosis first, naming the single critical obstacle with evidence, banning the words increase, improve and grow because they describe outcomes rather than problems. Then a guiding policy stated so it excludes something, and three to five coherent actions with an owner and date each. Eight channels on a small budget pays eight learning costs and clears no thresholds, so I would concentrate on one or two where clinic owners already are, checked against the max affordable CPA. Impressions and followers go; three KPIs replace them, one leading and one lagging. To the board, lead with the diagnosis, show the arithmetic, list what we decline, and name day-90 kill conditions."
+    }
+  }
+]

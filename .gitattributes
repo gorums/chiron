@@ -1,0 +1,2 @@
+# Keep line endings stable across machines; the build compares file content.
+* text=auto eol=lf
