@@ -19,6 +19,13 @@ RUN apt-get update \
 # The build engine's only third-party dependency.
 RUN pip install --no-cache-dir markdown==3.10.3
 
+# Claude Code keeps two things in $HOME: the ~/.claude directory (OAuth tokens, mounted from
+# the host) and a separate ~/.claude.json holding UI state. Only the first is mounted, so the
+# CLI warns on every call that the second is missing. The warning goes to stderr and does not
+# corrupt output, but it would run onboarding on each invocation. Seed a minimal one that
+# stays inside the image; nothing here needs to persist or come from the host.
+RUN printf '{"hasCompletedOnboarding":true}' > /root/.claude.json
+
 WORKDIR /work
 
 # Nothing is COPYed: the repo arrives as a bind mount so that a course written inside the
