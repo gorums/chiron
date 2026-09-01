@@ -117,7 +117,7 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
     minutes_match = _MINUTES.search(meta) if meta else None
     minutes = int(minutes_match.group(1)) if minutes_match else 60
 
-    sections = _parse_sections(raw)
+    sections = parse_sections(raw)
     if not sections:
         raise ContentError("%s: no '## ' sections found — nothing to render." % path)
 
@@ -134,7 +134,12 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
     )
 
 
-def _parse_sections(raw: str) -> List[Section]:
+def parse_sections(raw: str) -> List[Section]:
+    """Split a module body into its `##` sections.
+
+    Public because it is the single definition of what counts as a section: Studio has to
+    know the exact count to keep the suggestion files in step, and a second implementation
+    would drift."""
     body = raw.split("\n## ", 1)
     if len(body) < 2:
         return []

@@ -4,6 +4,7 @@
     build.py new  --theme X --hours 30  scaffold an empty course
     build.py check <course>             validate without writing anything
     build.py build <course>             validate, then write dist/<course>/
+    build.py studio                     open the Studio UI in a browser
 """
 
 from __future__ import annotations
@@ -100,6 +101,13 @@ def cmd_build(args) -> int:
     return 0
 
 
+def cmd_studio(args) -> int:
+    """Studio is imported lazily: the build path must not depend on the server or on Claude."""
+    from studio.server import DEFAULT_PORT, serve
+    return serve(port=args.port or DEFAULT_PORT, open_browser=not args.no_open,
+                 host=args.host)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="build.py", description="Build a self-contained study site from a course folder."
@@ -123,6 +131,12 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("course")
     build.add_argument("--out", default="", help="output directory (default: dist/<course>)")
     build.set_defaults(func=cmd_build)
+
+    studio = sub.add_parser("studio", help="open the Studio UI in a browser")
+    studio.add_argument("--port", type=int, default=0, help="port (default: 8790)")
+    studio.add_argument("--no-open", action="store_true", help="do not open a browser")
+    studio.add_argument("--host", default="", help="bind address (default: 127.0.0.1)")
+    studio.set_defaults(func=cmd_studio)
     return parser
 
 

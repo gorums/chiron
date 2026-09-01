@@ -1,0 +1,63 @@
+# Course platform — Studio and the Claude bridge, always on.
+#
+#   docker compose up -d --build     start both, and on every boot from now on
+#   docker compose logs -f studio    watch a generation run
+#   docker compose down              stop them
+#
+# Studio      http://127.0.0.1:8790   write and build courses
+# Bridge      http://127.0.0.1:8787   the tutor inside a course page
+#
+# Both publish to 127.0.0.1 explicitly. Without that prefix Docker would bind 0.0.0.0 and
+# expose a service that writes files and spawns processes to the whole network.
+
+name: course-platform
+
+x-common: &common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: course-platform:latest
+  restart: unless-stopped
+  volumes:
+    # The repo itself. Courses written in the container are real files in your folder, and
+    # editing platform/ takes effect on restart without a rebuild.
+    - ./:/work
+    # Claude Code's own directory, holding the OAuth tokens for your subscription. The whole
+    # directory, not just .credentials.json: the CLI refreshes tokens by writing a new file
+    # and renaming it over the old one, which silently breaks a single-file bind mount.
+    # Read-write, because that refresh has to persist — the container then behaves like any
+    # other Claude Code session on your account.
+    - ${CLAUDE_HOME:?set CLAUDE_HOME in .env - see .env.example}:/root/.claude
+  environment:
+    # Claude Code writes scratch state here; keeping it off the bind mount avoids littering
+    # the repo and makes the container's own state disposable.
+    - TMPDIR=/tmp
+
+services:
+  studio:
+    <<: *common
+    container_name: course-studio
+    command: ["python", "platform/build.py", "studio", "--no-open"]
+    ports:
+      - "127.0.0.1:8790:8790"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8790/api/state',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  bridge:
+    <<: *common
+    container_name: course-bridge
+    command: ["python", "bridge/claude-bridge.py"]
+    ports:
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3

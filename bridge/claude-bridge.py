@@ -20,6 +20,7 @@ Stop it:  close the window, or press Ctrl+C
 Environment overrides:
     ANTHROPIC_API_KEY   use this key and never touch config.json
     BRIDGE_PORT         default 8787
+    BRIDGE_HOST         default 127.0.0.1 (containers set 0.0.0.0)
     BRIDGE_MODE         force "api" or "cli"
     BRIDGE_ECHO=1       test mode: echo messages back, call nothing
 """
@@ -37,6 +38,9 @@ VERSION = "2.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
 PORT = int(os.environ.get("BRIDGE_PORT", "8787"))
+# Loopback unless told otherwise. A container has to bind 0.0.0.0 to be reachable through a
+# published port; the port is still published to 127.0.0.1 on the host, so the boundary holds.
+HOST = os.environ.get("BRIDGE_HOST", "127.0.0.1")
 ECHO = os.environ.get("BRIDGE_ECHO") == "1"
 FORCE_MODE = os.environ.get("BRIDGE_MODE", "").strip().lower()
 API_URL = os.environ.get("BRIDGE_API_URL", "https://api.anthropic.com/v1/messages")
@@ -491,7 +495,7 @@ def main():
     load_config()
     auto_configure()
     try:
-        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        srv = ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError as e:
         print("\n  Could not start on port %d: %s" % (PORT, e))
         print("  Something else may be using it. Try:  set BRIDGE_PORT=8788\n")
@@ -504,8 +508,9 @@ def main():
     print("")
     print("  Course platform - Claude bridge v%s" % VERSION)
     print("  " + "-" * 46)
-    print("  Listening on   http://127.0.0.1:%d" % PORT)
-    print("  Reachable by   this computer only")
+    print("  Listening on   http://%s:%d" % (HOST, PORT))
+    print("  Reachable by   %s" % ("this computer only" if HOST == "127.0.0.1"
+                                   else "anything that can reach %s" % HOST))
     print("  Using          %s" % label)
     print("")
     print("  Now open your course's -local.html copy and press Connect Claude.")

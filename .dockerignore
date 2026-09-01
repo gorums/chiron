@@ -1,0 +1,5 @@
+# The build context is only ever used for the Dockerfile itself — the repo reaches the
+# containers as a bind mount, not a COPY — so keeping the context near-empty makes builds
+# fast and stops anything sensitive being sent to the daemon.
+*
+!docker/Dockerfile

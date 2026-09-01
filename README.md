@@ -14,27 +14,66 @@ reference implementation.
 
 ---
 
-## Make a course
+## Always-on, with Docker
 
-Ask Claude, in this folder:
+One command, once. Both services then come back on every boot, so there is nothing to start
+by hand:
 
-> Build me a 20-hour course on negotiation.
+```bash
+cp .env.example .env       # set CLAUDE_HOME to your ~/.claude path
+docker compose up -d --build
+```
 
-That runs the `course-author` skill, which scaffolds the folder, writes the content, and
-builds it. Then open `dist/negotiation/negotiation-course-local.html`.
+| | |
+|---|---|
+| **http://127.0.0.1:8790** | Course Studio — write and build courses |
+| **http://127.0.0.1:8787** | the bridge — the tutor inside a course page |
 
-Or drive it yourself:
+`docker compose logs -f studio` watches a generation run; `docker compose down` stops both.
+
+It mounts your `~/.claude` so the containers use the Claude Code subscription you are already
+signed in to — no API key, no per-token bill. Both ports are published to `127.0.0.1` only,
+so nothing outside your machine can reach them.
+
+A bonus of running this way: courses served over HTTP reach the tutor through the bridge, so
+you no longer need to open the `-local.html` copy off disk to ask questions.
+
+## Or run it directly
+
+Double-click **`start-studio.bat`** (or run `python platform/build.py studio`). Course Studio
+opens in your browser.
+
+1. **Describe it** — theme, hours, who is studying. "negotiation, 20 hours, a complete beginner".
+2. **Approve the curriculum** — Claude proposes the parts, the module list and the time split.
+   Edit the titles and minutes, drop modules you do not want, then say go. Nothing is written
+   until you do: twenty modules take a while, so this minute is worth it.
+3. **Watch it write** — each module appears as it lands, with its section and word count. You
+   can stop at any point, and everything written so far stays on disk.
+4. **Open it** — the course is validated and built. One button opens it.
+
+Studio also lists the courses you already have, and gives each one a **Check** and a **Build**
+button, so you never need a terminal for the ordinary work.
+
+It uses the `claude` command you are already signed in to, so there is no API key to manage
+and no separate per-token bill.
+
+## Or from the terminal
 
 ```bash
 pip install markdown
 
-python platform/build.py new --theme "negotiation" --hours 20   # scaffold
-#   ... write the content, or have the skill write it ...
+python platform/build.py list                                   # what you have
+python platform/build.py new --theme "negotiation" --hours 20   # scaffold, no content
 python platform/build.py check negotiation                      # validate
 python platform/build.py build negotiation                      # -> dist/negotiation/
 ```
 
-`python platform/build.py list` shows what you have.
+You can also ask Claude, in this folder:
+
+> Build me a 20-hour course on negotiation.
+
+That runs the `course-author` skill, which writes the content file by file and can iterate on
+it with you — slower than Studio, but you stay in the loop on every module.
 
 ---
 
@@ -76,11 +115,17 @@ rather use a Claude Code subscription than a key, see `bridge/README.md`.
 platform/          the engine — subject-agnostic
   build.py         the CLI
   coursekit/       the build package
+  studio/          the local app: generate and build from a browser
   web/             front-end source: shell.html, css/, js/
 courses/<id>/      one course: markdown, worksheets and study data
 dist/<id>/         built output
-bridge/            optional local proxy, so you can use Claude Code instead of an API key
+bridge/            local proxy, so a course page can reach Claude
+docker/            the image both services share
+compose.yaml       Studio + bridge, restarting on every boot
+start-studio.bat   double-click to open Course Studio without Docker
 ```
+
+Studio listens on `127.0.0.1` only — nothing outside your machine can reach it.
 
 A course is a folder with a `course.json` in it. Everything subject-specific lives there;
 the engine holds no opinions about what you are learning.

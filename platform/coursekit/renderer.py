@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from . import bundler
 from .config import CourseConfig
