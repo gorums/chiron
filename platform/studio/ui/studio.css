@@ -125,3 +125,92 @@ textarea{resize:vertical;min-height:70px}
   .row{grid-template-columns:1fr}
   .courserow{flex-wrap:wrap}
 }
+
+/* ---------- header nav ---------- */
+a.brand{text-decoration:none;color:inherit}
+.topnav{display:flex;gap:4px;margin-left:14px}
+.topnav a{text-decoration:none;color:var(--text-2);font-size:14px;font-weight:500;padding:6px 11px;border-radius:8px}
+.topnav a:hover{background:var(--surface-2);color:var(--text)}
+.topnav a.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.crumb{font-size:13px;color:var(--muted);margin:0 0 10px}
+.crumb a{color:var(--muted)}
+
+/* ---------- course cards (library) ---------- */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px}
+.coursecard{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);min-height:210px}
+.coursecard h3{font-size:21px;margin:0 0 2px}
+.coursecard .tagline{color:var(--text-2);font-size:13.5px;margin:0 0 12px;min-height:1.4em}
+.coursecard .facts{font-size:12.5px;color:var(--muted);margin:0 0 6px}
+.coursecard .actions{margin-top:auto;padding-top:12px}
+.coursecard.new{border-style:dashed;align-items:center;justify-content:center;text-align:center;box-shadow:none;background:transparent}
+.coursecard.new p{color:var(--muted);margin:6px 0 14px;font-size:14px}
+.pct{font-weight:700;font-size:13px;color:var(--accent-ink)}
+
+/* ---------- course page ---------- */
+.hero{display:grid;grid-template-columns:1fr auto;gap:22px;align-items:start}
+.hero .stats{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 0}
+.hero .stat b{display:block;font-size:20px;font-family:var(--serif);font-weight:600}
+.hero .stat span{font-size:12px;color:var(--muted)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:22px 0 18px}
+.tab{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;font-size:14px;font-weight:500;color:var(--text-2);margin-bottom:-1px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:600}
+.partblock{margin-bottom:22px}
+.partblock .parttitle{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+.partblock .parttitle h3{margin:0;font-size:17px}
+.partblock .blurb{font-size:13px;color:var(--muted);margin:0 0 10px}
+.modrow{display:grid;grid-template-columns:14px 44px 1fr auto auto;gap:12px;align-items:center;padding:10px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);margin-bottom:6px}
+.modrow .dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--line-2);display:inline-block}
+.modrow .dot.done{background:var(--ok);border-color:var(--ok)}
+.modrow .dot.part{background:var(--warm);border-color:var(--warm)}
+.modrow .mid{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.modrow .title{font-weight:600;font-size:14.5px;min-width:0}
+.modrow .title small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.modrow .state{font-size:12px;color:var(--muted);white-space:nowrap}
+.modrow.editing{grid-template-columns:1fr}
+.inlineform{padding:14px 16px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent-soft);margin:-2px 0 10px}
+.inlineform textarea{background:var(--surface)}
+
+/* ---------- files & editor ---------- */
+.filelist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 18px}
+.filelist a{font-family:var(--mono);font-size:12.5px;text-decoration:none;padding:5px 8px;border-radius:6px;color:var(--text-2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filelist a:hover{background:var(--surface-2);color:var(--text)}
+.filegroup{margin-bottom:16px}
+.filegroup h4{margin:0 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.editor{width:100%;min-height:62vh;font-family:var(--mono);font-size:13px;line-height:1.55;tab-size:2;white-space:pre;overflow:auto}
+.editbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.editbar .path{font-family:var(--mono);font-size:12.5px;color:var(--muted);flex:1;min-width:200px}
+
+.ok-text{color:var(--ok)}
+@media (max-width:720px){
+  .hero{grid-template-columns:1fr}
+  .modrow{grid-template-columns:14px 44px 1fr;grid-auto-rows:auto}
+  .topnav{display:none}
+}
+
+/* ---------- today strip, questions, tab counts ---------- */
+.todaystrip{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 20px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.today{text-decoration:none;color:var(--text-2);font-size:13px;padding:6px 12px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}
+.today:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:transparent}
+.today b{color:var(--text)}
+.tab .count{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:var(--warm-soft);color:var(--warm);font-size:11px;font-weight:700;text-align:center;margin-left:4px}
+.qrow{padding:14px 0;border-top:1px solid var(--line)}
+.qrow .qmeta{font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.qrow .qmeta .mid{font-family:var(--mono)}
+.qrow blockquote{margin:0 0 8px;padding:8px 14px;border-left:3px solid var(--accent);background:var(--surface-2);border-radius:0 8px 8px 0;font-size:14px;color:var(--text-2)}
+.qrow .qask{margin:0 0 8px;font-weight:600;font-size:14px}
+
+/* ---------- studio settings & logs ---------- */
+.radios{display:grid;gap:6px}
+.radio{display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;cursor:pointer}
+.radio input{margin:0}
+table.paths{border-collapse:collapse;font-size:13px}
+table.paths td{padding:4px 14px 4px 0;vertical-align:top;color:var(--text-2)}
+table.paths td:first-child{color:var(--muted);white-space:nowrap}
+.logbox{margin:0;max-height:52vh;overflow:auto;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 0;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.ll{display:grid;grid-template-columns:62px 40px 1fr;gap:8px;padding:1px 12px}
+.ll .lt{color:var(--muted)}
+.ll .lv{font-weight:700;color:var(--muted)}
+.ll.WARNING .lv{color:var(--warm)}
+.ll.ERROR .lv,.ll.ERROR .lm{color:var(--bad)}
+.ll.DEBUG{opacity:.65}

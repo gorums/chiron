@@ -21,7 +21,7 @@ PLATFORM = os.path.dirname(HERE)
 REPO = os.path.dirname(PLATFORM)
 sys.path.insert(0, PLATFORM)
 
-from coursekit import assessments, bundler, config, library, loader, renderer, scaffold, validate  # noqa: E402
+from coursekit import assessments, bundler, config, library, loader, paths, renderer, scaffold, validate  # noqa: E402
 from coursekit.errors import CourseError, DataError, ManifestError  # noqa: E402
 
 MODULE_MD = """# M{n:02d} — Lesson {n}
@@ -311,10 +311,66 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
         self.assertGreater(len(bundler.css()), 1000)
 
 
-class TestShippedMarketingCourse(unittest.TestCase):
-    """The reference course must stay buildable."""
+class TestPaths(unittest.TestCase):
+    """Courses are separate repositories: the platform finds them through one setting."""
 
-    ROOT = os.path.join(REPO, "courses", "marketing")
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="paths-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _dotenv(self, text):
+        path = os.path.join(self.tmp, ".env")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return path
+
+    def test_dotenv_parsing(self):
+        got = paths.read_env_file(self._dotenv(
+            "# comment\n\nCLAUDE_HOME=C:/Users/x/.claude\nCOURSES_DIR = \"../courses\" \n"
+            "export DIST_DIR='out'\nBROKEN\n"))
+        self.assertEqual(got, {"CLAUDE_HOME": "C:/Users/x/.claude", "COURSES_DIR": "../courses",
+                               "DIST_DIR": "out"})
+        self.assertEqual(paths.read_env_file(os.path.join(self.tmp, "missing")), {})
+
+    def test_environment_beats_dotenv_beats_default(self):
+        base = os.path.join(self.tmp, "platform")
+        default = os.path.join(base, "courses")
+        self.assertEqual(paths.resolve("COURSES_DIR", default, env={}, dotenv={}, base=base),
+                         os.path.normpath(default))
+        self.assertEqual(paths.resolve("COURSES_DIR", default, env={},
+                                       dotenv={"COURSES_DIR": "../courses"}, base=base),
+                         os.path.normpath(os.path.join(self.tmp, "courses")))
+        self.assertEqual(paths.resolve("COURSES_DIR", default, env={"COURSES_DIR": self.tmp},
+                                       dotenv={"COURSES_DIR": "../courses"}, base=base),
+                         os.path.normpath(self.tmp))
+
+    def test_container_setting_is_absolute_and_ignores_dotenv(self):
+        absolute = os.path.abspath(os.sep + "work" + os.sep + "courses")
+        got = paths.resolve("COURSES_DIR", "x", env={"COURSES_DIR": absolute},
+                            dotenv={"COURSES_DIR": "D:/Courses"}, base=self.tmp)
+        self.assertEqual(got, absolute)
+
+    def test_scaffold_writes_a_readme_and_keeps_an_existing_one(self):
+        root = scaffold.create(self.tmp, "knot tying", 4)
+        readme = os.path.join(root, "README.md")
+        with open(readme, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("build.py build knot-tying", text)
+        with open(readme, "w", encoding="utf-8") as fh:
+            fh.write("mine\n")
+        scaffold.write_readme(root, "knot-tying", "Knots")
+        with open(readme, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "mine\n")
+        cfg = config.load(root)
+        self.assertEqual(cfg.folder_label, "knot-tying")
+
+
+class TestShippedMarketingCourse(unittest.TestCase):
+    """The reference course must stay buildable, wherever the courses directory is."""
+
+    ROOT = os.path.join(paths.COURSES_DIR, "marketing")
 
     @unittest.skipUnless(os.path.isdir(ROOT), "marketing course not present")
     def test_it_validates(self):

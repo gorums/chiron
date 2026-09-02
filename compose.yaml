@@ -19,9 +19,12 @@ x-common: &common
   image: course-platform:latest
   restart: unless-stopped
   volumes:
-    # The repo itself. Courses written in the container are real files in your folder, and
-    # editing platform/ takes effect on restart without a rebuild.
+    # The platform itself. Editing platform/ takes effect on restart without a rebuild.
     - ./:/work
+    # The courses: a directory of course repositories, separate from this one. Defaults to
+    # ./courses (gitignored here). Set COURSES_DIR in .env to keep them elsewhere. A course
+    # written in the container is a real file in that folder.
+    - ${COURSES_DIR:-./courses}:/work/courses
     # Claude Code's own directory, holding the OAuth tokens for your subscription. The whole
     # directory, not just .credentials.json: the CLI refreshes tokens by writing a new file
     # and renaming it over the old one, which silently breaks a single-file bind mount.
@@ -51,7 +54,7 @@ services:
   bridge:
     <<: *common
     container_name: course-bridge
-    command: ["python", "bridge/claude-bridge.py"]
+    command: ["python", "tools/bridge/claude-bridge.py"]
     ports:
       - "127.0.0.1:8787:8787"
     healthcheck:

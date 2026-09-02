@@ -13,15 +13,35 @@ const PRESETS = [
      direct  — this page calls api.anthropic.com itself. Nothing to install, nothing to run.
                Only possible from the local copy of this file; a published page is not
                allowed to call other hosts.
-     bridge  — the optional little Python program in bridge/. Useful if you would rather
+     bridge  — the optional little Python program in tools/bridge/. Useful if you would rather
                use Claude Code than an API key.
 */
 const API_URL = "https://api.anthropic.com/v1/messages";
 const API_VERSION = "2023-06-01";
-let bridgeOk = null, bridgeErr = "", bridgeChecking = false;
+let bridgeOk = null, bridgeErr = "", bridgeChecking = false, studioOk = false;
 function BR() { if (!S.bridge) S.bridge = Object.assign({}, BRIDGE_DEFAULT); return S.bridge; }
 function isLocalFile() { return location.protocol === "file:"; }
-function connMode() { return (BR().route === "bridge" && bridgeOk) ? "bridge" : (BR().key ? "direct" : "none"); }
+/* Three routes, in order of preference:
+     studio  — this page is served by Course Studio, which answers on the same origin
+               through the Claude Code it already uses. Nothing to configure.
+     bridge  — the small program in tools/bridge/, for a page opened off disk.
+     direct  — an API key pasted into Settings; the page calls Anthropic itself.
+   A saved key always wins: it is an explicit choice to pay per question. */
+function connMode() {
+  if (studioOk && !BR().key) return "studio";
+  return (BR().route === "bridge" && bridgeOk) ? "bridge" : (BR().key ? "direct" : "none");
+}
+async function checkStudio() {
+  if (!STUDIO) return false;
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(STUDIO.origin + "/api/state", { signal: ctrl.signal, cache: "no-store" });
+    clearTimeout(t);
+    const j = await r.json();
+    studioOk = !!(j && j.claude && j.claude.available);
+  } catch (e) { studioOk = false; }
+  return studioOk;
+}
 
 async function callAnthropic(key, system, messages, model, maxTokens) {
   const body = {
@@ -75,12 +95,22 @@ async function checkBridge(quiet) {
   const b = BR();
   bridgeChecking = true; bridgeErr = "";
   if (!quiet) renderSidebar();
+  if (await checkStudio() && !b.key) {           // served by Studio: it answers itself
+    bridgeOk = true; b.mode = "studio";
+    bridgeChecking = false; save(); renderSidebar();
+    if (route.v === "settings") viewSettings();
+    if (route.v === "home") viewHome();
+    const p0 = document.getElementById("panel"); if (p0 && currentPanelId) drawThread();
+    if (route.v === "m" && railOpen()) renderRail();
+    return true;
+  }
   if (b.key && b.route !== "bridge") {          // direct mode: nothing to probe
     bridgeOk = true; b.mode = "direct";
     bridgeChecking = false; save(); renderSidebar();
     if (route.v === "settings") viewSettings();
     if (route.v === "home") viewHome();
     const p0 = document.getElementById("panel"); if (p0 && currentPanelId) drawThread();
+    if (route.v === "m" && railOpen()) renderRail();
     return true;
   }
   try {
@@ -105,6 +135,7 @@ async function checkBridge(quiet) {
   if (route.v === "home") viewHome();
   const p = document.getElementById("panel");
   if (p && currentPanelId) drawThread();
+  if (route.v === "m" && railOpen()) renderRail();
   return bridgeOk;
 }
 
@@ -112,6 +143,15 @@ async function askBridge(system, messages) {
   const b = BR();
   if (connMode() === "direct") {
     return callAnthropic(b.key, system, messages, b.model, 1400);
+  }
+  if (connMode() === "studio") {
+    const r = await fetch(STUDIO.origin + "/api/ask", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: b.model || "claude-sonnet-5", system, messages })
+    });
+    const j = await r.json().catch(() => ({ error: "Studio sent something unreadable." }));
+    if (!r.ok || j.error) throw new Error(j.error || ("Studio error " + r.status));
+    return j.text || "(empty reply)";
   }
   const r = await fetch(b.url.replace(/\/$/, "") + "/ask", {
     method: "POST", headers: { "content-type": "application/json" },

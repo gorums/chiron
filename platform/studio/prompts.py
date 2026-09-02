@@ -162,6 +162,50 @@ or something they genuinely care about. Say plainly why this matters: {cfg['subj
 learned in the abstract evaporates. Every later module's exercise refers back to this choice."""
 
 
+def direction(notes: str) -> str:
+    """Extra instruction appended to a module prompt when the person asked for something."""
+    notes = (notes or "").strip()
+    if not notes:
+        return ""
+    return f"""
+
+Direction from the person who owns this course, which overrides the defaults above where
+they conflict:
+{notes}"""
+
+
+MODULE_SPEC_SCHEMA = """{
+  "title": str,        // the module's full title
+  "short": str,        // sidebar label, 3-5 words
+  "minutes": number,   // 30-120
+  "summary": str,      // two sentences on what it teaches and why it sits here
+  "sections": [str]    // the seven standard section headings, verbatim, in order
+}"""
+
+
+def module_spec(cfg: Dict[str, Any], modules: List[Dict[str, Any]], topic: str,
+                part_name: str, minutes: int, notes: str = "") -> str:
+    """Design one new module that fits an existing course - used when a course is extended."""
+    return f"""A reader working through "{cfg['title']}" wants the course to go further on:
+
+  {topic}
+
+{_course_context(cfg, modules)}
+
+Design ONE new module on that topic to be appended to the part called "{part_name}". It must
+teach something the existing modules do not - build on them, refer to them where useful, and
+do not repeat them. Plan it at about {minutes} minutes.
+
+Every module has exactly these sections, in this order, and you must list them in
+"sections" verbatim:
+  "Why this matters", "Core concepts", "How it works in practice",
+  "2026 reality check", "Common mistakes", "Exercise", "If you remember one thing"
+{direction(notes)}
+
+Return ONLY a JSON object of this shape, no prose and no code fence:
+{MODULE_SPEC_SCHEMA}"""
+
+
 ASSESS_SCHEMA = """{
   "id": "M01",
   "predict": str,

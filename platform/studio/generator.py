@@ -29,6 +29,7 @@ from coursekit import loader as ck_loader
 from coursekit import renderer as ck_renderer
 from coursekit import scaffold as ck_scaffold
 from coursekit import validate as ck_validate
+from coursekit.errors import CourseError
 
 from . import claude_cli, prompts
 from .jobs import Job
@@ -166,7 +167,7 @@ def plan_to_manifest(plan: Dict[str, Any], course_id: str) -> Dict[str, Any]:
                   for p in plan["parts"]],
         "shortTitles": {m["id"]: m["short"] for m in plan["modules"]},
         "milestones": plan["milestones"],
-        "folderLabel": "courses/%s" % course_id,
+        "folderLabel": course_id,
     })
     return manifest
 
@@ -180,10 +181,11 @@ def _module_path(root: str, plan: Dict[str, Any], mod: Dict[str, Any]) -> str:
 
 
 def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
-                 model: str = "") -> str:
+                 model: str = "", path: str = "", notes: str = "") -> str:
     prompt = prompts.module(plan, plan["modules"], mod)
     if mod["id"] == "M01":
         prompt += prompts.module_first(plan)
+    prompt += prompts.direction(notes)
     body = claude_cli.strip_fence(claude_cli.ask(prompt, model=model, timeout=900))
 
     # The build keys everything off the title line; repair it rather than failing the run.
@@ -198,7 +200,7 @@ def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
         head, sep, rest = body.partition("\n")
         body = head + "\n\n**Time:** %d minutes\n" % mod["minutes"] + sep + rest
 
-    path = _module_path(root, plan, mod)
+    path = path or _module_path(root, plan, mod)
     _write(path, body)
     found = headings_of(body)
     if not found:
@@ -299,34 +301,136 @@ def _corpus(bodies: Dict[str, str]) -> str:
     return "\n\n".join("### %s\n%s" % (mid, text[:per]) for mid, text in sorted(bodies.items()))
 
 
+PLAN_FILE = "plan/plan.json"    # the approved curriculum, kept so a dead run can resume
+
+
+def _load_plan(root: str) -> Dict[str, Any]:
+    """The saved curriculum - or, for a course generated before it was saved, one rebuilt
+    from course.json and whatever modules are on disk."""
+    path = os.path.join(root, PLAN_FILE)
+    if not os.path.isfile(path):
+        return reconstruct_plan(root)
+    with open(path, encoding="utf-8") as fh:
+        plan = json.load(fh)
+    if not isinstance(plan, dict) or not plan.get("modules"):
+        raise GenerationError("The saved curriculum is unreadable.")
+    return plan
+
+
+def reconstruct_plan(root: str) -> Dict[str, Any]:
+    """A plan from the manifest alone. Modules on disk keep their titles and sections; ids
+    that only exist in shortTitles become specs still to be written, spread across parts in
+    order. Good enough to finish a run; not as rich as the model's own design."""
+    cfg = ck_config.load(root)
+    written: List[Any] = []
+    for part in cfg.parts:
+        directory = os.path.join(cfg.modules_dir, part.dir)
+        if not os.path.isdir(directory):
+            continue
+        for name in sorted(f for f in os.listdir(directory) if f.endswith(".md")):
+            try:
+                written.append(ck_loader.parse_module(os.path.join(directory, name), part.id,
+                                                      len(written) + 1, cfg))
+            except CourseError:
+                continue
+    plan = plan_from_course(cfg, written)
+    have = {m["id"] for m in plan["modules"]}
+    missing = sorted((mid for mid in cfg.short_titles if mid not in have),
+                     key=lambda m: int(m[1:]) if m[1:].isdigit() else 0)
+    if not plan["modules"] and not missing:
+        raise GenerationError("Nothing to resume: this course has no modules and no module list.")
+    last_part = plan["parts"][-1]["id"] if plan["parts"] else "p1"
+    for mid in missing:
+        plan["modules"].append({
+            "id": mid, "part": last_part, "title": cfg.short_titles[mid],
+            "short": cfg.short_titles[mid], "minutes": 60, "summary": "",
+            "sections": list(DEFAULT_SECTIONS),
+        })
+    plan["modules"].sort(key=lambda m: int(m["id"][1:]) if m["id"][1:].isdigit() else 0)
+    return plan
+
+
+def _existing_module(root: str, plan: Dict[str, Any], mod: Dict[str, Any]) -> str:
+    """The body of a module already on disk for this id, or '' if none."""
+    directory = os.path.dirname(_module_path(root, plan, mod))
+    if not os.path.isdir(directory):
+        return ""
+    for name in sorted(os.listdir(directory)):
+        if name.endswith(".md") and name.split("-", 1)[0] == mod["id"]:
+            with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                body = fh.read()
+            return body if headings_of(body) else ""
+    return ""
+
+
+def _existing_rows(root: str):
+    """Study data a previous run already wrote, keyed by module id."""
+    assess, suggest = {}, {}
+    path = os.path.join(root, "data/assessments/all.json")
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            rows = json.load(fh)
+        assess = {r["id"]: r for r in rows if isinstance(r, dict) and r.get("id")} \
+            if isinstance(rows, list) else {}
+    path = os.path.join(root, "data/suggestions/all.json")
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            rows = json.load(fh)
+        suggest = rows if isinstance(rows, dict) else {}
+    return assess, suggest
+
+
+def _real_file(path: str) -> bool:
+    """A reference document that was actually written, not a scaffold stub."""
+    if not os.path.isfile(path) or os.path.getsize(path) < 400:
+        return False
+    with open(path, encoding="utf-8") as fh:
+        return ck_scaffold.PLACEHOLDER.strip() not in fh.read(600)
+
+
 def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -> Dict[str, Any]:
-    """Run the whole pipeline. Parks once for curriculum approval."""
+    """Run the whole pipeline. Parks once for curriculum approval.
+
+    With `brief["resume"]`, picks up a course whose earlier run died: the saved curriculum is
+    reused without a new approval, modules and study data already on disk are kept, and only
+    what is missing gets written. A run can therefore be resumed any number of times.
+    """
+    resume = bool(brief.get("resume"))
     course_id = brief.get("id") or ck_scaffold.slugify(brief["theme"])
     if not _SAFE_ID.match(course_id):
         raise GenerationError("'%s' is not a usable course id." % course_id)
     model = brief.get("model", "")
     job.meta["course"] = course_id
+    root = os.path.join(courses_dir, course_id)
 
     # ---- 1. plan, then wait for the human ----
-    plan = make_plan(job, brief, model)
-    job.emit("plan", plan=plan)
-    approved = job.await_input("approve-plan", {"plan": plan, "id": course_id})
-    if isinstance(approved, dict) and approved.get("plan"):
-        plan = normalise_plan(approved["plan"], brief["theme"], float(brief["hours"]), brief)
-    job.log("Curriculum approved: %d modules across %d parts."
-            % (len(plan["modules"]), len(plan["parts"])))
+    if resume:
+        plan = _load_plan(root)
+        job.log("Resuming %s from its saved curriculum: %d modules across %d parts."
+                % (course_id, len(plan["modules"]), len(plan["parts"])))
+    else:
+        plan = make_plan(job, brief, model)
+        job.emit("plan", plan=plan)
+        approved = job.await_input("approve-plan", {"plan": plan, "id": course_id})
+        if isinstance(approved, dict) and approved.get("plan"):
+            plan = normalise_plan(approved["plan"], brief["theme"], float(brief["hours"]), brief)
+        job.log("Curriculum approved: %d modules across %d parts."
+                % (len(plan["modules"]), len(plan["parts"])))
 
     # ---- 2. lay down the tree ----
-    root = os.path.join(courses_dir, course_id)
     for part in plan["parts"]:
         os.makedirs(os.path.join(root, "modules", part["dir"]), exist_ok=True)
     for sub in ("plan", "reference", "templates", "data/assessments", "data/suggestions"):
         os.makedirs(os.path.join(root, sub), exist_ok=True)
-    _write_json(os.path.join(root, "course.json"), plan_to_manifest(plan, course_id))
+    if not resume:
+        _write_json(os.path.join(root, "course.json"), plan_to_manifest(plan, course_id))
+    ck_scaffold.write_readme(root, course_id, plan["title"])
+    _write_json(os.path.join(root, PLAN_FILE), plan)
 
     modules = plan["modules"]
     total = len(modules) * 2 + 6          # modules + study data + reference + build
     step = 0
+    had_assess, had_suggest = _existing_rows(root) if resume else ({}, {})
 
     # ---- 3. modules, each with its study data written immediately after ----
     bodies: Dict[str, str] = {}
@@ -335,13 +439,23 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
     for mod in modules:
         job.check_cancelled()
         step += 1
-        job.progress(step, total, "Writing %s · %s" % (mod["id"], mod["title"]))
-        bodies[mod["id"]] = write_module(job, root, plan, mod, model)
+        kept = _existing_module(root, plan, mod) if resume else ""
+        if kept:
+            job.progress(step, total, "Keeping %s · %s" % (mod["id"], mod["title"]))
+            job.log("%s is already written; keeping it." % mod["id"])
+            bodies[mod["id"]] = kept
+        else:
+            job.progress(step, total, "Writing %s · %s" % (mod["id"], mod["title"]))
+            bodies[mod["id"]] = write_module(job, root, plan, mod, model)
 
         job.check_cancelled()
         step += 1
-        job.progress(step, total, "Quiz and flashcards for %s" % mod["id"])
-        data = write_study_data(job, root, plan, mod, bodies[mod["id"]], model)
+        if kept and mod["id"] in had_assess and mod["id"] in had_suggest:
+            job.progress(step, total, "Keeping study data for %s" % mod["id"])
+            data = {"assess": had_assess[mod["id"]], "suggest": had_suggest[mod["id"]]}
+        else:
+            job.progress(step, total, "Quiz and flashcards for %s" % mod["id"])
+            data = write_study_data(job, root, plan, mod, bodies[mod["id"]], model)
         assess_rows.append(data["assess"])
         suggest_rows[mod["id"]] = data["suggest"]
         # Written every iteration so an interrupted run still leaves valid data behind.
@@ -351,40 +465,43 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
     corpus = _corpus(bodies)
 
     # ---- 4. the reference shelf ----
-    job.check_cancelled()
-    step += 1
-    job.progress(step, total, "Glossary")
-    _write(os.path.join(root, "reference/glossary.md"),
-           claude_cli.strip_fence(claude_cli.ask(
-               prompts.glossary(plan, modules, corpus), model=model, timeout=900)))
+    def shelf(label: str, rel: str, make):
+        nonlocal step
+        job.check_cancelled()
+        step += 1
+        path = os.path.join(root, rel)
+        if resume and _real_file(path):
+            job.progress(step, total, "Keeping " + label)
+            return
+        job.progress(step, total, label)
+        _write(path, claude_cli.strip_fence(make()))
 
-    job.check_cancelled()
-    step += 1
-    job.progress(step, total, "Mental models")
-    _write(os.path.join(root, "reference/mental-models.md"),
-           claude_cli.strip_fence(claude_cli.ask(
-               prompts.mental_models(plan, corpus), model=model, timeout=900)))
-
-    job.check_cancelled()
-    step += 1
-    job.progress(step, total, "Resources")
-    _write(os.path.join(root, "reference/resources.md"),
-           claude_cli.strip_fence(claude_cli.ask(
-               prompts.resources(plan), model=model, timeout=600)))
+    shelf("Glossary", "reference/glossary.md",
+          lambda: claude_cli.ask(prompts.glossary(plan, modules, corpus), model=model, timeout=900))
+    shelf("Mental models", "reference/mental-models.md",
+          lambda: claude_cli.ask(prompts.mental_models(plan, corpus), model=model, timeout=900))
+    shelf("Resources", "reference/resources.md",
+          lambda: claude_cli.ask(prompts.resources(plan), model=model, timeout=600))
 
     job.check_cancelled()
     step += 1
     job.progress(step, total, "Plan documents")
     for kind, filename in (("curriculum", "curriculum.md"), ("how", "how-to-study.md"),
                            ("expert", "path-to-expert.md")):
-        _write(os.path.join(root, "plan", filename),
-               claude_cli.strip_fence(claude_cli.ask(
-                   prompts.plan_docs(plan, modules, kind), model=model, timeout=600)))
+        path = os.path.join(root, "plan", filename)
+        if resume and _real_file(path):
+            continue
+        _write(path, claude_cli.strip_fence(claude_cli.ask(
+            prompts.plan_docs(plan, modules, kind), model=model, timeout=600)))
 
     job.check_cancelled()
     step += 1
-    job.progress(step, total, "Worksheets")
-    _write_worksheets(job, root, plan, modules, model)
+    templates_dir = os.path.join(root, "templates")
+    if resume and any(f.endswith(".md") for f in os.listdir(templates_dir)):
+        job.progress(step, total, "Keeping worksheets")
+    else:
+        job.progress(step, total, "Worksheets")
+        _write_worksheets(job, root, plan, modules, model)
 
     # ---- 5. validate and build ----
     job.check_cancelled()
@@ -420,6 +537,214 @@ def _write_worksheets(job: Job, root: str, plan: Dict[str, Any],
             continue
         _write(os.path.join(root, "templates", "%s.md" % slug), text)
         job.emit("worksheet", slug=slug, name=spec["name"])
+
+
+# --------------------------------------------------------------------------- editing a course
+#
+# A course is never finished. The reader meets a section that stops short, or a topic the
+# curriculum skipped, and wants the course to go there. These entry points change one module
+# of an existing course and leave the rest alone: a new module appended to a part, or an
+# existing one rewritten in place with direction. Both reuse the same writers as a fresh run,
+# fed a plan reconstructed from the course on disk rather than from a brief.
+
+DEFAULT_SECTIONS = (
+    "Why this matters", "Core concepts", "How it works in practice",
+    "2026 reality check", "Common mistakes", "Exercise", "If you remember one thing",
+)
+
+
+def plan_from_course(cfg, modules) -> Dict[str, Any]:
+    """The plan-shaped view of an existing course that the module prompts expect."""
+    return {
+        "title": cfg.title,
+        "tagline": cfg.tagline,
+        "subject": cfg.subject,
+        "hours": cfg.hours,
+        "audience": cfg.audience,
+        "practitioner": cfg.practitioner,
+        "tutorPersona": cfg.tutor_persona,
+        "parts": [{"id": p.id, "name": p.name, "hours": p.hours, "dir": p.dir, "blurb": p.blurb}
+                  for p in cfg.parts],
+        "modules": [{
+            "id": m.id, "part": m.part, "title": m.title, "short": m.short,
+            "minutes": m.minutes, "summary": "",
+            "sections": [s.heading for s in m.sections],
+        } for m in modules],
+    }
+
+
+def next_module_id(modules) -> str:
+    """One past the highest numbered id. Ids are never reused: progress is keyed by them."""
+    highest = 0
+    for m in modules:
+        mid = getattr(m, "id", None) if not isinstance(m, dict) else m.get("id", "")
+        found = re.match(r"^M(\d+)$", mid or "")
+        if found:
+            highest = max(highest, int(found.group(1)))
+    return "M%02d" % (highest + 1)
+
+
+def _fix_spec(raw: Any, mid: str, part_id: str, topic: str, minutes: int) -> Dict[str, Any]:
+    """Coerce a designed module spec into the shape the writer needs."""
+    raw = raw if isinstance(raw, dict) else {}
+    spec = {
+        "id": mid,
+        "part": part_id,
+        "title": (str(raw.get("title") or topic).strip() or topic)[:120],
+        "short": (str(raw.get("short") or topic).strip() or topic)[:60],
+        "summary": str(raw.get("summary") or "").strip(),
+    }
+    try:
+        spec["minutes"] = max(15, min(240, int(raw.get("minutes") or minutes)))
+    except (TypeError, ValueError):
+        spec["minutes"] = minutes
+    sections = [str(x).strip() for x in (raw.get("sections") or []) if str(x).strip()]
+    spec["sections"] = sections or list(DEFAULT_SECTIONS)
+    return spec
+
+
+def _read_json(path: str) -> Any:
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _store_module_data(root: str, cfg, mid: str, assess: Dict[str, Any],
+                       suggest: List[List[str]]) -> None:
+    """Put one module's study data where the build will find it.
+
+    If some file already holds an entry for this id, it is replaced there, so a rewrite does
+    not leave a duplicate for the validator to reject. Otherwise the module gets files of its
+    own - the loader merges every .json in the directory, so nothing else has to change.
+    """
+    assess_dir = cfg.path(cfg.data["assessments"])
+    sugg_dir = cfg.path(cfg.data["suggestions"])
+    os.makedirs(assess_dir, exist_ok=True)
+    os.makedirs(sugg_dir, exist_ok=True)
+
+    placed = False
+    for name in sorted(os.listdir(assess_dir)):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(assess_dir, name)
+        rows = _read_json(path)
+        if isinstance(rows, list) and any(isinstance(r, dict) and r.get("id") == mid for r in rows):
+            _write_json(path, [assess if (isinstance(r, dict) and r.get("id") == mid) else r
+                               for r in rows])
+            placed = True
+    if not placed:
+        _write_json(os.path.join(assess_dir, "%s.json" % mid), [assess])
+
+    placed = False
+    for name in sorted(os.listdir(sugg_dir)):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(sugg_dir, name)
+        rows = _read_json(path)
+        if isinstance(rows, dict) and mid in rows:
+            rows[mid] = suggest
+            _write_json(path, rows)
+            placed = True
+    if not placed:
+        _write_json(os.path.join(sugg_dir, "%s.json" % mid), {mid: suggest})
+
+
+def _set_short_title(root: str, mid: str, short: str) -> None:
+    path = os.path.join(root, "course.json")
+    manifest = _read_json(path)
+    titles = manifest.get("shortTitles") or {}
+    titles[mid] = short
+    manifest["shortTitles"] = titles
+    _write_json(path, manifest)
+
+
+def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
+           brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Add one module on a topic the course does not cover yet, then rebuild."""
+    root = os.path.join(courses_dir, course_id)
+    cfg = ck_config.load(root)
+    modules = ck_loader.load_modules(cfg)
+    plan = plan_from_course(cfg, modules)
+    model = brief.get("model", "")
+    job.meta["course"] = course_id
+
+    topic = (brief.get("topic") or "").strip()
+    if not topic:
+        raise GenerationError("Say what the new module should cover.")
+    part = (next((p for p in plan["parts"] if p["id"] == brief.get("part")), None)
+            or plan["parts"][-1])
+    try:
+        minutes = max(15, min(240, int(brief.get("minutes") or 60)))
+    except (TypeError, ValueError):
+        minutes = 60
+    notes = brief.get("notes", "")
+    mid = next_module_id(modules)
+    total = 5
+
+    job.progress(1, total, "Designing %s · %s" % (mid, topic))
+    spec = _fix_spec(
+        claude_cli.ask_json(prompts.module_spec(plan, plan["modules"], topic, part["name"],
+                                                minutes, notes), model=model, timeout=420),
+        mid, part["id"], topic, minutes,
+    )
+    plan["modules"].append(spec)
+    job.emit("spec", id=mid, title=spec["title"], part=part["id"], minutes=spec["minutes"])
+
+    job.check_cancelled()
+    job.progress(2, total, "Writing %s · %s" % (mid, spec["title"]))
+    body = write_module(job, root, plan, spec, model, notes=notes)
+
+    job.check_cancelled()
+    job.progress(3, total, "Quiz and flashcards for %s" % mid)
+    data = write_study_data(job, root, plan, spec, body, model)
+    _store_module_data(root, cfg, mid, data["assess"], data["suggest"])
+    _set_short_title(root, mid, spec["short"])
+
+    job.check_cancelled()
+    job.progress(4, total, "Validating and building")
+    result = build_course(root, dist_dir)
+    job.progress(5, total, "Done")
+    job.emit("built", **result)
+    return dict(result, course=course_id, root=root, module=mid)
+
+
+def rewrite(job: Job, courses_dir: str, dist_dir: str, course_id: str, mid: str,
+            brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Rewrite one existing module in place, with direction, then rebuild.
+
+    The id, the file and the position in the course all stay. The reader's progress for the
+    module is keyed by id and survives; section ticks may no longer line up if the section
+    count changes, which is the honest price of a rewrite.
+    """
+    root = os.path.join(courses_dir, course_id)
+    cfg = ck_config.load(root)
+    modules = ck_loader.load_modules(cfg)
+    current = next((m for m in modules if m.id == mid), None)
+    if current is None:
+        raise GenerationError("No module '%s' in this course." % mid)
+    plan = plan_from_course(cfg, modules)
+    model = brief.get("model", "")
+    notes = brief.get("notes", "")
+    job.meta["course"] = course_id
+
+    spec = next(m for m in plan["modules"] if m["id"] == mid)
+    spec["summary"] = "A rewrite of the existing module." + (
+        " The person asked for: " + notes if notes else "")
+    total = 4
+
+    job.progress(1, total, "Rewriting %s · %s" % (mid, current.title))
+    body = write_module(job, root, plan, spec, model, path=current.source, notes=notes)
+
+    job.check_cancelled()
+    job.progress(2, total, "Quiz and flashcards for %s" % mid)
+    data = write_study_data(job, root, plan, spec, body, model)
+    _store_module_data(root, cfg, mid, data["assess"], data["suggest"])
+
+    job.check_cancelled()
+    job.progress(3, total, "Validating and building")
+    result = build_course(root, dist_dir)
+    job.progress(4, total, "Done")
+    job.emit("built", **result)
+    return dict(result, course=course_id, root=root, module=mid)
 
 
 def build_course(root: str, dist_dir: str) -> Dict[str, Any]:

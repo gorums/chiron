@@ -43,9 +43,25 @@ function viewModule() {
     ${prev ? `<button class="btn" onclick="go('#/m/${prev.id}')">← ${prev.id}</button>` : `<button class="btn" onclick="go('#/home')">← Dashboard</button>`}
     <button class="btn ${isDone(m) ? "" : "primary"}" onclick="toggleDone('${m.id}')">${isDone(m) ? "✓ Completed — undo" : "Mark module complete"}</button>
     ${next ? `<button class="btn" onclick="go('#/m/${next.id}')">${next.id} →</button>` : `<button class="btn" onclick="go('#/stats')">Stats →</button>`}
-  </div></div>`;
+  </div>`;
+  // Served by Studio: the course can grow from right here. A missing topic becomes a new
+  // module; a section that stops short becomes a rewrite with direction.
+  if (STUDIO) h += `<p class="sub" style="text-align:center;margin-top:16px;font-size:13px">Something missing here?
+    <a href="#" onclick="return studioGo('add','${m.id}')">Ask Studio to add a module</a> ·
+    <a href="#" onclick="return studioGo('rewrite','${m.id}')">have this one rewritten</a></p>`;
+  h += `</div>`;
   $("#view").innerHTML = h;
   renderStep(m, step);
+}
+/* The link carries the section being read, so the brief in Studio can name it. Built at
+   click time because curSec follows the scroll position. */
+function studioGo(kind, mid) {
+  const m = byId(mid), sec = m && m.sections[curSec] ? m.sections[curSec].h : "";
+  const base = `${STUDIO.origin}/#/course/${STUDIO.id}`;
+  location.href = kind === "add"
+    ? `${base}?tab=add&from=${mid}${sec ? "&sec=" + encodeURIComponent(sec) : ""}`
+    : `${base}?tab=modules&rewrite=${mid}${sec ? "&q=" + encodeURIComponent('The section "' + sec + '" stops short. ') : ""}`;
+  return false;
 }
 function stepDone(m, i) {
   const p = P(m.id);

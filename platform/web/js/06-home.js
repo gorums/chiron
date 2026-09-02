@@ -18,7 +18,7 @@ function viewHome() {
 
   <div class="grid g4" style="margin-bottom:18px">
     <div class="stat"><div class="n">${done}<span style="font-size:15px;color:var(--muted)">/${MODS.length}</span></div><div class="l">modules complete</div></div>
-    <div class="stat"><div class="n">${fmtH(minutesDone())}</div><div class="l">of 30h curriculum</div></div>
+    <div class="stat"><div class="n">${fmtH(minutesDone())}</div><div class="l">of ${fmtH(CFG.hours * 60)} curriculum</div></div>
     <div class="stat"><div class="n">${qs.total ? Math.round(qs.pct * 100) + "%" : "—"}</div><div class="l">quiz accuracy (${qs.total} answered)</div></div>
     <div class="stat"><div class="n">${S.streak.days}</div><div class="l">day streak</div></div>
   </div>`;

@@ -2,7 +2,8 @@
 
 The platform can render anything. These are the choices that decide whether the reader is
 competent at the end or merely well-read. They are derived from the marketing course in
-`courses/marketing/`, which is worth reading a module of before you write your own.
+the marketing course (its own repository; clone it into the courses directory), which is
+worth reading a module of before you write your own.
 
 ## The learning cycle each module runs
 

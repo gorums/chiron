@@ -6,7 +6,7 @@ function viewSettings() {
   const on = connMode() !== "none";
   const state = bridgeChecking ? "busy" : on ? "on" : "";
   let h = `<div class="wrap"><h2 class="big">Connect Claude</h2>
-  <p class="sub" style="margin-bottom:22px">Paste a key once. Nothing to install, nothing to keep running.</p>
+  <p class="sub" style="margin-bottom:22px">${connMode() === "studio" ? "This page is served by Course Studio, so questions go through it. Paste a key only if you would rather pay per question." : "Paste a key once. Nothing to install, nothing to keep running."}</p>
 
   <div class="card" style="margin-bottom:20px;border-color:${on ? "var(--ok)" : "var(--line)"};text-align:center;padding:26px 20px">
     <span class="dotstat ${state}" style="width:14px;height:14px;display:inline-block;margin-bottom:12px"></span>
@@ -15,7 +15,9 @@ function viewSettings() {
     <p class="sub" style="max-width:460px;margin:0 auto 16px">${on
       ? (connMode() === "direct"
         ? "This page talks to Anthropic directly. Ask about anything you are reading."
-        : "Connected through the local bridge" + (b.mode === "cli" ? " using Claude Code." : "."))
+        : connMode() === "studio"
+          ? "Connected through Course Studio, using the Claude Code it is signed in to. Nothing to set up, no API charges."
+          : "Connected through the local bridge" + (b.mode === "cli" ? " using Claude Code." : "."))
       : "Paste your Anthropic API key below and press Connect."}</p>
     ${on ? "" : `<div style="max-width:520px;margin:0 auto">
       <button class="btn primary" id="connectbtn" style="font-size:15px;padding:11px 22px" onclick="useBridge()">Connect with Claude Code</button>

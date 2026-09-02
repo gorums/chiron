@@ -11,9 +11,10 @@ function renderSidebar() {
     <svg class="ring" viewBox="0 0 46 46"><circle cx="23" cy="23" r="${R}" fill="none" stroke="var(--surface-3)" stroke-width="4"/>
     <circle cx="23" cy="23" r="${R}" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"
       stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" transform="rotate(-90 23 23)"/></svg>
-    <span class="ringtxt"><b>${doneCount()} of ${MODS.length} modules</b>${fmtH(minutesDone())} of 30h · ${Math.round(pct * 100)}%</span>
+    <span class="ringtxt"><b>${doneCount()} of ${MODS.length} modules</b>${fmtH(minutesDone())} of ${fmtH(CFG.hours * 60)} · ${Math.round(pct * 100)}%</span>
   </button>
   <div class="navsec">
+    ${STUDIO ? `<a class="navlink" href="${STUDIO.origin}/#/course/${STUDIO.id}" style="text-decoration:none"><span class="ico">⌂</span>All courses${syncState === "on" ? `<span class="dotstat on" title="Progress is saved on the platform" style="margin-left:auto"></span>` : ""}</a>` : ""}
     <button class="navlink ${route.v === "home" ? "active" : ""}" onclick="go('#/home')"><span class="ico">${ICONS.home}</span>Dashboard</button>
     <button class="navlink ${route.v === "review" ? "active" : ""}" onclick="go('#/review')"><span class="ico">${ICONS.review}</span>Review${due ? `<span class="pill">${due}</span>` : ""}</button>
     <button class="navlink ${route.v === "stats" ? "active" : ""}" onclick="go('#/stats')"><span class="ico">${ICONS.stats}</span>Progress &amp; stats</button>

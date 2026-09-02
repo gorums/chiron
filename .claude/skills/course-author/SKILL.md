@@ -33,8 +33,10 @@ and assume a motivated beginner.
 python platform/build.py new --theme "<theme>" --hours <n>
 ```
 
-This creates `courses/<id>/` with the folder tree, a filled-in `course.json`, and stub plan
-documents. It prints the hour split and how many modules each part should hold. Treat that
+This creates `<id>/` inside the courses directory (`python platform/build.py where` prints
+it; `courses/` by default) with the folder tree, a filled-in `course.json`, a `README.md`
+and stub plan documents. The folder is meant to become its own git repository; the platform
+repository ignores it. It prints the hour split and how many modules each part should hold. Treat that
 as the starting proposal, not a constraint — reshape it in the next phase if the subject
 wants a different division.
 
@@ -52,7 +54,7 @@ Work at roughly **60 minutes per module**. Rules that hold across subjects:
   Not "advanced tactics" — the reasoning behind choosing between tactics.
 - **The last module is a capstone**: one end-to-end deliverable that uses everything.
 
-Then edit `courses/<id>/course.json`:
+Then edit the course's `course.json`:
 
 - `parts` — rename, re-budget or re-split if the subject wants a different shape. `dir` must
   match a real folder under `modules/`.

@@ -1,4 +1,8 @@
 dist/
+# Courses are separate repositories. This is only the default place to clone them.
+courses/
 __pycache__/
 *.pyc
 .env
+# Reader progress synced from courses served by Studio. Personal, not content.
+state/

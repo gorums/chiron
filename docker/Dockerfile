@@ -35,10 +35,15 @@ WORKDIR /work
 # Both services bind all interfaces *inside* the container. Compose publishes their ports to
 # 127.0.0.1 on the host, so they stay unreachable from the network — the loopback default in
 # the code is preserved at the boundary that actually matters.
+# COURSES_DIR and DIST_DIR are fixed here so that a host path in the bind-mounted .env never
+# reaches the code: compose mounts the host's courses directory at /work/courses, and the
+# environment (which wins over .env - see coursekit/paths.py) points there.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     STUDIO_HOST=0.0.0.0 \
-    BRIDGE_HOST=0.0.0.0
+    BRIDGE_HOST=0.0.0.0 \
+    COURSES_DIR=/work/courses \
+    DIST_DIR=/work/dist
 
 EXPOSE 8790 8787
 

@@ -24,5 +24,6 @@ $("#themebtn").onclick = cycleTheme;
 $("#helpbtn").onclick = openHelp;
 $("#menubtn").onclick = () => $("#sidebar").classList.toggle("open");
 migrateChats();
-parseHash(); render();
-setTimeout(() => checkBridge(true), 250);
+parseHash();
+// Pull the platform copy of progress first, when there is one, so the first paint is right.
+syncPull().finally(() => { render(); setTimeout(() => checkBridge(true), 250); });

@@ -12,13 +12,18 @@
 <body>
 
 <header class="bar">
-  <div class="brand">
+  <a class="brand" href="#/">
     <h1>Course Studio</h1>
     <p id="rootpath"></p>
-  </div>
+  </a>
+  <nav class="topnav">
+    <a href="#/" id="nav-library">Courses</a>
+    <a href="#/new" id="nav-new">New course</a>
+    <a href="#/settings" id="nav-settings">Settings &amp; logs</a>
+  </nav>
   <span class="spacer"></span>
   <span class="pill" id="claudestate">checking…</span>
-  <button class="btn" id="themebtn" title="Theme">◐</button>
+  <button class="btn ghost sm" id="themebtn" title="Theme">◐</button>
 </header>
 
 <main id="view"></main>

@@ -1,6 +1,7 @@
 """Command line for the course platform.
 
     build.py list                       what courses exist
+    build.py where                      which directories the platform is using
     build.py new  --theme X --hours 30  scaffold an empty course
     build.py check <course>             validate without writing anything
     build.py build <course>             validate, then write dist/<course>/
@@ -16,11 +17,7 @@ from typing import List
 
 from . import assessments, config, library, loader, renderer, scaffold, validate
 from .errors import CourseError
-
-PLATFORM_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REPO_ROOT = os.path.dirname(PLATFORM_DIR)
-COURSES_DIR = os.path.join(REPO_ROOT, "courses")
-DIST_DIR = os.path.join(REPO_ROOT, "dist")
+from .paths import COURSES_DIR, DIST_DIR
 
 
 def _course_root(name: str) -> str:
@@ -43,8 +40,9 @@ def _assemble(root: str):
 
 def cmd_list(_args) -> int:
     if not os.path.isdir(COURSES_DIR):
-        print("No courses/ directory yet.")
+        print("No courses directory yet at %s" % COURSES_DIR)
         return 0
+    print("Courses in %s" % COURSES_DIR)
     found = False
     for name in sorted(os.listdir(COURSES_DIR)):
         root = os.path.join(COURSES_DIR, name)
@@ -71,6 +69,7 @@ def cmd_new(args) -> int:
         print("  %-16s %gh · about %d modules → modules/%s/" % (part.name, part.hours, n, part.dir))
     print("\nNext: write the content, then `build.py build %s`." % cfg.id)
     print("The course-author skill does this end to end.")
+    print("A course is its own repository: `git init` inside %s when you are ready." % root)
     return 0
 
 
@@ -101,6 +100,15 @@ def cmd_build(args) -> int:
     return 0
 
 
+def cmd_where(_args) -> int:
+    from .paths import ENV_FILE, REPO_ROOT
+    print("platform  %s" % REPO_ROOT)
+    print("courses   %s" % COURSES_DIR)
+    print("dist      %s" % DIST_DIR)
+    print("config    %s%s" % (ENV_FILE, "" if os.path.isfile(ENV_FILE) else "  (absent)"))
+    return 0
+
+
 def cmd_studio(args) -> int:
     """Studio is imported lazily: the build path must not depend on the server or on Claude."""
     from studio.server import DEFAULT_PORT, serve
@@ -115,6 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("list", help="list courses").set_defaults(func=cmd_list)
+    sub.add_parser("where", help="print the resolved courses and dist directories").set_defaults(func=cmd_where)
 
     new = sub.add_parser("new", help="scaffold an empty course")
     new.add_argument("--theme", required=True, help='subject, e.g. "negotiation"')

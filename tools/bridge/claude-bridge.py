@@ -115,8 +115,12 @@ def active_mode():
     return "none"
 
 
-CLI_BUDGET = 5500          # characters. Windows command lines cap at 8191, and Claude Code's
-                           # headless mode has been known to return nothing on very large input.
+CLI_BUDGET = 60000         # characters. The prompt goes in on stdin, so the Windows command-line
+                           # cap does not apply; this only bounds what one question can cost.
+# Claude Code asks whether to trust the directory it starts in, which would hang a headless
+# call. The bridge hands it everything in the prompt, so it runs from an empty scratch folder.
+import tempfile
+CLI_CWD = os.path.join(tempfile.gettempdir(), "coursekit-claude")
 CLI_MODELS = {"claude-opus-5": "opus", "claude-sonnet-5": "sonnet",
               "claude-haiku-4-5-20251001": "haiku"}
 
@@ -178,7 +182,7 @@ def candidate_keys():
         (os.path.join(home, ".anthropic", "config.json"), "json"),
         (os.path.join(home, ".claude", "settings.json"), "claude"),
         (os.path.join(HERE, ".env"), "env"),
-        (os.path.join(os.path.dirname(HERE), ".env"), "env"),
+        (os.path.join(os.path.dirname(os.path.dirname(HERE)), ".env"), "env"),   # repo root
         (os.path.join(home, ".env"), "env"),
     ]
     for path, kind in spots:
@@ -223,9 +227,10 @@ def cli_works():
     if not cli:
         return False
     try:
-        p = subprocess.run(cli_argv(cli, ["-p", "Reply with the single word: ready"]),
-                           capture_output=True, text=True, timeout=120,
-                           stdin=subprocess.DEVNULL, encoding="utf-8", errors="replace")
+        os.makedirs(CLI_CWD, exist_ok=True)
+        p = subprocess.run(cli_argv(cli, ["-p"]), input="Reply with the single word: ready",
+                           capture_output=True, text=True, timeout=120, cwd=CLI_CWD,
+                           encoding="utf-8", errors="replace")
         return p.returncode == 0 and bool((p.stdout or "").strip())
     except Exception:
         return False
@@ -264,14 +269,17 @@ def call_cli(system, messages, model=None):
     short = CLI_MODELS.get(model or CFG.get("model") or "")
     attempts = []
     if short:
-        attempts.append(["-p", prompt, "--output-format", "text", "--model", short])
-    attempts.append(["-p", prompt, "--output-format", "text"])
-    attempts.append(["-p", prompt])
+        attempts.append(["-p", "--output-format", "text", "--model", short])
+    attempts.append(["-p", "--output-format", "text"])
+    attempts.append(["-p"])
+    os.makedirs(CLI_CWD, exist_ok=True)
     last = ""
     for args in attempts:
         try:
+            # The prompt travels on stdin, never as an argument: a Windows command line caps
+            # at 8191 characters, and a long passage plus a few turns is past that.
             proc = subprocess.run(cli_argv(cli, args), capture_output=True, text=True,
-                                  timeout=240, stdin=subprocess.DEVNULL,
+                                  timeout=240, input=prompt, cwd=CLI_CWD,
                                   encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired:
             raise
@@ -378,7 +386,7 @@ class Handler(BaseHTTPRequestHandler):
                     save_config()
                     return self._send(200, {"ok": True, "mode": "api", "steps": steps,
                                             "source": src, "key_hint": key_hint(),
-                                            "note": "Saved to bridge/config.json — you will not be asked again."})
+                                            "note": "Saved to tools/bridge/config.json — you will not be asked again."})
             # nothing usable: clear a dead key so it stops poisoning every request
             if (CFG.get("key") or "").strip():
                 CFG["key"] = ""

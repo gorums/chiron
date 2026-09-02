@@ -91,7 +91,7 @@ def manifest(theme: str, hours: float, *, course_id: str = "", title: str = "",
         "audience": "a complete beginner",
         "hours": _tidy(hours),
         "output": "%s-course" % course_id,
-        "folderLabel": "courses/%s" % course_id,
+        "folderLabel": course_id,
         "tutorPersona": "You are a sharp, plain-spoken %s tutor." % theme.strip().lower(),
         "parts": parts,
         "shortTitles": {},
@@ -112,6 +112,38 @@ def manifest(theme: str, hours: float, *, course_id: str = "", title: str = "",
 
 
 PLACEHOLDER = "<!-- Written by the course-author skill. Delete this line when you fill it in. -->\n"
+
+README_TEMPLATE = """# {title}
+
+A course for the course platform: markdown, JSON and nothing else. This folder is its own
+repository - the platform lives in a separate one and only needs to find this directory.
+
+To study or edit it, clone this repository into the platform's courses directory (the one
+`python platform/build.py where` prints), then:
+
+    python platform/build.py check {id}
+    python platform/build.py build {id}
+
+or open Course Studio, which lists every course in that directory.
+
+    course.json          the manifest - what makes this folder a course
+    modules/<part>/      the teaching, one markdown file per module
+    data/assessments/    quizzes and flashcards
+    data/suggestions/    one suggested question per section
+    plan/ reference/ templates/
+"""
+
+
+def readme(course_id: str, title: str) -> str:
+    return README_TEMPLATE.format(id=course_id, title=title)
+
+
+def write_readme(root: str, course_id: str, title: str) -> None:
+    """A README so the folder reads as a repository of its own. Never overwrites one."""
+    path = os.path.join(root, "README.md")
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(readme(course_id, title))
 
 
 def create(courses_dir: str, theme: str, hours: float, *, course_id: str = "",
@@ -144,4 +176,5 @@ def create(courses_dir: str, theme: str, hours: float, *, course_id: str = "",
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(heading + "\n" + PLACEHOLDER)
+    write_readme(root, data["id"], data["title"])
     return root

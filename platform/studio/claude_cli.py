@@ -6,7 +6,7 @@ spawns a process — which is why the generator runs modules one at a time and s
 progress rather than pretending to be instant.
 
 Why stdin and not `-p <prompt>`: a Windows command line caps at 8191 characters, and
-`bridge/claude-bridge.py` has to trim prompts to ~5500 to stay clear of it. Course writing
+`tools/bridge/claude-bridge.py` has to trim prompts to ~5500 to stay clear of it. Course writing
 needs prompts an order of magnitude larger than that — the module contract plus the whole
 curriculum for context. Passing the prompt on stdin removes the ceiling entirely.
 """
@@ -19,7 +19,10 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from typing import Any, Optional
+
+from .log import log
 
 # Long enough for a full module; short enough that a wedged call cannot stall a job forever.
 DEFAULT_TIMEOUT = 600
@@ -33,6 +36,12 @@ MODEL_ALIASES = {
     "claude-sonnet-5": "sonnet",
     "claude-haiku-4-5-20251001": "haiku",
 }
+
+# Every call names its model. Without `--model` the CLI inherits whatever the person last
+# picked interactively - which can be a model the headless SDK path does not accept (a
+# `[1m]` context variant, say), and then a run dies mid-module with "unrecognized_model".
+# Overridable per call, per Studio (state/studio.json) and per environment.
+DEFAULT_MODEL = os.environ.get("STUDIO_MODEL", "sonnet")
 
 _FENCE = re.compile(r"^\s*```(?:json|markdown|md)?\s*\n(.*?)\n\s*```\s*$", re.S)
 
@@ -82,13 +91,14 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
     os.makedirs(_SCRATCH, exist_ok=True)
     base = ["-p", "--output-format", "text"]
     attempts = []
-    alias = MODEL_ALIASES.get((model or "").strip())
-    if alias:
+    for alias in model_chain(model):
         attempts.append(base + ["--model", alias])
-    attempts.append(base)
+    attempts.append(base)                       # last resort: whatever the CLI defaults to
 
     last = ""
     for args in attempts:
+        label = args[args.index("--model") + 1] if "--model" in args else "(cli default)"
+        started = time.time()
         try:
             proc = subprocess.run(
                 _argv(cli, args),
@@ -101,17 +111,54 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
                 cwd=_SCRATCH,
             )
         except subprocess.TimeoutExpired:
+            log.error("claude %s: no answer within %ds (prompt %d chars)", label, timeout, len(prompt))
             raise ClaudeFailed("Claude Code did not answer within %ds." % timeout)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user as a job failure
             last = str(exc)[:300]
+            log.error("claude %s: could not start: %s", label, last)
             continue
 
         out = (proc.stdout or "").strip()
+        err = (proc.stderr or "").strip()
+        took = time.time() - started
         if proc.returncode == 0 and out:
+            log.info("claude %s: ok in %.1fs, prompt %d chars, reply %d chars%s",
+                     label, took, len(prompt), len(out),
+                     (" (stderr: %s)" % err[:160]) if err else "")
             return out
-        last = (proc.stderr or "").strip()[:300] or "exit code %s with no output" % proc.returncode
+        last = err[:300] or "exit code %s with no output" % proc.returncode
+        log.warning("claude %s: failed in %.1fs, exit %s, prompt %d chars: %s",
+                    label, took, proc.returncode, len(prompt), err[:600] or "no output")
 
+    log.error("claude: every attempt failed: %s", last or "no output")
     raise ClaudeFailed("Claude Code failed: " + (last or "no output"))
+
+
+def model_chain(model: str = "") -> list:
+    """The aliases to try, in order: what was asked for, then Studio's default."""
+    chain = []
+    for candidate in ((model or "").strip(), DEFAULT_MODEL):
+        alias = MODEL_ALIASES.get(candidate)
+        if alias and alias not in chain:
+            chain.append(alias)
+    return chain
+
+
+def chat_prompt(system: str, messages) -> str:
+    """Flatten a system prompt and a chat transcript into one prompt for the CLI.
+
+    The CLI's headless mode takes a single prompt, so the tutor's conversation is rendered as
+    a transcript ending in an open "Assistant:" turn. Prompts travel on stdin, so there is no
+    size ceiling to trim to - the page already bounds what it sends.
+    """
+    parts = []
+    if system:
+        parts.append(str(system))
+    for m in list(messages or [])[-20:]:
+        who = "User" if (m or {}).get("role") == "user" else "Assistant"
+        parts.append("%s: %s" % (who, (m or {}).get("content", "")))
+    parts.append("Assistant:")
+    return "\n\n".join(parts)
 
 
 def strip_fence(text: str) -> str:

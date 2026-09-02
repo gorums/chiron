@@ -5,8 +5,39 @@ budget; the `course-author` skill writes the course; `platform/build.py` renders
 self-contained HTML file that tracks progress, runs spaced repetition, and lets the reader
 ask Claude about whatever passage they are looking at.
 
-The marketing course in `courses/marketing/` is the reference implementation. It was the
-original project; the platform was extracted from it.
+The marketing course is the reference implementation. It was the original project; the
+platform was extracted from it, and it now lives in its own repository like every course.
+
+## Two kinds of repository
+
+**This repository is the platform. A course is never committed here.** Each course is its
+own git repository; the platform only needs the directory that holds the clones. That
+directory is resolved once, in `platform/coursekit/paths.py`, and both entry points read it:
+
+| | |
+|---|---|
+| `COURSES_DIR` environment variable | wins |
+| `COURSES_DIR=` line in `.env` at the repo root | the same file compose reads |
+| `<repo>/courses/` | the default, gitignored, a place for clones |
+
+`DIST_DIR` resolves the same way and defaults to `<repo>/dist/`. A relative value is taken
+from the repo root, so `COURSES_DIR=../courses` means a sibling folder on every machine.
+`python platform/build.py where` prints what was resolved.
+
+Consequences:
+
+- `courses/` is in `.gitignore`. Cloning a course into it, or `git init` inside a folder
+  Studio just generated, is the whole workflow. Nested repositories under an ignored
+  directory are invisible to this one.
+- A new course gets a `README.md` from `scaffold.write_readme` so the folder reads as a
+  repository of its own. It is never overwritten.
+- `folderLabel` in `course.json` is now just the course id. Older manifests carrying
+  `courses/<id>` still work; the field is only shown to the reader.
+- Inside the container `COURSES_DIR` and `DIST_DIR` are set in the image to `/work/courses`
+  and `/work/dist`, and compose mounts `${COURSES_DIR:-./courses}` at `/work/courses`. That
+  is what keeps a host path written in `.env` from reaching the code.
+- The tests never assume a course is present: `TestShippedMarketingCourse` skips when the
+  marketing course is not in `COURSES_DIR`.
 
 ## Layout
 
@@ -17,13 +48,20 @@ platform/                   the engine — knows nothing about any subject
   studio/                   the local web app: generate + build from a browser
   web/                      front-end source: shell.html + css/ + js/
   tests/                    test_build.py, test_studio.py
-courses/<id>/               one course, all content
+courses/<id>/               one course = one separate git repository (gitignored here;
+                            the directory itself moves with COURSES_DIR)
   course.json               the manifest that makes a folder a course
   modules/<part>/M01-*.md   the teaching
   plan/ reference/ templates/
   data/assessments/ data/suggestions/
 dist/<id>/                  build output (generated — do not edit)
-bridge/                     local proxy so a course page can reach Claude
+state/                      generated, gitignored, personal:
+  progress/<id>.json        the platform's copy of a reader's progress
+  jobs/<id>.json            finished generation jobs, replayable after a restart
+  trash/                    removed modules and deleted courses — moved, never erased
+  logs/studio.log           every Claude call and job event, rotating (2 MB × 3)
+  studio.json               Studio-wide preferences: the model
+tools/bridge/               local proxy so a course page can reach Claude
 docker/Dockerfile           one image; Studio and the bridge differ only by command
 compose.yaml                both services, restart: unless-stopped
 .claude/skills/course-author/   the skill that writes a course from a brief
@@ -33,6 +71,7 @@ compose.yaml                both services, restart: unless-stopped
 
 ```
 python platform/build.py list                            what courses exist
+python platform/build.py where                           which courses/ and dist/ are in use
 python platform/build.py new --theme "X" --hours 30      scaffold an empty course
 python platform/build.py check <id>                      validate; reports everything at once
 python platform/build.py build <id>                      validate, then write dist/<id>/
@@ -40,13 +79,14 @@ python platform/build.py studio                          open Course Studio in a
 ```
 
 Or double-click `start-studio.bat`. Studio is the UI route: it generates a course from a
-theme and an hour budget, and runs check/build without a terminal.
+theme and an hour budget, shows how far you are in each one, and edits, extends and rebuilds
+a course without a terminal.
 
 Tests:
 
 ```
-python platform/tests/test_build.py      27 tests — engine
-python platform/tests/test_studio.py     42 tests — Studio
+python platform/tests/test_build.py      31 tests — engine
+python platform/tests/test_studio.py     74 tests — Studio
 ```
 
 Requires Python 3 and the `markdown` package (`pip install markdown`). Nothing else.
@@ -60,6 +100,7 @@ docker compose down              stop them
 ```
 
 Needs a `.env` holding `CLAUDE_HOME` — the path to the host's `~/.claude`. Copy `.env.example`.
+The same file may set `COURSES_DIR`; compose mounts it at `/work/courses`.
 
 **One image, two services.** Studio and the bridge need the same things — Python, and the
 Claude Code CLI — so they share a build and differ only in the command. Two Dockerfiles would
@@ -84,13 +125,27 @@ It prompts to trust the directory it starts in, which would hang a headless call
 container, where the workspace is a bind mount it has never seen. Studio passes everything in
 the prompt and asks the model to read nothing, so it needs no filesystem context.
 
-### The tutor over HTTP
+### A course served by Studio is the primary way to study
 
-A course served from Studio at `http://127.0.0.1:8790/course/<id>/…` is not a `file://` page,
-but the tutor still works through the bridge: `bridge/claude-bridge.py` sends
-`Access-Control-Allow-Origin: *`, and `connMode()` in `14-conn.js` picks the bridge route
-whenever it answers. `isLocalFile()` only shapes an error message — it gates nothing. So with
-both containers up, the `file://` requirement goes away.
+A course opened at `http://127.0.0.1:8790/course/<id>/<output>-local.html` behaves differently
+from the same file opened off disk, and every difference goes through one detection: the
+`STUDIO` constant in `01-state.js`, set only when the page's origin is http(s) and its path is
+`/course/<id>/…` for its own course id.
+
+- **Progress syncs to the platform.** `save()` still writes localStorage, then debounces a
+  `PUT /api/courses/<id>/progress`; `pagehide` flushes with `sendBeacon`. On boot `syncPull()`
+  runs before the first render and the newer `updatedAt` wins, so the same course can be
+  studied from two browsers. Device settings (`bridge`, `ui`, `theme`) never leave the
+  browser — `progress.DEVICE_KEYS` strips them again server-side.
+- **The tutor answers on the same origin.** `connMode()` returns `"studio"` when Studio
+  reports Claude available and no API key is saved; `askBridge()` then posts to `/api/ask`,
+  which flattens the conversation with `claude_cli.chat_prompt` and runs the CLI on stdin. No
+  bridge, no key, no CORS. A saved key still wins: it is an explicit choice to pay per question.
+- **The course can grow from inside.** The module footer links to Studio's course page with
+  `?tab=add&from=<mid>` or `?rewrite=<mid>`.
+
+The bridge remains the route for a page opened off disk (`file://`), where none of this
+applies. It now also passes prompts on stdin from a scratch cwd, like Studio.
 
 ## The two-layer rule
 
@@ -175,15 +230,37 @@ reading validation errors next to the course they belong to.
 | `claude_cli` | talks to Claude through the `claude` CLI |
 | `jobs` | background work with a replayable event log |
 | `prompts` | every prompt Studio sends |
-| `generator` | the pipeline: plan → approve → write → validate → build |
+| `generator` | the pipeline: plan → approve → write → validate → build; plus `extend` and `rewrite` for an existing course |
+| `progress` | the platform-side copy of reader state, one JSON file per course |
+| `manage` | course operations that need no model: settings form, remove a module, trash a course |
+| `prefs` | Studio-wide preferences in `state/studio.json` — today, the model |
+| `log` | the `studio` logger: rotating file + in-memory ring, read by `/api/logs` |
 | `server` | HTTP, SSE, and the static UI in `ui/` |
 
 **It binds to 127.0.0.1, and that is a security boundary, not a default.** Studio writes
 files and spawns processes. Do not make it listen on another interface.
 
 **Prompts go in on stdin, never as `-p <prompt>`.** A Windows command line caps at 8191
-characters; `bridge/claude-bridge.py` has to trim to ~5500 to stay clear of it. Course
-prompts are an order of magnitude larger. stdin removes the ceiling.
+characters, and a module prompt is an order of magnitude larger. stdin removes the ceiling.
+`tools/bridge/claude-bridge.py` does the same; its remaining trim only bounds cost per question.
+
+**Every CLI call names its model.** Without `--model`, Claude Code inherits whatever the
+person last chose interactively, and the headless SDK path rejects some of those (a `[1m]`
+context variant fails with `unrecognized_model`) — which is how a run died at module 8 of 9.
+`claude_cli.model_chain()` tries the requested alias, then Studio's default (`prefs`, env
+`STUDIO_MODEL`, else `sonnet`), then the bare CLI as a last resort. `prefs.MODELS` is the
+only list the Settings page offers.
+
+**A run can be resumed.** `generate()` saves the approved curriculum to `plan/plan.json`;
+`brief["resume"]` reloads it (or `reconstruct_plan()` rebuilds one from `course.json` for
+courses made before that), skips the approval gate, keeps every module and study-data entry
+already on disk, and writes only what is missing. `POST /api/courses/<id>/resume`; the
+course page and the failed-job screen offer the button when `can_resume()` says so.
+
+**Log first, then look.** `log.log` is the `studio` logger. Every Claude call logs model,
+duration, prompt/reply size and stderr on failure; every job event logs a line; every
+unhandled route error logs a traceback. Read it at **Settings & logs** (`#/settings`) or in
+`state/logs/studio.log`. `STUDIO_LOG_LEVEL=DEBUG` adds access lines.
 
 **Model output is trusted for prose and distrusted for structure.** `generator._fix_assessment`
 and `_fix_suggestions` coerce replies into shapes the validator accepts — clamping quiz answer
@@ -197,6 +274,46 @@ validation. That function is public for this reason; `test_studio.py` guards the
 
 The approval gate is `Job.await_input`, which parks the worker thread until the browser POSTs
 an answer. A cancel also releases it, so a job waiting for approval can still be stopped.
+
+### Editing an existing course
+
+Three routes, all on the Studio course page (`#/course/<id>`):
+
+| | |
+|---|---|
+| `POST /api/courses/<id>/extend` | one new module on a topic. `generator.extend` asks for a design that fits the existing curriculum (`prompts.module_spec`), writes it under the next free id — ids are never reused because progress is keyed by them — appends it to the chosen part, writes its study data to `data/*/<mid>.json`, adds the short title, rebuilds. |
+| `POST /api/courses/<id>/modules/<mid>/rewrite` | same id, same file, same position; the notes become `prompts.direction`. `_store_module_data` replaces the entry in whichever file already holds it, so the validator never sees two claims on one id. |
+| `GET/PUT /api/courses/<id>/files?path=` | raw editing of any `.md`/`.json` inside the course. `resolve_course_file` confines the path; JSON is parsed before it is written. |
+
+Both jobs stream events like a generation run and end with a build. A rewrite keeps the
+reader's progress for the module but may leave section ticks misaligned if the section
+count changes — the UI says so.
+
+Without a model (`studio/manage.py`):
+
+| | |
+|---|---|
+| `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
+| `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title goes; the reply carries the check result. |
+| `POST /api/courses/<id>/delete` | needs `{confirm: <id>}`; moves `courses/<id>` and `dist/<id>` to `state/trash/<id>-<stamp>/` and forgets the progress copy. |
+
+The reader's open questions (`state.marks` with status `open`/`answered`) come back in the
+course detail as `questions`; the Studio Questions tab turns any of them into an Add-a-module
+or Rewrite brief through query params (`?tab=add&q=…&notes=…`, `?rewrite=<mid>&q=…`).
+
+**Jobs persist.** `jobs.Registry(store_dir)` writes a finished job's events and result to
+`state/jobs/<id>.json` and reads them back as `StoredJob`, so `/api/state` and
+`/api/jobs/<id>/events` work across a restart. Ids carry a per-process prefix so runs never
+collide.
+
+### The Studio UI
+
+`ui/studio.js` is hash-routed: `#/` library with a "today" strip and progress cards, `#/new`,
+`#/course/<id>` (tabs: Modules, Add a module, Questions, Files, Settings),
+`#/course/<id>/edit?path=`, `#/job/<id>`, and `#/settings` — Studio-wide: the model, where
+things are, and a live log viewer polling `/api/logs`. The course
+page reads `GET /api/courses/<id>`, which parses modules and is therefore not used for the
+listing; `/api/state` counts module files instead (`server._module_ids`).
 
 ## Authoring content
 
@@ -220,14 +337,22 @@ All reader state — completion, timers, quiz answers, flashcard scheduling, hig
 and every conversation — lives in the browser's `localStorage` under `CFG.storageKey`, which
 is `course_<id>_v1`. Courses are therefore isolated from each other by construction.
 
-There is no server. Progress moves between machines through **Backup / restore** in the
-sidebar. Changing `storageKey` orphans existing progress, so do not change a course's `id`
-after anyone has started it.
+When the page is served by Studio the same object is also kept at
+`state/progress/<id>.json` (see above), which is what the library cards and the course page
+read. A page opened off disk has no server; there, progress moves between machines through
+**Backup / restore** in the sidebar. Changing `storageKey` orphans existing progress, so do
+not change a course's `id` after anyone has started it.
 
 ## Gotchas
 
 - **Windows console encoding.** `platform/build.py` forces UTF-8 on stdout/stderr. Courses
   use real typography and cp1252 cannot encode it. Keep that shim.
+- **Every Studio handler must read the request body**, even one that ignores it.
+  `Handler` speaks HTTP/1.1 with keep-alive and one handler instance serves a whole
+  connection, so an unread `{}` becomes the first bytes of the *next* request on that
+  connection: the server answers `Bad request syntax ('{}')` as an HTML page and the browser
+  reports "The server sent something unreadable." `do_GET/POST/PUT` reset and drain the
+  body before dispatch (`_raw_body`); the smoke test's keep-alive check guards it.
 - **`</` inside embedded JSON** would close the `<script>` tag early; `renderer._embed_json`
   escapes it. Do not swap in a plain `json.dumps`.
 - **Relative markdown links do not survive** — a one-file site cannot resolve them, so they
