@@ -78,7 +78,6 @@ a{color:var(--accent-ink);text-underline-offset:3px}
 .dot.done{background:var(--accent);border-color:var(--accent)}
 
 /* sidebar can be hidden on a wide screen too; the ☰ button brings it back */
-body.side-off #app{grid-template-columns:1fr}
 body.side-off #sidebar{display:none}
 #menubtn{display:inline-flex}
 

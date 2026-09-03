@@ -86,6 +86,15 @@ function viewSettings() {
     <div class="setrow" style="border-bottom:0"><span class="lab">Motion</span><label style="display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer"><input type="checkbox" ${UI().nomotion ? "checked" : ""} onchange="setReading('nomotion',this.checked)"> Reduce animation</label></div>
   </div>
 
+  <div class="card" style="margin-bottom:20px">
+    <p class="eyebrow">Chat panel</p>
+    <p class="sub" style="margin-bottom:6px">Where the tutor sits while you read. Kept in this browser only. You can also drag the panel's edge to resize it, and double-click the edge to reset.</p>
+    <div class="setrow"><span class="lab">Position</span><div class="chips" style="margin:0">${DOCKS.map(([p, ico, tip]) => `<button class="chip ${railPos() === p ? "on" : ""}" onclick="setRailPos('${p}')">${ico} ${tip.replace("Dock ", "").replace("along the ", "")}</button>`).join("")}</div></div>
+    <div class="setrow" style="border-bottom:0"><span class="lab">Size<small>Width when docked at a side, height when docked at the bottom.</small></span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="sub">${railPos() === "bottom" ? railHeight() + "px tall" : railWidth() + "px wide"}</span>
+      <button class="btn sm" onclick="if(!S.ui)S.ui={};S.ui.railW=RAIL_DEFAULT;S.ui.railH=RAIL_H_DEFAULT;save();applyRail();viewSettings()">Reset</button></div></div>
+  </div>
+
   <div class="card">
     <p class="eyebrow">Why the key sits in the browser</p>
     <p style="color:var(--text-2);margin:0 0 10px">Anthropic allows a page to call the API directly, as long as it says it means to. That is what this does — so there is no proxy, no Python and no window to leave open. The cost is that your key lives in this browser's storage for this file.</p>

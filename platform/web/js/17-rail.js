@@ -96,14 +96,42 @@ function toggleRail() {
   S.ui.rail = !railOpen(); save();
   applyRail(); if (railOpen()) renderRail();
 }
-const RAIL_MIN = 340, RAIL_DEFAULT = 560;
-function railWidth() { return Math.max(RAIL_MIN, Math.min((S.ui && S.ui.railW) || RAIL_DEFAULT, Math.floor(window.innerWidth * .7))); }
+const RAIL_MIN = 340, RAIL_DEFAULT = 560, RAIL_H_MIN = 220, RAIL_H_DEFAULT = 380, SIDE_W = 290;
+const DOCKS = [["right", "⇥", "Dock right"], ["bottom", "⤓", "Dock along the bottom"]];
+function railPos() { const p = S.ui && S.ui.railPos; return DOCKS.some(d => d[0] === p) ? p : "right"; }
+/* never wider than leaves READ_MIN for the text beside it */
+const READ_MIN = 420;
+function railWidth() {
+  const side = (S.ui && S.ui.sideOff) ? 0 : SIDE_W;
+  const cap = Math.max(RAIL_MIN, window.innerWidth - side - READ_MIN);
+  return Math.max(RAIL_MIN, Math.min((S.ui && S.ui.railW) || RAIL_DEFAULT, cap));
+}
+function railHeight() { return Math.max(RAIL_H_MIN, Math.min((S.ui && S.ui.railH) || RAIL_H_DEFAULT, Math.floor(window.innerHeight * .8))); }
+function setRailPos(p) { if (!S.ui) S.ui = {}; S.ui.railPos = p; save(); applyRail(); if (route.v === "m" && railOpen()) renderRail(); if (route.v === "settings") viewSettings(); }
+/* Lays the page out: which columns the #app grid has, and where the rail sits in them.
+   Everything is recomputed from state, so a drag, a dock change, a hidden sidebar and a
+   window resize all go through here. */
 function applyRail() {
   const show = route.v === "m" && railOpen();
-  document.documentElement.style.setProperty("--railw", railWidth() + "px");
+  const pos = railPos(), side = !(S.ui && S.ui.sideOff), narrow = window.innerWidth <= 860;
+  const root = document.documentElement.style;
+  root.setProperty("--railw", railWidth() + "px");
+  root.setProperty("--railh", railHeight() + "px");
+  root.setProperty("--sidew", (side && !narrow ? SIDE_W : 0) + "px");
   document.body.classList.toggle("rail-on", show);
+  ["rail-right", "rail-bottom"].forEach(c => document.body.classList.remove(c));
+  document.body.classList.add("rail-" + pos);
+  const app = document.getElementById("app"), main = document.getElementById("main"), sb = document.getElementById("sidebar");
   const el = document.getElementById("rail");
   if (el) { el.classList.toggle("hidden", route.v !== "m"); el.classList.toggle("shut", !railOpen()); }
+  // grid columns: [sidebar] [main] [rail]  — the rail docks right, or along the bottom
+  const cols = [], place = (node, col) => { if (node) node.style.gridColumn = String(col); };
+  let col = 1;
+  if (side && !narrow) { cols.push(SIDE_W + "px"); place(sb, col++); } else place(sb, "");
+  const inGrid = show && !narrow && pos !== "bottom";
+  cols.push("1fr"); place(main, col++);
+  if (inGrid) { cols.push("var(--railw)"); place(el, col++); } else place(el, "");
+  if (app) app.style.gridTemplateColumns = narrow ? "" : cols.join(" ");
   const t = document.getElementById("railtoggle");
   if (t) t.classList.toggle("hidden", route.v !== "m");
 }
@@ -284,7 +312,8 @@ function renderRailHead() {
         <span class="ct">${esc(convoTitle(c))}</span><span class="cv">▾</span>
       </button>
       <button class="iconbtn" style="width:28px;height:28px" title="New chat" onclick="startNew()">＋</button>
-      <button class="iconbtn" style="width:28px;height:28px" title="Hide (a)" onclick="toggleRail()">→</button>
+      <span class="dock">${DOCKS.map(([p, ico, tip]) => `<button class="iconbtn ${railPos() === p ? "on" : ""}" title="${tip}" onclick="setRailPos('${p}')">${ico}</button>`).join("")}</span>
+      <button class="iconbtn" style="width:28px;height:28px" title="Hide (a)" onclick="toggleRail()">✕</button>
     </div>
     <div class="railctx">
       ${c.kind === "rp" ? `<div class="rpbar"><span class="tag warn">role-play</span><span style="flex:1;font-size:12.5px;color:var(--text-2)">${c.finished ? "Finished — feedback below" : "Claude is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
@@ -335,17 +364,19 @@ function renderRailBody() {
     h += `<div class="carried"><b>Carried over${c.parent && CV()[c.parent] ? " from “" + esc(convoTitle(CV()[c.parent])) + "”" : ""}</b>
       <div>${esc(c.summary)}</div></div>`;
   }
+  h += `<div class="thread" id="railthread">`;
   if (compacting) h += `<div class="msg a typing"><i></i><i></i><i></i></div>`;
   c.msgs.forEach(x => {
     h += `<div class="msg ${x.r === "u" ? "u" : x.r === "e" ? "a err" : "a"}">
       ${x.r === "u" && x.sec != null && m.sections[x.sec] ? `<div class="msgctx">${esc(m.sections[x.sec].h)}${x.quote ? " · selection" : ""}</div>` : ""}
       ${x.r === "u" ? esc(x.t) : mdLite(x.t)}</div>`;
   });
-  h += `<div id="railpending"></div>`;
+  h += `<div id="railpending"></div></div>`;
   h += `<div class="suggest"><div id="raillead2"></div><div id="railsuggest"></div></div>`;
   b.innerHTML = h;
   renderSuggest();
-  b.scrollTop = b.scrollHeight;
+  const th = document.getElementById("railthread");
+  if (railPos() === "bottom" && th) th.scrollTop = th.scrollHeight; else b.scrollTop = b.scrollHeight;
   const d = document.getElementById("railhead");
   if (d) { const dot = d.querySelector(".dotstat"); if (dot) dot.className = "dotstat " + (bridgeChecking ? "busy" : connMode() !== "none" ? "on" : ""); }
 }
@@ -422,16 +453,30 @@ function askSection(mid, i) {
   document.querySelectorAll(".prose .picked").forEach(n => n.classList.remove("picked"));
 }
 
-/* the rail is resizable: drag its left edge, width kept per device in S.ui.railW */
+/* the rail is resizable: drag its inner edge. Width (or height, docked at the bottom) is
+   kept per device in S.ui and saved as you drag, so a reload keeps it. */
+let railSaveTimer = null;
 function bindRailGrip() {
   const g = document.getElementById("railgrip"); if (!g) return;
   g.addEventListener("mousedown", e => {
     e.preventDefault();
+    if (!S.ui) S.ui = {};
     document.body.classList.add("raildrag");
-    const move = ev => { if (!S.ui) S.ui = {}; S.ui.railW = Math.round(window.innerWidth - ev.clientX); applyRail(); };
-    const up = () => { document.body.classList.remove("raildrag"); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); S.ui.railW = railWidth(); save(); };
+    const pos = railPos();
+    const move = ev => {
+      if (pos === "bottom") S.ui.railH = Math.round(window.innerHeight - ev.clientY);
+      else S.ui.railW = Math.round(window.innerWidth - ev.clientX);
+      applyRail();
+      clearTimeout(railSaveTimer); railSaveTimer = setTimeout(save, 300);
+    };
+    const up = () => {
+      document.body.classList.remove("raildrag");
+      window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
+      if (pos === "bottom") S.ui.railH = railHeight(); else S.ui.railW = railWidth();
+      save();
+    };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   });
-  g.addEventListener("dblclick", () => { if (!S.ui) S.ui = {}; S.ui.railW = RAIL_DEFAULT; save(); applyRail(); toast("Chat width reset"); });
+  g.addEventListener("dblclick", () => { if (!S.ui) S.ui = {}; if (railPos() === "bottom") S.ui.railH = RAIL_H_DEFAULT; else S.ui.railW = RAIL_DEFAULT; save(); applyRail(); toast("Chat size reset"); });
 }
-window.addEventListener("resize", () => { if (document.getElementById("rail")) applyRail(); });
+window.addEventListener("resize", () => { applyRail(); });

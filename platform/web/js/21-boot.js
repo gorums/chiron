@@ -24,7 +24,7 @@ function render() {
 }
 /* the left sidebar: a slide-over on a narrow screen, hideable on a wide one */
 function isNarrow() { return window.innerWidth <= 860; }
-function applySide() { document.body.classList.toggle("side-off", !!(S.ui && S.ui.sideOff)); }
+function applySide() { document.body.classList.toggle("side-off", !!(S.ui && S.ui.sideOff)); applyRail(); }
 function toggleSidebar() {
   if (isNarrow()) { $("#sidebar").classList.toggle("open"); return; }
   if (!S.ui) S.ui = {};
