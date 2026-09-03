@@ -41,7 +41,7 @@ async function checkElab(mid, i) {
   const btn = document.getElementById("elabck" + i), box = document.getElementById("elabfb" + i);
   if (btn) { btn.disabled = true; btn.textContent = "Checking…"; }
   try {
-    const sys = graderPersona() + "\n\nThe reader is explaining an idea from module " + m.id + ", \"" + m.title + "\", in their own words. The course text it draws on:\n\"\"\"\n" + sectionContext(m, 5000) + "\n\"\"\"\n" + (S.biz ? "\nTheir practice business: " + S.biz + "\n" : "") + "\n" + verdictFormat();
+    const sys = graderPersona() + "\n\nThe reader is explaining an idea from module " + m.id + ", \"" + m.title + "\", in their own words. The course text it draws on:\n\"\"\"\n" + sectionContext(m, 5000) + "\n\"\"\"\n" + (S.biz ? "\n" + (CFG.anchor || {}).label + ": " + S.biz + "\n" : "") + "\n" + verdictFormat();
     const fb = parseVerdict(await askBridge(sys, [{ role: "user", content: `Prompt: ${m.assess.elaborate[i]}\n\nThe reader wrote:\n"""\n${text}\n"""` }]));
     p.elabFb[i] = fb; save(); markDay();
     if (box) box.innerHTML = `<div class="fb ${fb.verdict}"><b>What Claude saw</b>${mdLite(fb.text)}</div>`;
@@ -76,7 +76,7 @@ function startRoleplay(mid) {
   toast("In character — Claude stays the other side until you finish");
 }
 function roleplaySystem(m, rp) {
-  return `${rp.persona} Stay in character for the whole conversation: you are not a tutor and you do not coach, explain the course, or break character unless the reader writes "pause". Respond the way this person really would — with their own concerns, doubts and pushback — in one to four sentences per turn. The situation: ${rp.situation}${S.biz ? ` The reader's business: ${S.biz}.` : ""} Do not make it easy; do not make it impossible.`;
+  return `${rp.persona} Stay in character for the whole conversation: you are not a tutor and you do not coach, explain the course, or break character unless the reader writes "pause". Respond the way this person really would — with their own concerns, doubts and pushback — in one to four sentences per turn. The situation: ${rp.situation}${S.biz ? ` ${(CFG.anchor || {}).label}: ${S.biz}.` : ""} Do not make it easy; do not make it impossible.`;
 }
 async function finishRoleplay(mid) {
   const m = byId(mid), rp = m.assess.roleplay, c = activeConvo(mid, false);
@@ -104,7 +104,7 @@ async function reviewSheet(slug) {
   try {
     const mods = (t.uses || []).map(byId).filter(Boolean);
     const ctx = mods.map(m => "Module " + m.id + " " + m.title + ":\n" + sectionContext(m, 3000)).join("\n\n");
-    const sys = graderPersona() + `\n\nThe reader filled in a worksheet called "${t.title}" from the course.${ctx ? " The modules it comes from:\n\"\"\"\n" + ctx + "\n\"\"\"" : ""}${S.biz ? "\nTheir practice business: " + S.biz : ""}\n\nJudge whether what they wrote is specific, internally consistent, and usable — not whether it is complete. Blank fields shown as ____ are fine to mention once, not to list.\n\n` + verdictFormat().replace("Under 160", "Under 220");
+    const sys = graderPersona() + `\n\nThe reader filled in a worksheet called "${t.title}" from the course.${ctx ? " The modules it comes from:\n\"\"\"\n" + ctx + "\n\"\"\"" : ""}${S.biz ? "\n" + (CFG.anchor || {}).label + ": " + S.biz : ""}\n\nJudge whether what they wrote is specific, internally consistent, and usable — not whether it is complete. Blank fields shown as ____ are fine to mention once, not to list.\n\n` + verdictFormat().replace("Under 160", "Under 220");
     const fb = parseVerdict(await askBridge(sys, [{ role: "user", content: sheetText(t).slice(0, 12000) }]));
     sheetVals(slug)._fb = fb; save(); markDay();
     if (box) box.innerHTML = `<div class="fb ${fb.verdict}"><b>Claude's review</b>${mdLite(fb.text)}</div>`;

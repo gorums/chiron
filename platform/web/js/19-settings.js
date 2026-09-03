@@ -77,6 +77,12 @@ function viewSettings() {
   </details>
 
   <div class="card" style="margin-bottom:20px">
+    <p class="eyebrow">${esc((CFG.anchor || {}).label || "Your own case")}</p>
+    <p class="sub" style="margin-bottom:10px">${esc((CFG.anchor || {}).prompt || "")}</p>
+    <input type="text" id="bizin" value="${esc(S.biz || "")}" placeholder="${esc((CFG.anchor || {}).placeholder || "")}" onchange="S.biz=this.value.trim();save();toast('Saved')">
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
     <p class="eyebrow">Reading</p>
     <p class="sub" style="margin-bottom:6px">Kept in this browser only.</p>
     <div class="setrow"><span class="lab">Text size</span><div class="chips" style="margin:0">${[["s", "Smaller"], ["m", "Normal"], ["l", "Larger"], ["xl", "Largest"]].map(([v, l]) => `<button class="chip ${(UI().size || "m") === v ? "on" : ""}" onclick="setReading('size','${v}')">${l}</button>`).join("")}</div></div>
@@ -88,10 +94,16 @@ function viewSettings() {
   <div class="card" style="margin-bottom:20px">
     <p class="eyebrow">Chat panel</p>
     <p class="sub" style="margin-bottom:6px">Where the tutor sits while you read. Kept in this browser only. You can also drag the panel's edge to resize it, and double-click the edge to reset.</p>
-    <div class="setrow"><span class="lab">Position</span><div class="chips" style="margin:0">${DOCKS.map(([p, ico, tip]) => `<button class="chip ${railPos() === p ? "on" : ""}" onclick="setRailPos('${p}')">${ico} ${tip.replace("Dock ", "").replace("along the ", "")}</button>`).join("")}</div></div>
+    <div class="setrow"><span class="lab">Position</span><div class="chips" style="margin:0">${DOCKS.map(([p, _g, tip]) => `<button class="chip ${railPos() === p ? "on" : ""}" onclick="setRailPos('${p}')">${tip.replace("Dock ", "").replace("along the ", "")}</button>`).join("")}</div></div>
     <div class="setrow" style="border-bottom:0"><span class="lab">Size<small>Width when docked at a side, height when docked at the bottom.</small></span>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="sub">${railPos() === "bottom" ? railHeight() + "px tall" : railWidth() + "px wide"}</span>
       <button class="btn sm" onclick="if(!S.ui)S.ui={};S.ui.railW=LAYOUT.railDefault;S.ui.railH=LAYOUT.railHeightDefault;save();applyRail();viewSettings()">Reset</button></div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <p class="eyebrow">Backup &amp; restore</p>
+    <p class="sub" style="margin-bottom:12px">${STUDIO ? "Progress is also kept on the platform while this page is served by Studio. A backup is still the way to move it to a page opened off disk." : "Progress lives in this browser only. Keep a copy, or move it to another machine."}</p>
+    <button class="btn" onclick="openData()">Open backup &amp; restore</button>
   </div>
 
   <div class="card">

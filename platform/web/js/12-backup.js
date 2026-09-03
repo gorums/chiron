@@ -23,6 +23,6 @@ function restore() {
   } catch (e) { toast("That is not valid backup text"); }
 }
 function wipe() {
-  if (!confirm("Erase all progress, notes, answers and flashcard scheduling? This cannot be undone.")) return;
-  S = blank(); save(); closeModal(); render(); toast("Everything reset");
+  confirmModal("Erase all progress?", "Notes, answers, highlights, conversations and flashcard scheduling go with it. This cannot be undone.",
+    "Erase everything", () => { S = blank(); save(); render(); toast("Everything reset"); }, true);
 }

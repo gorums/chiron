@@ -8,60 +8,42 @@ function viewHome() {
   const dropped = MODS.filter(m => mastery(m).dropped).slice(0, 3);
   const offers = checkOffers();
 
+  const anchor = CFG.anchor || {};
   let h = `<div class="wrap-wide">
   <p class="eyebrow">${greeting()}</p>
   <h2 class="big">${done === 0 ? "Start with Module 01." : done === MODS.length ? `You finished all ${MODS.length} modules.` : `You are ${Math.round(done / MODS.length * 100)}% through the course.`}</h2>
-  <p class="sub" style="margin-bottom:22px">${S.biz ? "Working business: <b>" + esc(S.biz) + "</b>" : "Set your practice business below — every exercise applies to it."}</p>
-
-  <div class="grid g4" style="margin-bottom:18px">
-    <div class="stat"><div class="n">${done}<span style="font-size:15px;color:var(--muted)">/${MODS.length}</span></div><div class="l">modules complete</div></div>
-    <div class="stat"><div class="n">${fmtH(minutesDone())}</div><div class="l">of ${fmtH(CFG.hours * 60)} curriculum</div></div>
-    <div class="stat"><div class="n">${qs.total ? Math.round(qs.pct * 100) + "%" : "—"}</div><div class="l">quiz accuracy (${qs.total} answered)</div></div>
-    <div class="stat"><div class="n">${S.streak.days}${S.streak.freezes ? `<span style="font-size:13px;color:var(--muted)" title="Streak freezes">  ❄${S.streak.freezes}</span>` : ""}</div><div class="l">day streak</div></div>
-  </div>`;
+  <p class="sub" style="margin-bottom:22px">${S.biz ? esc(anchor.label) + ": <b>" + esc(S.biz) + "</b> · <a href=\"#/settings\">change</a>" : `${esc(anchor.label)} is not set yet — <a href="#/settings">name it in Settings</a> so every exercise aims at something real.`}</p>`;
 
   h += `<div class="grid g2" style="margin-bottom:18px">${renderToday(cont)}${renderPlanCard()}</div>`;
 
-  h += `<div class="grid g2" style="margin-bottom:18px">
-    <div class="card">
-      <p class="eyebrow">${inprog.length ? "Continue" : "Next up"}</p>
-      <h3 style="font-family:var(--serif);font-size:22px;margin:0 0 6px;font-weight:600">${cont.id} · ${esc(cont.title)}</h3>
-      <p class="sub" style="margin-bottom:14px">${cont.minutes} minutes · ${esc(partName(cont.part))}${resumeLabel(cont)}</p>
-      <div class="bar" style="margin-bottom:14px"><i style="width:${Math.round(modPct(cont) * 100)}%"></i></div>
-      ${weakPrereqs(cont).length ? `<p class="sub" style="margin-bottom:12px;color:var(--warm)">Builds on ${weakPrereqs(cont).map(x => x.m.id + " (" + x.ms.name.toLowerCase() + ")").join(", ")} — worth a look first.</p>` : ""}
-      <button class="btn primary" onclick="go('#/m/${cont.id}${resumeStep(cont)}')">${modPct(cont) > 0 ? "Resume" : "Begin"} →</button>
-    </div>
+  h += `<div class="grid ${connMode() === "none" ? "g2" : ""}" style="margin-bottom:18px">
     <div class="card">
       <p class="eyebrow">Retrieval practice</p>
       <h3 style="font-family:var(--serif);font-size:22px;margin:0 0 6px;font-weight:600">${due ? due + " card" + (due > 1 ? "s" : "") + " due today" : cardCount() ? "Nothing due today" : "No cards yet"}</h3>
       <p class="sub" style="margin-bottom:14px">${cardCount() ? cardCount() + " cards in your deck" + (mistakeCount() ? ", " + mistakeCount() + " of them mistakes waiting to be fixed" : "") + ". Spaced repetition schedules each one for the day you are about to forget it." : "Cards unlock as you complete modules. They are the single highest-return 5 minutes in this course."}</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn ${due ? "primary" : ""}" ${due ? "" : "disabled"} onclick="go('#/review')">Review now →</button>
+        <button class="btn ${due ? "primary" : ""}" ${due ? "" : "disabled"} onclick="go('#/review')">Review now</button>
         ${mistakeCount() ? `<button class="btn" onclick="go('#/review/mistakes')">Fix mistakes (${mistakeCount()})</button>` : ""}
       </div>
     </div>
+    ${connMode() === "none" ? `<div class="card">
+      <p class="eyebrow">Ask questions while you read</p>
+      <p style="color:var(--text-2);margin:0 0 14px;font-size:14.5px">Connect Claude once and you can select any sentence in any module and talk about it, have your written answers checked, and practise live conversations.</p>
+      <button class="btn primary" onclick="go('#/settings')">Connect Claude</button></div>` : ""}
   </div>`;
 
   if (offers.length) {
     h += `<div class="card" style="margin-bottom:18px;border-color:var(--accent)">
       <p class="eyebrow" style="color:var(--accent-ink)">Checkpoint ready</p>
       <p class="sub" style="color:var(--text-2);margin-bottom:12px">A mixed quiz across everything you finished. This is the only score that says whether it stuck — module quizzes measure recognition ten minutes after reading.</p>
-      ${offers.map(o => `<button class="btn sm primary" style="margin:0 8px 8px 0" onclick="startCheckpoint('${o.kind}','${o.pid || ""}')">${esc(o.label)} →</button>`).join("")}
+      ${offers.map(o => `<button class="btn sm primary" style="margin:0 8px 8px 0" onclick="startCheckpoint('${o.kind}','${o.pid || ""}')">${esc(o.label)}</button>`).join("")}
     </div>`;
-  }
-  if (connMode() === "none") {
-    h += `<div class="card" style="margin-bottom:18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-      <div style="flex:1;min-width:260px">
-        <p class="eyebrow">Ask questions while you read</p>
-        <p style="color:var(--text-2);margin:0">Connect Claude once and you can select any sentence in any module and talk about it, have your written answers checked, and practise live conversations. Answers arrive in the page, next to the passage, and stay saved with it.</p>
-      </div>
-      <button class="btn primary" onclick="go('#/settings')">Connect Claude →</button></div>`;
   }
   if (openQs()) {
     h += `<div class="card" style="margin-bottom:18px">
       <p class="eyebrow">Open questions</p>
       <p class="sub" style="color:var(--text-2);margin-bottom:12px">You have <b>${openQs()}</b> passage${openQs() > 1 ? "s" : ""} marked with a question you have not answered yet. These are the edges of what you understand — the highest-value thing you can spend ten minutes on.</p>
-      <button class="btn primary" onclick="markFilter='open';go('#/marks')">Open the question list →</button></div>`;
+      <button class="btn primary" onclick="markFilter='open';go('#/marks')">Open the question list</button></div>`;
   }
   if (weak.length || dropped.length) {
     h += `<div class="card" style="margin-bottom:18px;border-color:var(--warm)">
@@ -71,12 +53,6 @@ function viewHome() {
       ${dropped.filter(m => !weak.some(w => w.m === m)).map(m => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="go('#/m/${m.id}/2')">${m.id} · ${esc(m.short)} — slipped</button>`).join("")}
     </div>`;
   }
-
-  h += `<div class="card" style="margin-bottom:18px">
-    <p class="eyebrow">Your practice business</p>
-    <p class="sub" style="margin-bottom:10px">Every exercise in this course applies to one real business. Abstraction is where learning dies.</p>
-    <input type="text" id="bizin" value="${esc(S.biz)}" placeholder="e.g. My sister's physiotherapy clinic in Valencia">
-  </div>`;
 
   h += `<p class="eyebrow" style="margin-top:26px">The map</p><div class="grid g3">`;
   DATA.parts.forEach(p => {
@@ -90,8 +66,6 @@ function viewHome() {
   });
   h += `</div></div>`;
   $("#view").innerHTML = h;
-  const bi = $("#bizin");
-  if (bi) bi.addEventListener("change", e => { S.biz = e.target.value; save(); toast("Saved"); });
   bindPlanCard();
 }
 function greeting() {

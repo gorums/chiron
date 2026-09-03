@@ -32,6 +32,12 @@ PLAN_SCHEMA = """{
   "practitioner": str,        // what a competent person is called, singular: "negotiator"
   "audience": str,            // e.g. "a complete beginner"
   "tutorPersona": str,        // one sentence, starts "You are", ends with a period
+  "anchor": {                 // the one real thing of the reader's that every exercise is applied to
+    "label": str,             //   e.g. "Your business" / "Your kitchen" / "Your next negotiation"
+    "prompt": str,            //   one or two sentences asking the reader to name it
+    "placeholder": str,       //   e.g. "e.g. my sister's physiotherapy clinic"
+    "noun": str               //   how a question refers to it: "my business", "my kitchen"
+  },
   "parts": [
     { "id": "p1", "name": str, "hours": number, "dir": str, "blurb": str }
   ],

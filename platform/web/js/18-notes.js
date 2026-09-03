@@ -57,7 +57,7 @@ function viewMarks() {
       const mod = byId(b.mid), sec = mod.sections[b.sec];
       h += `<div class="markrow book"><div class="meta"><span class="tag acc">${mod.id}</span><span>${esc(mod.short)}</span><span class="tag">bookmark</span><span style="margin-left:auto">${new Date(b.ts).toLocaleDateString()}</span></div>
         <div style="font-size:15px;font-weight:600;margin-bottom:8px">⚑ ${esc(sec ? sec.h : "")}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm primary" onclick="S.pos['${mod.id}']=${b.sec};save();go('#/m/${mod.id}/1')">Go to section →</button><button class="btn sm ghost" onclick="toggleBookmark('${mod.id}',${b.sec});viewMarks()">Remove</button></div></div>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm primary" onclick="S.pos['${mod.id}']=${b.sec};save();go('#/m/${mod.id}/1')">Go to section</button><button class="btn sm ghost" onclick="toggleBookmark('${mod.id}',${b.sec});viewMarks()">Remove</button></div></div>`;
     });
   }
   if (f === "all" || f === "chats") {
@@ -73,7 +73,7 @@ function viewMarks() {
         ${c.summary ? `<div class="qbox"><b>Carried over</b>${esc(c.summary.slice(0, 320))}${c.summary.length > 320 ? "…" : ""}</div>` : ""}
         ${c.msgs.slice(-2).map(x => `<div class="qbox"><b>${x.r === "u" ? (c.kind === "rp" ? "I said" : "I asked") : x.r === "e" ? "Error" : (c.kind === "rp" ? "Other side" : "Claude")}</b>${esc(x.t.length > 360 ? x.t.slice(0, 360) + "…" : x.t)}</div>`).join("")}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-          <button class="btn sm primary" onclick="continueConvo('${c.id}')">Continue this chat →</button>
+          <button class="btn sm primary" onclick="continueConvo('${c.id}')">Continue this chat</button>
           ${c.msgs.length && c.kind !== "rp" ? `<button class="btn sm" onclick="compactFromList('${c.id}')">⤳ Compact into a new chat</button>` : ""}
           <button class="btn sm ghost" onclick="exportChat('${c.id}')">Copy transcript</button>
           <button class="btn sm ghost" onclick="renameConvo('${c.id}')">Rename</button>
@@ -101,7 +101,7 @@ function markRow(m) {
       <button class="btn sm" onclick="openNote('${m.mid}','${m.id}')">${m.note ? "Edit note" : "Add a note"}</button>
       <button class="btn sm primary" onclick="openPanel('${m.mid}','${m.id}')">Ask about it</button>
       ${m.status === "open" ? `<button class="btn sm" onclick="setMarkStatus('${m.mid}','${m.id}','answered');viewMarks()">✓ Answered</button>` : ""}
-      <button class="btn sm ghost" onclick="go('#/m/${m.mid}/1')">Go to passage →</button>
+      <button class="btn sm ghost" onclick="go('#/m/${m.mid}/1')">Go to passage</button>
     </div></div>`;
 }
 function continueConvo(id) {

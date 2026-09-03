@@ -170,6 +170,9 @@ def normalise_plan(plan: Dict[str, Any], theme: str, hours: float,
                             or "You are a sharp, plain-spoken %s tutor." % plan["subject"])
     plan["milestones"] = [m for m in (plan.get("milestones") or [])
                           if isinstance(m, dict) and "text" in m]
+    anchor = plan.get("anchor") if isinstance(plan.get("anchor"), dict) else {}
+    plan["anchor"] = {k: str(anchor[k]).strip() for k in ck_config.DEFAULT_ANCHOR
+                      if anchor.get(k) and str(anchor[k]).strip()}
     return plan
 
 
@@ -181,6 +184,7 @@ def plan_to_manifest(plan: Dict[str, Any], course_id: str) -> Dict[str, Any]:
         "tagline": plan["tagline"],
         "audience": plan["audience"],
         "tutorPersona": plan["tutorPersona"],
+        "anchor": dict(ck_config.DEFAULT_ANCHOR, **(plan.get("anchor") or {})),
         "parts": [{k: p[k] for k in ("id", "name", "hours", "dir", "blurb")}
                   for p in plan["parts"]],
         "shortTitles": {m["id"]: m["short"] for m in plan["modules"]},

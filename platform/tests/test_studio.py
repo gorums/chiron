@@ -19,6 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PLATFORM = os.path.dirname(HERE)
 sys.path.insert(0, PLATFORM)
 
+from coursekit import config  # noqa: E402
 from coursekit.errors import CourseError  # noqa: E402
 from studio import claude_cli, generator, jobs  # noqa: E402
 
@@ -730,8 +731,13 @@ class TestCourseEditing(unittest.TestCase):
             "milestones": [{"after": "3", "text": "Halfway."}, {"after": 0, "text": "Start."},
                            {"after": 1, "text": ""}, "junk"],
             "parts": [{"id": "p1", "name": "Basics", "hours": 2, "blurb": "b"}],
+            "anchor": {"label": " Your kitchen ", "noun": "my kitchen", "prompt": "", "junk": "x"},
         })
         self.assertEqual(after["title"], "Bread, properly")
+        self.assertEqual(after["anchor"], {"label": "Your kitchen", "noun": "my kitchen", "prompt": "", "placeholder": ""})
+        self.assertEqual(config.load(self.fixture.root).runtime()["anchor"]["label"], "Your kitchen")
+        self.assertEqual(config.load(self.fixture.root).runtime()["anchor"]["prompt"],
+                         config.DEFAULT_ANCHOR["prompt"], "an empty field falls back to the default")
         self.assertEqual(after["tutorPersona"], "You are a baker.")
         self.assertEqual([m["after"] for m in after["milestones"]], [0, 3])
         self.assertEqual(after["parts"][0]["name"], "Basics")

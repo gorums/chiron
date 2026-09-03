@@ -17,13 +17,13 @@
       </button>
       <span style="flex:1"></span>
       <button class="btn sm" id="reviewbtn" style="display:none"></button>
-      <button class="iconbtn" id="themebtn" title="Theme (t)">◐</button>
-      <button class="iconbtn" id="helpbtn" title="Shortcuts (?)">?</button>
+      <button class="btn sm" id="railtoggle" onclick="toggleRail()" title="Show the tutor (a)">Ask Claude</button>
+      <button class="iconbtn" id="themebtn" title="Theme (t)" aria-label="Theme">◐</button>
+      <button class="iconbtn" id="helpbtn" title="Shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
     </div>
     <div class="view" id="view"></div>
   </div>
   <aside id="rail" class="hidden"></aside>
-  <button id="railtoggle" onclick="toggleRail()">Ask Claude</button>
 </div>
 <div class="toast" id="toast"></div>
 <div id="modalhost"></div>

@@ -194,7 +194,10 @@ Everything subject-specific reaches the browser through the `CFG` object built b
 `CourseConfig.runtime()` in `platform/coursekit/config.py`, sourced from `course.json`.
 
 If you are about to write a course-specific string into `platform/web/js/`, add a `CFG` field
-instead. This is checkable:
+instead. `CFG.anchor` is the worked example: the one real thing the reader applies every
+exercise to (a business, a kitchen, a next negotiation) is named by `anchor` in `course.json`
+(`label`, `prompt`, `placeholder`, `noun`), with neutral defaults in `config.DEFAULT_ANCHOR`,
+and the page only ever prints those four strings. This is checkable:
 
 ```
 grep -rniE "marketing|marketer" platform/web/
@@ -283,6 +286,12 @@ Always point a user at the `-local.html` copy.
 - **A module's suggestion list has exactly one entry per `##` section.** They are matched by
   position. This is the most common authoring failure.
 - No duplicate module ids; no assessment or suggestion entry that matches no module.
+
+The reading timer (`07-module.js`) pauses after `page.study.idleSeconds` without input, so a
+tab left open does not count as study. `page.ui.readMin` is the narrowest the reading column
+may get before the rail is capped; the section list beside the prose hides itself through a
+container query on `#main`, not a viewport breakpoint, because the rail changes the column
+without changing the window.
 
 A `##` section whose body is empty is dropped from the render *and* from the count — which
 is usually why a count mismatch appears out of nowhere.

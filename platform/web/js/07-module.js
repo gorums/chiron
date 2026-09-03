@@ -6,11 +6,16 @@ const STEPS = [
   { k: "elab", n: "Elaborate", d: "Put it in your own words" },
   { k: "apply", n: "Apply", d: "Transfer to a real case" }
 ];
-let timer = null, tickCount = 0;
+let timer = null, tickCount = 0, lastActive = Date.now();
+/* The clock only runs while the tab is visible and the reader has done something lately.
+   A page left open over lunch should not log lunch. */
+["pointerdown", "pointermove", "keydown", "scroll", "touchstart"].forEach(ev =>
+  window.addEventListener(ev, () => { lastActive = Date.now(); }, { passive: true, capture: true }));
+function isIdle() { return Date.now() - lastActive > (STUDY.idleSeconds || 180) * 1000; }
 function startTimer(mid) {
   stopTimer();
   timer = setInterval(() => {
-    if (document.hidden) return;
+    if (document.hidden || isIdle()) return;
     P(mid).time = (P(mid).time || 0) + 1;
     tickCount++;
     if (tickCount % 20 === 0) save();
@@ -44,7 +49,7 @@ function viewModule() {
   h += `<div class="footnav">
     ${prev ? `<button class="btn" onclick="go('#/m/${prev.id}')">← ${prev.id}</button>` : `<button class="btn" onclick="go('#/home')">← Dashboard</button>`}
     <button class="btn ${isDone(m) ? "" : "primary"}" onclick="toggleDone('${m.id}')">${isDone(m) ? "✓ Completed — undo" : "Mark module complete"}</button>
-    ${next ? `<button class="btn" onclick="go('#/m/${next.id}')">${next.id} →</button>` : `<button class="btn" onclick="go('#/record')">Course record →</button>`}
+    ${next ? `<button class="btn" onclick="go('#/m/${next.id}')">${next.id} →</button>` : `<button class="btn" onclick="go('#/record')">Course record</button>`}
   </div>`;
   // Served by Studio: the course can grow from right here. A missing topic becomes a new
   // module; a section that stops short becomes a rewrite with direction.
@@ -91,16 +96,16 @@ function renderStep(m, step) {
       <h3 style="font-family:var(--serif);font-size:21px;font-weight:600;margin:0 0 12px">${esc(m.assess.predict)}</h3>
       <textarea id="predin" rows="3" placeholder="One sentence. A guess is fine — that is the point.">${esc(p.predict)}</textarea>
       <div style="display:flex;gap:9px;margin-top:12px">
-        <button class="btn primary" onclick="savePredict('${m.id}')">Save and read →</button>
+        <button class="btn primary" onclick="savePredict('${m.id}')">Save and read</button>
       </div>
     </div>`;
   } else if (step === 1) {
-    let s = `<div style="display:grid;grid-template-columns:1fr 190px;gap:26px"><div>`;
+    let s = `<div class="readgrid"><div>`;
     s += `<div class="card tight" style="margin-bottom:18px;display:flex;align-items:center;gap:14px">
       <div style="flex:1"><div style="font-size:12.5px;color:var(--muted);margin-bottom:5px">Reading progress · ${secDone(m)} of ${secTotal(m)} sections</div>
       <div class="bar"><i style="width:${Math.round(secDone(m) / secTotal(m) * 100)}%"></i></div></div>
       <button class="btn sm" onclick="allSecs('${m.id}',${secDone(m) === secTotal(m) ? "false" : "true"})">${secDone(m) === secTotal(m) ? "Uncheck all" : "Check all"}</button></div>
-    <div class="hint" style="margin-bottom:18px"><span class="i">Tip</span><span><b>Select any sentence</b> and a bar appears — highlight it, attach a note, or ask Claude about that exact passage. The <b>?</b> beside a heading asks about the whole section; <b>⚑</b> bookmarks it. Everything you mark collects under <em>Marks &amp; questions</em>.</span></div>`;
+    <div class="hint" style="margin-bottom:18px"><span class="i">Tip</span><span><b>Select any sentence</b> to highlight it, attach a note, or ask Claude about that exact passage. Everything you mark collects under <em>Marks &amp; questions</em>.</span></div>`;
     m.sections.forEach((sec, i) => {
       const on = !!p.secs[i], bk = !!S.bookmarks[m.id + ":" + i];
       s += `<div class="sec ${on ? "done" : ""}" id="sec${i}">
@@ -108,8 +113,8 @@ function renderStep(m, step) {
           <button class="check ${on ? "on" : ""}" onclick="tickSec('${m.id}',${i})" title="Mark section read">
             <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 6.2 4.4 9 10.5 2.8"/></svg></button>
           <h3>${esc(sec.h)}</h3>
-          <button class="askbtn ${bk ? "has on" : ""}" title="${bk ? "Remove bookmark" : "Bookmark this section"}" onclick="toggleBookmark('${m.id}',${i})">⚑</button>
-          <button class="askbtn ${marksOf(m.id).some(k => k.sec === i) ? "has" : ""}" title="Ask Claude about this section" onclick="askSection('${m.id}',${i})">?</button>
+          <button class="askbtn ${bk ? "has on" : ""}" title="${bk ? "Remove bookmark" : "Bookmark this section"}" aria-label="Bookmark this section" onclick="toggleBookmark('${m.id}',${i})">${ico("flag", 13)}</button>
+          <button class="askbtn ${marksOf(m.id).some(k => k.sec === i) ? "has" : ""}" title="Ask Claude about this section" aria-label="Ask Claude about this section" onclick="askSection('${m.id}',${i})">${ico("ask", 14)}</button>
         </div>
         <div class="prose">${sec.html}</div>
       </div>`;
@@ -118,7 +123,7 @@ function renderStep(m, step) {
       <p class="eyebrow">Before you move on</p>
       <p style="margin:0 0 12px;color:var(--text-2)">Close this and write, from memory, the three things you want to keep from this module. Retrieval beats re-reading by roughly two to one per minute spent.</p>
       <textarea id="noteIn" rows="4" placeholder="From memory…">${esc(S.notes[m.id] || "")}</textarea>
-      <div style="display:flex;gap:9px;margin-top:12px"><button class="btn primary" onclick="saveNote('${m.id}')">Save notes and test yourself →</button></div>
+      <div style="display:flex;gap:9px;margin-top:12px"><button class="btn primary" onclick="saveNote('${m.id}')">Save notes and test yourself</button></div>
     </div>`;
     s += `</div><div><div class="toc" id="toc">${m.sections.map((sec, i) => `<a href="#sec${i}" onclick="jump(event,${i})">${esc(sec.h)}</a>`).join("")}</div></div></div>`;
     b.innerHTML = s;
@@ -132,14 +137,14 @@ function renderStep(m, step) {
     m.assess.elaborate.forEach((q, i) => {
       const fb = p.elabFb[i];
       s += `<div style="margin-bottom:22px"><h3 style="font-size:16px;font-weight:650;margin:0 0 9px">${esc(q)}</h3>
-      <textarea data-el="${i}" rows="3" placeholder="${S.biz ? esc(S.biz) + "…" : "Your business…"}">${esc(p.elab[i] || "")}</textarea>
+      <textarea data-el="${i}" rows="3" placeholder="${esc(S.biz || (CFG.anchor || {}).label || "")}…">${esc(p.elab[i] || "")}</textarea>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
         ${connMode() !== "none" ? `<button class="btn sm" id="elabck${i}" onclick="checkElab('${m.id}',${i})">Check my answer</button>` : `<span class="sub" style="font-size:12px">Connect Claude in Settings to have this checked.</span>`}
         ${fb ? `<span class="sub" style="font-size:12px">Checked ${new Date(fb.at).toLocaleDateString()}</span>` : ""}
       </div>
       <div id="elabfb${i}">${fb ? `<div class="fb ${fb.verdict || ""}"><b>What Claude saw</b>${mdLite(fb.text)}</div>` : ""}</div></div>`;
     });
-    s += `<div style="display:flex;gap:9px"><button class="btn primary" onclick="saveElab('${m.id}')">Save and continue →</button></div></div>`;
+    s += `<div style="display:flex;gap:9px"><button class="btn primary" onclick="saveElab('${m.id}')">Save and continue</button></div></div>`;
     b.innerHTML = s;
   } else {
     const t = m.assess.transfer, st = p.transfer || {}, rp = m.assess.roleplay;
@@ -170,14 +175,14 @@ function renderStep(m, step) {
         <p style="margin:0 0 12px"><b>Your goal:</b> ${esc(rp.goal)}</p>
         <p class="sub" style="margin-bottom:12px">Claude plays the other side and stays in character. When you are done, ask for feedback: you are judged on ${rp.rubric.map(r => "<i>" + esc(r) + "</i>").join(", ")}.</p>
         <div style="display:flex;gap:9px;flex-wrap:wrap">
-          ${connMode() !== "none" ? `<button class="btn primary" onclick="startRoleplay('${m.id}')">${done ? "Play it again" : "Start the conversation"} →</button>` : `<button class="btn" onclick="go('#/settings')">Connect Claude to practise live</button>`}
+          ${connMode() !== "none" ? `<button class="btn primary" onclick="startRoleplay('${m.id}')">${done ? "Play it again" : "Start the conversation"}</button>` : `<button class="btn" onclick="go('#/settings')">Connect Claude to practise live</button>`}
         </div>
         ${done ? `<div class="fb ${done.verdict || ""}" style="margin-top:14px"><b>Feedback from your last run · ${new Date(done.at).toLocaleDateString()}</b>${mdLite(done.text)}</div>` : ""}</div>`;
     }
     if (sheets.length) {
       s += `<div class="card" style="margin-top:16px"><p class="eyebrow">Worksheets for this module</p>
         <p class="sub" style="margin-bottom:10px">The exercise produces something. Fill it in here; it stays with your progress.</p>
-        ${sheets.map(x => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="go('#/library/t-${x.slug}')">${esc(x.title)}${sheetFilled(x.slug) ? ` · ${sheetFilled(x.slug)}/${x.fields}` : ""} →</button>`).join("")}</div>`;
+        ${sheets.map(x => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="go('#/library/t-${x.slug}')">${esc(x.title)}${sheetFilled(x.slug) ? ` · ${sheetFilled(x.slug)}/${x.fields}` : ""}</button>`).join("")}</div>`;
     }
     if (!isDone(m)) s += `<div class="card" style="margin-top:16px;text-align:center"><p class="sub" style="margin-bottom:12px">Finished all five steps?</p><button class="btn primary" onclick="toggleDone('${m.id}')">Mark ${m.id} complete and unlock its flashcards</button></div>`;
     b.innerHTML = s;

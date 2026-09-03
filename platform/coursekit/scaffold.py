@@ -21,6 +21,7 @@ import os
 import re
 from typing import Any, Dict, List
 
+from .config import DEFAULT_ANCHOR
 from .errors import CourseError
 from .settings import SETTINGS
 
@@ -97,6 +98,7 @@ def manifest(theme: str, hours: float, *, course_id: str = "", title: str = "",
         "parts": parts,
         "shortTitles": {},
         "milestones": [],
+        "anchor": dict(DEFAULT_ANCHOR),
         "library": {
             "glossary": "reference/glossary.md",
             "models": "reference/mental-models.md",

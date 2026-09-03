@@ -32,6 +32,16 @@ DEFAULT_DATA: Dict[str, str] = {
     "suggestions": "data/suggestions",
 }
 
+# The reader's own case: the one real thing every exercise is applied to. A marketing course
+# calls it a business, a baking course a kitchen. The engine only ever says `anchor.label`.
+DEFAULT_ANCHOR: Dict[str, str] = {
+    "label": "Your own case",
+    "prompt": "Every exercise in this course applies to one real situation of yours. "
+              "Name it once and the tutor, the questions and the examples aim at it.",
+    "placeholder": "e.g. the project, team or situation you have in mind",
+    "noun": "my own case",
+}
+
 
 @dataclass
 class Part:
@@ -66,6 +76,7 @@ class CourseConfig:
     tutor_persona: str = ""
     short_titles: Dict[str, str] = field(default_factory=dict)
     milestones: List[Dict[str, Any]] = field(default_factory=list)
+    anchor: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_ANCHOR))
     library: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_LIBRARY))
     data: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_DATA))
 
@@ -109,6 +120,7 @@ class CourseConfig:
             "folderLabel": self.folder_label,
             "tutorPersona": self.tutor_persona,
             "milestones": self.milestones,
+            "anchor": self.anchor,
         }
 
 
@@ -148,6 +160,9 @@ def load(root: str) -> CourseConfig:
     library.update(raw.get("library") or {})
     data = dict(DEFAULT_DATA)
     data.update(raw.get("data") or {})
+    anchor = dict(DEFAULT_ANCHOR)
+    if isinstance(raw.get("anchor"), dict):
+        anchor.update({k: str(v) for k, v in raw["anchor"].items() if k in DEFAULT_ANCHOR and v})
 
     course_id = raw["id"]
     return CourseConfig(
@@ -166,6 +181,7 @@ def load(root: str) -> CourseConfig:
         or "You are a sharp, plain-spoken %s tutor." % raw["subject"],
         short_titles=raw.get("shortTitles") or {},
         milestones=raw.get("milestones") or [],
+        anchor=anchor,
         library=library,
         data=data,
     )

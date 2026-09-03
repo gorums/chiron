@@ -48,8 +48,9 @@ function copySheet(slug) {
   toast(clip(sheetText(t)) ? "Worksheet copied" : "Could not copy");
 }
 function clearSheet(slug) {
-  if (!confirm("Clear everything you typed into this worksheet?")) return;
-  const fb = (S.sheets[slug] || {})._fb;
-  S.sheets[slug] = fb ? { _fb: fb } : {}; save();
-  const t = DATA.library.templates.find(x => x.slug === slug); if (t) viewWorksheet(t);
+  confirmModal("Clear this worksheet?", "Everything you typed into it goes. Claude's last review of it stays.", "Clear it", () => {
+    const fb = (S.sheets[slug] || {})._fb;
+    S.sheets[slug] = fb ? { _fb: fb } : {}; save();
+    const t = DATA.library.templates.find(x => x.slug === slug); if (t) viewWorksheet(t);
+  }, true);
 }

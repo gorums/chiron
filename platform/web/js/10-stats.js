@@ -14,8 +14,16 @@ function viewStats() {
   const dist = [0, 0, 0, 0, 0]; MODS.forEach(m => dist[mastery(m).lvl]++);
 
   let h = `<div class="wrap-wide"><h2 class="big">Progress &amp; stats</h2>
-  <p class="sub" style="margin-bottom:22px">The numbers that predict whether this actually sticks.</p>
-  <div class="grid g4" style="margin-bottom:22px">
+  <p class="sub" style="margin-bottom:22px">The numbers that predict whether this actually sticks.</p>`;
+  if (!spent && !qs.total && !cardCount() && !doneCount()) {
+    const first = MODS[0];
+    h += `<div class="card"><p class="eyebrow">Nothing to measure yet</p>
+      <p style="color:var(--text-2);margin:0 0 14px">Mastery, calibration, the review forecast and your study days all appear here once you have read a section or answered a question. Finish ${first.id} and this page starts telling you something.</p>
+      <button class="btn primary" onclick="go('#/m/${first.id}')">Open ${first.id} · ${esc(first.short)}</button></div>
+      <div class="card" style="margin-top:22px"><p class="eyebrow">The honest read</p><p style="color:var(--text-2);margin:0">${milestoneCopy(0)}</p></div></div>`;
+    $("#view").innerHTML = h; return;
+  }
+  h += `<div class="grid g4" style="margin-bottom:22px">
     <div class="stat"><div class="n">${doneCount()}/${MODS.length}</div><div class="l">modules complete</div></div>
     <div class="stat"><div class="n">${spent}m</div><div class="l">time actually spent</div></div>
     <div class="stat"><div class="n">${cardCount()}</div><div class="l">cards in deck · ${dueCards().length} due${mistakeCount() ? " · " + mistakeCount() + " mistakes" : ""}</div></div>
@@ -74,7 +82,7 @@ function viewStats() {
     ${milestoneCopy(doneCount())}
     ${qs.total > 20 && qs.pct < .7 ? " Your quiz accuracy is under 70% — do not read ahead, retake the ones you missed instead." : ""}
     ${spent > 0 ? " Time logged so far: " + spent + " minutes of the " + plannedMinutes().toLocaleString() + "-minute plan." : ""}
-  </p><button class="btn sm" onclick="go('#/record')">Open your course record →</button></div></div>`;
+  </p><button class="btn sm" onclick="go('#/record')">Open your course record</button></div></div>`;
   $("#view").innerHTML = h;
 }
 /* 17 weeks of days, Monday at the top, today at the far right */

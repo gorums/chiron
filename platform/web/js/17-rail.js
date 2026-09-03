@@ -48,20 +48,21 @@ function switchConvo(id) {
 }
 function deleteConvo(id) {
   const c = CV()[id]; if (!c) return;
-  if (!confirm("Delete this conversation? It cannot be undone.")) return;
-  const mid = c.mid;
-  delete CV()[id];
-  if (ACT()[mid] === id) delete ACT()[mid];
-  save(); menuOpen = false;
-  if (route.v === "m") renderRail(); else render();
-  toast("Conversation deleted");
+  confirmModal("Delete this conversation?", "It cannot be undone.", "Delete", () => {
+    const mid = c.mid;
+    delete CV()[id];
+    if (ACT()[mid] === id) delete ACT()[mid];
+    save(); menuOpen = false;
+    if (route.v === "m") renderRail(); else render();
+    toast("Conversation deleted");
+  }, true);
 }
 function renameConvo(id) {
   const c = CV()[id]; if (!c) return;
-  const t = prompt("Name this conversation:", convoTitle(c));
-  if (t === null) return;
-  c.title = t.trim().slice(0, 70); save();
-  if (route.v === "m") renderRail(); else render();
+  promptModal("Name this conversation", convoTitle(c), "Save", t => {
+    c.title = t.trim().slice(0, 70); save();
+    if (route.v === "m") renderRail(); else render();
+  });
 }
 
 /* compaction: carry the substance forward into a fresh conversation */
@@ -74,7 +75,7 @@ async function compactConvo(id) {
   try {
     const transcript = c.msgs.filter(m => m.r !== "e")
       .map(m => (m.r === "u" ? "LEARNER: " : "TUTOR: ") + m.t).join("\n\n");
-    const sys = "You compress a tutoring conversation into a handover brief for the next conversation, written for the tutor who picks it up. Under 180 words. Cover: what was actually settled, the learner's situation and business as revealed, any conclusion or decision reached, and what is still open or confusing. No preamble, no headings, plain prose. Do not repeat explanations — record outcomes.";
+    const sys = "You compress a tutoring conversation into a handover brief for the next conversation, written for the tutor who picks it up. Under 180 words. Cover: what was actually settled, the learner's own situation as revealed, any conclusion or decision reached, and what is still open or confusing. No preamble, no headings, plain prose. Do not repeat explanations — record outcomes.";
     const summary = await askBridge(sys, [{ role: "user", content: transcript.slice(-TUTOR.summaryChars) }]);
     const fresh = newConvo(c.mid, { parent: c.id, summary: summary.trim(),
                                     title: "Continued: " + convoTitle(c).slice(0, 40) });
@@ -96,7 +97,7 @@ function toggleRail() {
   S.ui.rail = !railOpen(); save();
   applyRail(); if (railOpen()) renderRail();
 }
-const DOCKS = [["right", "⇥", "Dock right"], ["bottom", "⤓", "Dock along the bottom"]];
+const DOCKS = [["right", "", "Dock right"], ["bottom", "", "Dock along the bottom"]];
 function railPos() { const p = S.ui && S.ui.railPos; return DOCKS.some(d => d[0] === p) ? p : "right"; }
 /* Sizes come from the platform's `page.ui` settings (LAYOUT). The rail is never wider
    than leaves `readMin` pixels for the text beside it. */
@@ -164,7 +165,7 @@ function localQuestions(text, hints) {
   if (terms[1]) qs.push(`How is ${terms[1]} different from ${terms[0]}?`);
   else qs.push("Give me a concrete example of this.");
   if (num) qs.push(`Where does the ${num} come from?`);
-  qs.push(`How would I apply this to ${S.biz || "my own business"}?`);
+  qs.push(`How would I apply this to ${S.biz || (CFG.anchor || {}).noun || "my own case"}?`);
   qs.push("When does this stop being true?");
   return qs.slice(0, 5);
 }
@@ -174,7 +175,7 @@ async function genQuestions() {
   genning = true; renderSuggest();
   try {
     const sys = "You write study questions. Given a passage from a " + CFG.subject + " course, return the 5 questions a smart beginner should be asking about it. One per line, no numbering, no preamble, each under 90 characters, each answerable from thinking about this passage. Make them specific to this passage's actual content, not generic.";
-    const reply = await askBridge(sys, [{ role: "user", content: pinned.text + (S.biz ? "\n\n(The reader's practice business: " + S.biz + ")" : "") }]);
+    const reply = await askBridge(sys, [{ role: "user", content: pinned.text + (S.biz ? "\n\n(" + (CFG.anchor || {}).label + ": " + S.biz + ")" : "") }]);
     const lines = reply.split("\n").map(l => l.replace(/^\s*[-*\d.)]+\s*/, "").trim())
       .filter(l => l.length > 12 && l.length < 140 && l.indexOf("?") > 0).slice(0, 6);
     if (lines.length) { pinnedQs = lines; toast("Questions generated"); }
@@ -237,7 +238,7 @@ function railSuggestions() {
   if (pinned) return pinnedQs || localQuestions(pinned.text);
   const m = byId(route.id); if (!m) return [];
   const set = (m.suggest && m.suggest[curSec]) || [];
-  const extra = S.biz ? ["How does this apply to " + S.biz + "?"] : ["How would I apply this to my own business?"];
+  const extra = S.biz ? ["How does this apply to " + S.biz + "?"] : ["How would I apply this to " + ((CFG.anchor || {}).noun || "my own case") + "?"];
   return set.concat(extra);
 }
 /* the tutor as a tool on the section in view, not just a question box */
@@ -259,7 +260,7 @@ ${pinned ? "They selected this passage and are asking about it:" : "The part of 
 """
 ${quote}
 """
-${S.biz ? `\nTheir practice business, which examples should be aimed at: ${S.biz}` : ""}
+${S.biz ? `\n${(CFG.anchor || {}).label}, which examples should be aimed at: ${S.biz}` : ""}
 ${c && c.summary ? `\nWhat happened in your earlier conversation with them, carried over. Do not repeat it; build on it:\n"""\n${c.summary}\n"""` : ""}
 
 How to answer:
@@ -284,11 +285,11 @@ function renderRail() {
     <div class="railfoot">
       <div class="row">
         <textarea id="railin" rows="1" placeholder="${c.kind === "rp" ? "Say what you would actually say…" : "Ask about this section…"}"></textarea>
-        <button class="btn primary" id="railsend" onclick="railSend()">↑</button>
+        <button class="btn primary" id="railsend" onclick="railSend()" aria-label="Send">↑</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:7px">
         <span style="font-size:11px;color:var(--muted)">${connMode() === "none" ? "not connected" : "⌘/Ctrl+↵ to send"}</span>
-        ${c.msgs.length ? `<button class="btn sm ghost" style="margin-left:auto;font-size:11.5px" onclick="compactConvo('${c.id}')" title="Summarise this chat and continue in a fresh one">⤳ Compact</button>` : ""}
+        ${c.msgs.length ? `<button class="btn sm ghost" style="margin-left:auto;font-size:11.5px" onclick="compactConvo('${c.id}')" title="Summarise this chat and continue in a fresh one">Compact</button>` : ""}
       </div>
     </div>`;
   renderRailHead(); renderRailBody();
@@ -310,15 +311,14 @@ function renderRailHead() {
       <button class="convobtn" onclick="toggleChatMenu()" title="Your conversations">
         <span class="ct">${esc(convoTitle(c))}</span><span class="cv">▾</span>
       </button>
-      <button class="iconbtn" style="width:28px;height:28px" title="New chat" onclick="startNew()">＋</button>
-      <span class="dock">${DOCKS.map(([p, ico, tip]) => `<button class="iconbtn ${railPos() === p ? "on" : ""}" title="${tip}" onclick="setRailPos('${p}')">${ico}</button>`).join("")}</span>
-      <button class="iconbtn" style="width:28px;height:28px" title="Hide (a)" onclick="toggleRail()">✕</button>
+      <button class="iconbtn" style="width:28px;height:28px" title="New chat" aria-label="New chat" onclick="startNew()">${ico("plus", 15)}</button>
+      <button class="iconbtn" style="width:28px;height:28px" title="Hide (a)" aria-label="Hide the tutor" onclick="toggleRail()">${ico("close", 14)}</button>
     </div>
     <div class="railctx">
       ${c.kind === "rp" ? `<div class="rpbar"><span class="tag warn">role-play</span><span style="flex:1;font-size:12.5px;color:var(--text-2)">${c.finished ? "Finished — feedback below" : "Claude is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
       ${pinned
         ? `<div class="pinned"><span class="tag acc">selection</span>
-             <button class="iconbtn" style="width:22px;height:22px;font-size:12px" title="Unpin" onclick="unpin()">✕</button>
+             <button class="iconbtn" style="width:22px;height:22px" title="Unpin" aria-label="Unpin the selection" onclick="unpin()">${ico("close", 12)}</button>
              <div class="ptext">${esc(pinned.text.length > 220 ? pinned.text.slice(0, 220) + "…" : pinned.text)}</div></div>`
         : `<div class="ctxline">Reading · <b>${esc(railCtxLabel())}</b>${n > 1 ? ` · ${n} chats here` : ""}</div>`}
     </div>`;
@@ -336,17 +336,17 @@ function renderChatMenu() {
         <span class="t">${esc(convoTitle(c))}</span>
         <span class="s">${byId(c.mid).id} · ${c.msgs.filter(x => x.r === "u").length} question${c.msgs.filter(x => x.r === "u").length === 1 ? "" : "s"} · ${new Date(c.updated).toLocaleDateString()}${c.parent ? " · carried over" : ""}</span>
       </button>
-      <button class="iconbtn" style="width:24px;height:24px;font-size:11px" title="Rename" onclick="renameConvo('${c.id}')">✎</button>
-      <button class="iconbtn" style="width:24px;height:24px;font-size:11px" title="Delete" onclick="deleteConvo('${c.id}')">🗑</button>
+      <button class="iconbtn" style="width:24px;height:24px" title="Rename" aria-label="Rename" onclick="renameConvo('${c.id}')">${ico("pencil", 12)}</button>
+      <button class="iconbtn" style="width:24px;height:24px" title="Delete" aria-label="Delete" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>
     </div>`;
   el.innerHTML = `
     <div class="cmhead">This module</div>
     ${mine.length ? mine.map(row).join("") : `<div class="cmempty">No chats here yet</div>`}
     ${others.length ? `<div class="cmhead">Other modules</div>` + others.map(row).join("") : ""}
     <div class="cmfoot">
-      <button class="btn sm" onclick="startNew()">＋ New chat</button>
-      ${cur.msgs.length ? `<button class="btn sm" onclick="compactConvo('${cur.id}')">⤳ Compact into a new chat</button>` : ""}
-      <button class="btn sm ghost" onclick="go('#/marks')">All conversations →</button>
+      <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat</button>
+      ${cur.msgs.length ? `<button class="btn sm" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
+      <button class="btn sm ghost" onclick="go('#/marks')">All conversations</button>
     </div>`;
 }
 function startNew() { newConvo(route.id); menuOpen = false; renderRail(); toast("New chat"); }

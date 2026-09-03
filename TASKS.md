@@ -50,6 +50,40 @@ See `PLANNING.md` for the why.
 - [x] P2b.9 "The server sent something unreadable" on Rebuild: handlers that ignored the request body left it on the keep-alive connection and corrupted the next request. Body is now drained once per request; keep-alive regression check in the smoke test; check/build log a line
 - [x] P2b.10 Resume refuses a course that is complete and consistent
 
+## Phase 4 — UI review (2026-09-03)
+
+Found in a code-and-browser pass over the reader (`platform/web/`) and Studio (`platform/studio/ui/`).
+
+### Reader
+
+- [x] U4.1 Rail open crushes the reading column: at 1350px the prose gets ~225px (`page.ui.readMin` 420, TOC grid ignores width). Raise `readMin`, hide the TOC below a container width, stop the search button wrapping
+- [x] U4.2 Three different "time studied" numbers (sidebar ring counts finished modules; stats counts the timer; the timer keeps running while idle). Pause the timer after idle; show real time in the sidebar
+- [x] U4.3 Subject leak: "practice business" / "Your business…" / clinic placeholder hardcoded in `06-home.js`, `07-module.js`, `17-rail.js`, `17b-grader.js`. Move to a `CFG.anchor` block from `course.json`, with a neutral default
+- [x] U4.4 Dashboard repeats itself: Today card and Continue card both say "Continue M01"; the subtitle points at an input five cards down. Merge; move the anchor input into Settings
+- [x] U4.5 No `:focus-visible` on buttons, links or chips anywhere — keyboard users cannot see focus. Add one rule
+- [x] U4.6 Native `confirm()` / `prompt()` for delete conversation, rename, erase progress, clear worksheet. Use the existing modal host
+- [x] U4.7 Section ask/bookmark and paragraph ask buttons are `opacity:0` until hover — invisible on touch. Show faintly always, fully on hover or `(hover:none)`
+- [x] U4.8 Rail header is crowded: truncated title plus five icon buttons with dock glyphs nobody reads. Dock choice stays in Settings only
+- [x] U4.9 Sidebar has 11 nav items plus the module list and a legend below the fold. Regroup; move Backup / restore into Settings; put the legend where it is seen
+- [x] U4.10 Unicode glyph icons (◈ ↻ ◔ ▤ ✦ ◎ ✎ ⚙ ⇅ ⌂ 🗑 ⤳) render differently per OS. Replace with a small inline SVG set
+- [x] U4.11 The floating "Ask Claude" button covers the quiz's Next button on short viewports. Move it into the topbar
+- [x] U4.12 Stats page before any data is six cards of dashes. Show one empty-state card until there is something to measure
+- [x] U4.13 Template tells: tracked ALL-CAPS eyebrows on every card, "→" appended to most buttons, identical shadowed cards. Sentence-case labels, drop the arrows, one raised card per page
+
+### Studio
+
+- [x] U4.14 Every `<a class="btn">` is underlined (Start, Manage, Read, Edit) — `.btn` never sets `text-decoration`
+- [x] U4.15 Primary button is white text on the mint accent in dark mode (about 2:1). Reader already overrides this; Studio does not
+- [x] U4.16 The remove "×" has the same weight as Read / Edit / Rewrite on every module row. Make it quiet until hover
+- [x] U4.17 Library card says "Start →" for a course that is in progress (`courseCard` checks `done` only) while the Today strip says "in progress"
+- [x] U4.18 Every tab switch refetches the course and paints "Loading…". Paint from `courseCache` first, refresh in the background
+- [x] U4.19 Cards show progress three times: "0%" eyebrow, bar, "0 of 19 modules". Keep the bar and one line
+- [x] U4.20 Today strip lists "M01 in progress" for every course that has been opened once. Only list modules actually under way
+- [x] U4.21 Brand subline shows the container path (`/work`). Remove; it is on the Settings page
+- [x] U4.22 Settings & logs model card reads like a developer note (`[1m]`, `unrecognized_model`). Plain copy; details in `CLAUDE.md`
+- [x] U4.23 Editor: Save / Save and check, then back to the course page to build. Add "Save, check and build"
+- [x] U4.24 Same template tells as the reader: caps eyebrows, arrows on buttons, uppercase file-group labels
+
 ## Phase 3 — later
 
 - [ ] P3.1 Reorder / move modules between parts (ordering metadata in `course.json`)
@@ -57,4 +91,5 @@ See `PLANNING.md` for the why.
 - [ ] P3.3 Reader profiles in `state/`
 - [ ] P3.4 Study calendar / streak across courses
 - [ ] P3.5 Course export/import as zip
-- [ ] P3.6 "Review this module" pass by Claude before the reader finds the gap
+- [ ] P3.6 Course import as github repo
+- [ ] P3.7 "Review this module" pass by Claude before the reader finds the gap

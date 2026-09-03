@@ -1,6 +1,5 @@
 {
   "_": "Every tunable of the platform, in one place. Nothing in platform/ or tools/ carries its own default; it reads this file through coursekit.settings. Per-machine overrides go in .env or the environment (see .env.example), or in a JSON overlay named by SETTINGS_FILE. The `page` block, plus the bridge address, the API endpoint and the model list, reach the browser as CFG.platform.",
-
   "paths": {
     "courses": "courses",
     "dist": "dist",
@@ -8,7 +7,6 @@
     "progress": "",
     "scratch": "coursekit-claude"
   },
-
   "studio": {
     "host": "127.0.0.1",
     "port": 8790,
@@ -16,7 +14,6 @@
     "askTimeout": 240,
     "recentJobs": 12
   },
-
   "bridge": {
     "host": "127.0.0.1",
     "port": 8787,
@@ -28,12 +25,10 @@
     "systemChars": 8000,
     "maxTokensCap": 4000
   },
-
   "anthropic": {
     "apiUrl": "https://api.anthropic.com/v1/messages",
     "apiVersion": "2023-06-01"
   },
-
   "models": {
     "default": "sonnet",
     "list": [
@@ -57,13 +52,11 @@
       }
     ]
   },
-
   "claude": {
     "timeout": 600,
     "jsonAttempts": 3,
     "chatHistory": 20
   },
-
   "generation": {
     "quizItems": 6,
     "cardItems": 6,
@@ -84,14 +77,12 @@
       "moduleSpec": 420
     }
   },
-
   "build": {
     "excerptChars": 2200,
     "blurbChars": 95,
     "minutesPerModule": 60,
     "minModules": 3
   },
-
   "logs": {
     "level": "INFO",
     "maxBytes": 2000000,
@@ -99,7 +90,6 @@
     "ring": 2000,
     "pageLines": 400
   },
-
   "page": {
     "tutor": {
       "maxTokens": 1400,
@@ -119,7 +109,8 @@
       "checkpointPassPct": 80,
       "seenDays": 400,
       "frozenDays": 60,
-      "checkpointHistory": 60
+      "checkpointHistory": 60,
+      "idleSeconds": 180
     },
     "ui": {
       "railMin": 340,
@@ -127,7 +118,7 @@
       "railHeightMin": 220,
       "railHeightDefault": 380,
       "sideWidth": 290,
-      "readMin": 420
+      "readMin": 640
     }
   }
 }

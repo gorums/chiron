@@ -61,6 +61,11 @@ Then edit the course's `course.json`:
 - `shortTitles` — `{"M01": "…"}` for every module. These are the sidebar labels: 3–5 words.
 - `tagline`, `practitioner`, `audience`, `tutorPersona` — the tutor persona is a system
   prompt fragment and must end with a period.
+- `anchor` — the one real thing of the reader's that every exercise is applied to:
+  `{"label": "Your business", "prompt": "…", "placeholder": "e.g. …", "noun": "my business"}`.
+  The page prints these four strings wherever it asks the reader to bring their own case, so
+  make them fit the subject: a baking course says kitchen, a negotiation course says the next
+  negotiation. Omit it and the page says "Your own case".
 - `milestones` — leave until Phase 7.
 
 ## Phase 3 — the plan documents

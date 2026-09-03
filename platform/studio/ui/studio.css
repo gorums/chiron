@@ -39,6 +39,7 @@ button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
 input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
 a{color:var(--accent-ink);text-underline-offset:3px}
 .hidden{display:none !important}
+:where(button,a,[tabindex],summary):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---------- shell ---------- */
 .bar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:14px 26px;
@@ -52,17 +53,23 @@ main{max-width:1080px;margin:0 auto;padding:30px 26px 90px}
 h2.big{font-family:var(--serif);font-size:30px;font-weight:600;margin:0 0 6px;letter-spacing:-.02em}
 h3{font-family:var(--serif);font-size:19px;font-weight:600;margin:0 0 4px}
 .sub{color:var(--text-2);margin:0 0 22px}
-.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+.eyebrow{font-size:12.5px;color:var(--muted);margin:0 0 8px;font-weight:600}
 .mono{font-family:var(--mono);font-size:12px}
 
 /* ---------- controls ---------- */
-.btn{background:var(--accent);color:#fff;border:0;border-radius:var(--radius-sm);padding:9px 16px;font-weight:600;font-size:14px}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:0;border-radius:var(--radius-sm);padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;line-height:1.3}
 .btn:hover{background:var(--accent-2)}
+:root[data-theme="dark"] .btn:not(.ghost):not(.danger){color:#0b1a18}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn:not(.ghost):not(.danger){color:#0b1a18}}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line-2)}
 .btn.ghost:hover{background:var(--surface-2)}
 .btn.sm{padding:6px 11px;font-size:13px}
 .btn.danger{background:transparent;color:var(--bad);border:1px solid var(--line-2)}
+.btn.danger:hover{background:var(--bad-soft)}
+/* the quiet remove button on a module row: grey until you mean it */
+.btn.ghost.rm{color:var(--muted);border-color:transparent;padding:6px 9px}
+.btn.ghost.rm:hover{color:var(--bad);background:var(--bad-soft)}
 .pill{font-size:12px;padding:4px 11px;border-radius:999px;background:var(--surface-2);color:var(--text-2);border:1px solid var(--line);white-space:nowrap}
 .pill.on{background:var(--ok-soft);color:var(--ok);border-color:transparent}
 .pill.off{background:var(--bad-soft);color:var(--bad);border-color:transparent}
@@ -79,7 +86,7 @@ textarea{resize:vertical;min-height:70px}
 .row{display:grid;grid-template-columns:1fr 130px 1fr;gap:14px}
 
 /* ---------- cards ---------- */
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
 .courserow{display:flex;align-items:center;gap:14px;padding:15px 18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:10px}
 .courserow .meta{flex:1;min-width:0}
@@ -137,7 +144,9 @@ a.brand{text-decoration:none;color:inherit}
 
 /* ---------- course cards (library) ---------- */
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px}
-.coursecard{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);min-height:210px}
+.coursecard{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;min-height:200px}
+.coursecard .head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.coursecard .head h3{flex:1;min-width:0}
 .coursecard h3{font-size:21px;margin:0 0 2px}
 .coursecard .tagline{color:var(--text-2);font-size:13.5px;margin:0 0 12px;min-height:1.4em}
 .coursecard .facts{font-size:12.5px;color:var(--muted);margin:0 0 6px}
@@ -176,7 +185,7 @@ a.brand{text-decoration:none;color:inherit}
 .filelist a{font-family:var(--mono);font-size:12.5px;text-decoration:none;padding:5px 8px;border-radius:6px;color:var(--text-2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filelist a:hover{background:var(--surface-2);color:var(--text)}
 .filegroup{margin-bottom:16px}
-.filegroup h4{margin:0 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.filegroup h4{margin:0 0 6px;font-size:12.5px;color:var(--muted);font-family:var(--mono)}
 .editor{width:100%;min-height:62vh;font-family:var(--mono);font-size:13px;line-height:1.55;tab-size:2;white-space:pre;overflow:auto}
 .editbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .editbar .path{font-family:var(--mono);font-size:12.5px;color:var(--muted);flex:1;min-width:200px}

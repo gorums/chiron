@@ -31,17 +31,26 @@ function planInfo() {
 function renderToday(cont) {
   const due = dueCards().length, md = mistakesDue(), offers = checkOffers(), pi = planInfo();
   const rows = [];
-  if (due) rows.push(`<button class="trow" onclick="go('#/review')"><span class="ico">↻</span><span>Review <b>${due}</b> card${due > 1 ? "s" : ""}${md ? ` · ${md} mistake${md > 1 ? "s" : ""}` : ""}</span><span class="t">~${Math.max(1, Math.round(due * .4))} min</span></button>`);
+  if (due) rows.push(`<button class="trow" onclick="go('#/review')"><span class="ico">${ico("review", 14)}</span><span>Review <b>${due}</b> card${due > 1 ? "s" : ""}${md ? ` · ${md} mistake${md > 1 ? "s" : ""}` : ""}</span><span class="t">~${Math.max(1, Math.round(due * .4))} min</span></button>`);
   else if (mistakeCount()) rows.push(`<button class="trow" onclick="go('#/review/mistakes')"><span class="ico">✗</span><span>Fix <b>${mistakeCount()}</b> queued mistake${mistakeCount() > 1 ? "s" : ""}</span><span class="t">~${Math.max(1, Math.round(mistakeCount() * .5))} min</span></button>`);
+  let next = "";
   if (cont) {
-    const step = resumeStep(cont), name = STEPS[+(step.slice(1) || 0)].n;
-    rows.push(`<button class="trow" onclick="go('#/m/${cont.id}${step}')"><span class="ico">▶</span><span>${modPct(cont) > 0 ? "Continue" : "Start"} <b>${cont.id}</b> · ${esc(cont.short)} — ${name}</span><span class="t">${cont.minutes} min</span></button>`);
+    const step = resumeStep(cont), name = STEPS[+(step.slice(1) || 0)].n, started = modPct(cont) > 0;
+    const weak = weakPrereqs(cont);
+    next = `<div class="nextmod">
+      <h3>${cont.id} · ${esc(cont.title)}</h3>
+      <p class="sub">${cont.minutes} minutes · ${esc(partName(cont.part))}${started ? (resumeLabel(cont) || " · " + name.toLowerCase()) : ""}</p>
+      ${started ? `<div class="bar" style="margin:10px 0 12px"><i style="width:${Math.round(modPct(cont) * 100)}%"></i></div>` : ""}
+      ${weak.length ? `<p class="sub" style="margin:0 0 10px;color:var(--warm)">Builds on ${weak.map(x => x.m.id + " (" + x.ms.name.toLowerCase() + ")").join(", ")} — worth a look first.</p>` : ""}
+      <button class="btn primary" onclick="go('#/m/${cont.id}${step}')">${started ? "Resume" : "Begin"} ${cont.id}</button>
+    </div>`;
   }
-  offers.slice(0, 1).forEach(o => rows.push(`<button class="trow" onclick="startCheckpoint('${o.kind}','${o.pid || ""}')"><span class="ico">◎</span><span>${esc(o.label)}</span><span class="t">~10 min</span></button>`));
+  offers.slice(0, 1).forEach(o => rows.push(`<button class="trow" onclick="startCheckpoint('${o.kind}','${o.pid || ""}')"><span class="ico">${ico("check", 14)}</span><span>${esc(o.label)}</span><span class="t">~10 min</span></button>`));
   if (openQs()) rows.push(`<button class="trow" onclick="markFilter='open';go('#/marks')"><span class="ico">?</span><span>Close <b>${openQs()}</b> open question${openQs() > 1 ? "s" : ""}</span><span class="t">~5 min</span></button>`);
   const streakLine = S.streak.last === todayNum() ? `Studied today · streak <b>${S.streak.days}</b>` : S.streak.days ? `Streak <b>${S.streak.days}</b> — nothing yet today` : "No streak yet — one section, one card or one question starts it";
-  return `<div class="card today"><p class="eyebrow">Today</p>
-    <div class="trows">${rows.join("") || `<p class="sub">Nothing queued. Open the next module.</p>`}</div>
+  return `<div class="card today raised"><p class="eyebrow">${cont && modPct(cont) > 0 ? "Continue" : "Next"}</p>
+    ${next}
+    ${rows.length ? `<p class="eyebrow" style="margin-top:16px">Also today</p><div class="trows">${rows.join("")}</div>` : ""}
     <p class="sub" style="margin-top:12px;font-size:12.5px">${streakLine}${S.streak.freezes ? ` · ❄ ${S.streak.freezes} freeze${S.streak.freezes > 1 ? "s" : ""}` : ""}${pi.weekly && pi.thisWeek.length ? ` · this week: ${pi.thisWeek.map(m => m.id).join(", ")}` : ""}</p></div>`;
 }
 function renderPlanCard() {

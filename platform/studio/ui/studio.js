@@ -68,7 +68,6 @@ function courseUrl(c, hash) {
 
 async function refresh() {
   STATE = await api("/api/state");
-  $("#rootpath").textContent = STATE.root || "";
   const pill = $("#claudestate");
   pill.textContent = STATE.claude.available ? "Claude Code connected" : "Claude Code not found";
   pill.className = "pill " + (STATE.claude.available ? "on" : "off");
@@ -109,17 +108,15 @@ function courseCard(c) {
     : c.job && !FINISHED.includes(c.job.status)
       ? `<span class="pill">${esc(c.job.kind)} · ${esc(c.job.status)}</span>`
       : c.built ? "" : `<span class="pill">not built</span>`;
+  const underway = p.done || p.started;
   const primary = c.built
-    ? (p.done ? `<a class="btn sm" href="${courseUrl(c, "#/m/" + (p.next || ""))}">Continue ${esc(p.next || "")} →</a>`
-              : `<a class="btn sm" href="${courseUrl(c)}">Start →</a>`)
+    ? (underway ? `<a class="btn sm" href="${courseUrl(c, "#/m/" + (p.next || ""))}">Continue ${esc(p.next || "")}</a>`
+                : `<a class="btn sm" href="${courseUrl(c)}">Start</a>`)
     : `<button class="btn sm" onclick="buildFromCard('${c.id}')" ${c.error ? "disabled" : ""}>Build</button>`;
   return `<div class="coursecard">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-      <span class="pct">${p.modules ? pct + "%" : ""}</span><span class="spacer"></span>${status}
-    </div>
-    <h3><a href="#/course/${encodeURIComponent(c.id)}" style="text-decoration:none;color:inherit">${esc(c.title)}</a></h3>
+    <div class="head"><h3><a href="#/course/${encodeURIComponent(c.id)}" style="text-decoration:none;color:inherit">${esc(c.title)}</a></h3>${status}</div>
     <p class="tagline">${esc(c.tagline || "")}</p>
-    <div class="bar-track" style="margin:0 0 8px"><div class="bar-fill" style="width:${pct}%"></div></div>
+    ${underway ? `<div class="bar-track" style="margin:0 0 8px"><div class="bar-fill" style="width:${pct}%"></div></div>` : ""}
     <p class="facts">${esc(progressLine(c) || `${c.modules} module${c.modules === 1 ? "" : "s"} · ${esc(c.hours)}h`)}${c.error ? " · " + esc(c.error) : ""}</p>
     <div class="actions">
       ${primary}
@@ -137,7 +134,8 @@ function todayStrip() {
     const p = c.progress || {};
     if (!c.built || !p.modules) return;
     if (p.due) items.push(`<a class="today" href="${courseUrl(c, "#/review")}"><b>${p.due}</b> card${p.due === 1 ? "" : "s"} due · ${esc(c.title)}</a>`);
-    if (p.started) items.push(`<a class="today" href="${courseUrl(c, "#/m/" + (p.next || ""))}"><b>${esc(p.next || "")}</b> in progress · ${esc(c.title)}</a>`);
+    // "in progress" means real work, not a page that was opened once
+    if (p.started && (p.done || (p.minutes || 0) >= 5)) items.push(`<a class="today" href="${courseUrl(c, "#/m/" + (p.next || ""))}"><b>${esc(p.next || "")}</b> in progress · ${esc(c.title)}</a>`);
   });
   if (!items.length) return "";
   return `<div class="todaystrip"><span class="eyebrow" style="margin:0 6px 0 0">Today</span>${items.join("")}</div>`;
@@ -203,7 +201,7 @@ function viewNew() {
         <textarea id="f-notes" placeholder="Weighted toward salary and contract talks. Skip hostage-negotiation material."></textarea>
       </div>
       <div class="actions" style="margin-top:6px">
-        <button class="btn" id="planbtn">Plan the course →</button>
+        <button class="btn" id="planbtn">Plan the course</button>
         <a class="btn ghost" href="#/">Cancel</a>
       </div>
       <p class="sub" style="margin:14px 0 0;font-size:13px">A 20-hour course is about 20 modules. Writing them all takes a while — the progress view shows each one as it lands, and you can stop at any point.</p>
@@ -230,7 +228,7 @@ async function startGeneration() {
   } catch (err) {
     toast(err.message);
     btn.disabled = false;
-    btn.textContent = "Plan the course →";
+    btn.textContent = "Plan the course";
   }
 }
 
@@ -238,7 +236,10 @@ async function startGeneration() {
 
 async function viewCourse() {
   const id = route.id;
-  $("#view").innerHTML = `<p class="crumb"><a href="#/">Courses</a> › ${esc(id)}</p><p class="sub">Loading…</p>`;
+  // Paint what we already know first, so a tab switch does not flash "Loading…"; the fresh
+  // copy repaints underneath when it arrives.
+  if (courseCache[id]) paintCourse(courseCache[id]);
+  else $("#view").innerHTML = `<p class="crumb"><a href="#/">Courses</a> › ${esc(id)}</p><p class="sub">Loading…</p>`;
   let c;
   try { c = await api(`/api/courses/${encodeURIComponent(id)}`); }
   catch (err) { $("#view").innerHTML = `<div class="card"><h3>Cannot open ${esc(id)}</h3><p class="sub">${esc(err.message)}</p></div>`; return; }
@@ -269,11 +270,11 @@ function paintCourse(c) {
       </div>
       <div class="actions" style="flex-direction:column;align-items:stretch;min-width:180px">
         ${c.built
-          ? `<a class="btn" href="${courseUrl(c, p.done || p.started ? "#/m/" + (p.next || "") : "#/home")}">${p.done || p.started ? "Continue at " + esc(p.next || "") : "Start the course"} →</a>
+          ? `<a class="btn" href="${courseUrl(c, p.done || p.started ? "#/m/" + (p.next || "") : "#/home")}">${p.done || p.started ? "Continue at " + esc(p.next || "") : "Start the course"}</a>
              <a class="btn ghost" href="${courseUrl(c)}">Open the course</a>`
           : `<span class="pill" style="text-align:center">not built yet</span>`}
         ${live ? `<a class="btn ghost" href="#/job/${c.job.id}">${esc(c.job.kind)} running — view</a>`
-               : `${c.resumable ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${c.id}')">Resume the run →</button>` : ""}
+               : `${c.resumable ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${c.id}')">Resume the run</button>` : ""}
                   <button class="btn ghost" onclick="checkCourse('${c.id}')">Check</button>
                   <button class="btn ghost" onclick="buildCourse('${c.id}')">${c.built ? "Rebuild" : "Build"}</button>`}
       </div>
@@ -322,13 +323,13 @@ function paintModules(c) {
         <span class="actions">${open}
           <a class="btn sm ghost" href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(m.path)}">Edit</a>
           <button class="btn sm ghost" onclick="toggleRewrite('${m.id}')">Rewrite…</button>
-          <button class="btn sm ghost" title="Remove this module" onclick="toggleRemove('${m.id}')">×</button></span>
+          <button class="btn sm ghost rm" title="Remove this module" aria-label="Remove ${esc(m.id)}" onclick="toggleRemove('${m.id}')">×</button></span>
       </div>
       <div class="inlineform ${rewriting ? "" : "hidden"}" id="rw-${m.id}">
         <label for="rwn-${m.id}">What should change in ${esc(m.id)}?</label>
         <textarea id="rwn-${m.id}" rows="3" placeholder="Go much deeper on the worked example in Core concepts; the current version stops before the arithmetic. Keep the exercise.">${esc(route.query.rewrite === m.id && route.query.q ? route.query.q : "")}</textarea>
         <div class="actions" style="margin-top:10px">
-          <button class="btn sm" onclick="rewriteModule('${c.id}','${m.id}')">Rewrite ${esc(m.id)} →</button>
+          <button class="btn sm" onclick="rewriteModule('${c.id}','${m.id}')">Rewrite ${esc(m.id)}</button>
           <button class="btn sm ghost" onclick="toggleRewrite('${m.id}')">Cancel</button>
           <span class="sub" style="font-size:12px;margin:0 0 0 6px">Keeps the id and position. Your progress for it stays; section ticks may shift.</span>
         </div>
@@ -413,7 +414,7 @@ function paintQuestions(c) {
 /* ---- settings: the presentation fields of course.json, as a form ---- */
 
 function paintSettings(c) {
-  const s = c.settings || {};
+  const s = c.settings || {}, a = s.anchor || {};
   const milestones = (s.milestones || []).map((m, i) => milestoneRow(m, i)).join("");
   const parts = (s.parts || []).map(p => `<div class="row" style="grid-template-columns:1fr 90px 2fr;margin-bottom:8px" data-part="${esc(p.id)}">
       <input type="text" class="p-name" value="${esc(p.name)}" aria-label="Part name">
@@ -432,6 +433,15 @@ function paintSettings(c) {
       <div class="field"><label for="s-practitioner">Practitioner <span class="hint">what one is called</span></label><input type="text" id="s-practitioner" value="${esc(s.practitioner)}"></div>
     </div>
     <div class="field"><label for="s-persona">Tutor persona <span class="hint">the system prompt fragment; ends with a period</span></label><textarea id="s-persona" rows="2">${esc(s.tutorPersona)}</textarea></div>
+    <label>The reader's own case <span class="hint">the one real thing every exercise is applied to — a business, a kitchen, a next negotiation</span></label>
+    <div class="row" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
+      <input type="text" id="a-label" value="${esc(a.label)}" placeholder="Label, e.g. Your business" aria-label="Label">
+      <input type="text" id="a-noun" value="${esc(a.noun)}" placeholder="In a question: my business" aria-label="Noun">
+    </div>
+    <div class="row" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+      <input type="text" id="a-prompt" value="${esc(a.prompt)}" placeholder="One line asking the reader to name it" aria-label="Prompt">
+      <input type="text" id="a-placeholder" value="${esc(a.placeholder)}" placeholder="Placeholder, e.g. my sister's clinic" aria-label="Placeholder">
+    </div>
     <label>Parts <span class="hint">name, hours, blurb — the course total follows the sum</span></label>
     ${parts}
     <label style="margin-top:14px">Milestones <span class="hint">the honest-read line on the stats page: after N modules, say this</span></label>
@@ -481,6 +491,7 @@ async function saveSettings(id) {
   const body = {
     title: $("#s-title").value, tagline: $("#s-tagline").value, audience: $("#s-audience").value,
     practitioner: $("#s-practitioner").value, tutorPersona: $("#s-persona").value,
+    anchor: { label: $("#a-label").value, noun: $("#a-noun").value, prompt: $("#a-prompt").value, placeholder: $("#a-placeholder").value },
     milestones: [...document.querySelectorAll("[data-ms]")].map(el => ({
       after: Number(el.querySelector(".ms-after").value) || 0, text: el.querySelector(".ms-text").value })),
     parts: [...document.querySelectorAll("[data-part]")].map(el => ({
@@ -576,7 +587,7 @@ function paintAdd(c) {
       <textarea id="x-notes" placeholder="What confused you, what you want it to assume you already know, what to avoid.">${esc(seedNotes)}</textarea>
     </div>
     <div class="actions">
-      <button class="btn" id="extendbtn" onclick="extendCourse('${c.id}')" ${STATE.claude.available ? "" : "disabled"}>Design and write it →</button>
+      <button class="btn" id="extendbtn" onclick="extendCourse('${c.id}')" ${STATE.claude.available ? "" : "disabled"}>Design and write it</button>
     </div>
   </div>`;
   $("#x-topic").focus();
@@ -595,7 +606,7 @@ async function extendCourse(id) {
     location.hash = "#/job/" + j.id;
   } catch (err) {
     toast(err.message);
-    btn.disabled = false; btn.textContent = "Design and write it →";
+    btn.disabled = false; btn.textContent = "Design and write it";
   }
 }
 
@@ -668,7 +679,7 @@ async function viewSettingsPage() {
 
     <div class="card">
       <p class="eyebrow">Model</p>
-      <p class="sub" style="font-size:13.5px">Every call to Claude Code names its model explicitly. Without that the CLI inherits whatever you last picked interactively, and some of those (a <span class="mono">[1m]</span> context variant, say) are refused headless — which is how a run dies mid-module with <span class="mono">unrecognized_model</span>. If the chosen model fails, Studio falls back to Sonnet before giving up.</p>
+      <p class="sub" style="font-size:13.5px">The model Studio writes courses with and answers the tutor's questions through. If it is unavailable, Studio falls back to the platform default before giving up.</p>
       <div class="radios">${models}</div>
       <div id="settingsmsg"></div>
     </div>
@@ -754,17 +765,18 @@ async function viewEdit() {
     <p class="crumb"><a href="#/">Courses</a> › <a href="#/course/${encodeURIComponent(id)}?tab=files">${esc(id)}</a> › ${esc(path)}</p>
     <div class="editbar">
       <span class="path">${esc(path)}</span>
-      <button class="btn sm" id="savebtn" onclick="saveFile('${id}')">Save</button>
+      <button class="btn sm" id="savebtn" onclick="saveFile('${id}', 'build')">Save, check and build</button>
       <button class="btn sm ghost" onclick="saveFile('${id}', true)">Save and check</button>
+      <button class="btn sm ghost" onclick="saveFile('${id}')">Save only</button>
       <a class="btn sm ghost" href="#/course/${encodeURIComponent(id)}">Back to course</a>
     </div>
     <textarea class="editor" id="editor" spellcheck="false"></textarea>
     <div id="editout"></div>
-    <p class="sub" style="font-size:12.5px;margin-top:10px">Ctrl+S saves. A module's first line must be <span class="mono"># M07 — Title</span>; every <span class="mono">## </span> heading with content is one section, and the suggestion file for the module needs exactly that many entries.</p>`;
+    <p class="sub" style="font-size:12.5px;margin-top:10px">Ctrl+S saves, Ctrl+Shift+S saves and builds. A module's first line must be <span class="mono"># M07 — Title</span>; every <span class="mono">## </span> heading with content is one section, and the suggestion file for the module needs exactly that many entries.</p>`;
   const ta = $("#editor");
   ta.value = file.text;
   ta.addEventListener("keydown", e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveFile(id); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveFile(id, e.shiftKey ? "build" : false); }
     if (e.key === "Tab") { e.preventDefault(); const s = ta.selectionStart; ta.setRangeText("  ", s, ta.selectionEnd, "end"); }
   });
   ta.focus();
@@ -777,6 +789,14 @@ async function saveFile(id, check) {
     await api(`/api/courses/${encodeURIComponent(id)}/files?path=${encodeURIComponent(path)}`, { text: $("#editor").value }, "PUT");
     toast("Saved " + path.slice(path.lastIndexOf("/") + 1));
     if (!check) { out.innerHTML = ""; return; }
+    if (check === "build") {
+      out.innerHTML = `<p class="sub" style="margin:12px 0 0">Checking and building…</p>`;
+      const data = await api(`/api/courses/${encodeURIComponent(id)}/build`, {});
+      out.innerHTML = data.built
+        ? `<p class="sub ok-text" style="margin:12px 0 0">Built: ${data.result.modules} modules · ${data.result.sections} sections · ${data.result.kb} KB. <a href="#/course/${encodeURIComponent(id)}">Back to the course</a>.</p>`
+        : `<div class="problems"><b>Saved, but not built — ${data.problems.length} problem${data.problems.length === 1 ? "" : "s"}</b><ul>${data.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
+      return;
+    }
     const { problems } = await api(`/api/courses/${encodeURIComponent(id)}/check`, {});
     out.innerHTML = problems.length
       ? `<div class="problems"><b>${problems.length} problem${problems.length === 1 ? "" : "s"}</b><ul>${problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`
@@ -881,7 +901,7 @@ function paintJob(full) {
   else if (finished) head = `<div class="card"><h3>${job.status === "cancelled" ? "Stopped" : "It did not finish"}</h3>
       <p class="sub" style="margin:6px 0 0">${esc(lines.filter(l => l.cls === "bad").map(l => l.text).join(" ") || "")}</p>
       <p class="sub" style="margin:10px 0 0">Anything written before this point is still on disk under <span class="mono">courses/</span>.${job.kind === "generate" && courseId ? " The curriculum is saved, so the run can be resumed: it keeps what is written and does only the rest." : ""} The <a href="#/settings">log</a> has the CLI's own error.</p>
-      <div class="actions">${job.kind === "generate" && courseId ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(courseId)}')">Resume the run →</button>` : ""}${back}</div></div>`;
+      <div class="actions">${job.kind === "generate" && courseId ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(courseId)}')">Resume the run</button>` : ""}${back}</div></div>`;
   else head = `<div class="card">
       <p class="eyebrow">${esc(job.status)} · ${esc(jobTitle())}</p>
       <h3>${esc(p.label || "Working…")}</h3>
@@ -901,7 +921,7 @@ function doneHTML(back) {
   const c = (STATE.courses || []).find(x => x.id === id);
   const target = r.module ? "#/m/" + r.module : "#/home";
   const open = c && c.built
-    ? `<a class="btn" href="${courseUrl(c, target)}">${r.module ? "Read " + esc(r.module) : "Open the course"} ↗</a>`
+    ? `<a class="btn" href="${courseUrl(c, target)}">${r.module ? "Read " + esc(r.module) : "Open the course"}</a>`
     : "";
   const what = job.kind === "extend" ? `${esc(r.module || "A module")} was added to ${esc(id)}`
     : job.kind === "rewrite" ? `${esc(r.module || "The module")} was rewritten`
@@ -943,7 +963,7 @@ function reviewPlanHTML() {
     <div class="note">Edit titles, minutes and part names in place, or drop modules you do not want. Writing ${total} modules takes a while, so it is worth a minute here.</div>
     <div style="margin-top:16px">${parts}</div>
     <div class="actions" style="margin-top:16px">
-      <button class="btn" onclick="approvePlan()">Write all ${total} modules →</button>
+      <button class="btn" onclick="approvePlan()">Write all ${total} modules</button>
       <button class="btn danger" onclick="cancelJob()">Stop</button>
     </div>
   </div>`;

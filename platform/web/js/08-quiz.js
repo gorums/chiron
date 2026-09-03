@@ -53,7 +53,7 @@ function drawQuiz() {
     }
   } else {
     h += verdictHtml(it, st);
-    if (st.ok != null) h += `<div style="display:flex;gap:9px;margin-top:16px"><button class="btn primary" onclick="qNext()">${qs.i === n - 1 ? "See results →" : "Next question →"} <kbd>↵</kbd></button></div>`;
+    if (st.ok != null) h += `<div style="display:flex;gap:9px;margin-top:16px"><button class="btn primary" onclick="qNext()">${qs.i === n - 1 ? "See results" : "Next question"} <kbd>↵</kbd></button></div>`;
   }
   h += `</div>`;
   host.innerHTML = h;
@@ -230,7 +230,7 @@ function quizResults(m) {
     <button class="btn" onclick="retake('${m.id}')">Retake</button>
     <button class="btn" onclick="go('#/m/${m.id}/1')">Back to reading</button>
     ${queued ? `<button class="btn" onclick="go('#/review/mistakes')">Fix mistakes now</button>` : ""}
-    <button class="btn primary" onclick="go('#/m/${m.id}/3')">Continue →</button></div></div>`;
+    <button class="btn primary" onclick="go('#/m/${m.id}/3')">Continue to Elaborate</button></div></div>`;
   h += `<div class="card" style="margin-top:16px"><p class="eyebrow">Every question, with the reasoning</p>`;
   items.forEach((it, i) => {
     const st = q.a[i] || {};

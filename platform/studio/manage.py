@@ -32,6 +32,8 @@ SETTINGS = {
     "practitioner": lambda v: _TEXT(v, 60),
     "tutorPersona": lambda v: _TEXT(v, 600),
 }
+# The reader's own case (`anchor` in course.json): four short texts, all optional.
+ANCHOR_KEYS = ("label", "prompt", "placeholder", "noun")
 _SAFE_MID = re.compile(r"^M\d{2,3}$")
 
 
@@ -59,6 +61,8 @@ def settings(root: str) -> Dict[str, Any]:
     out = {k: manifest.get(k, "") for k in SETTINGS}
     out["id"] = manifest.get("id", "")
     out["hours"] = manifest.get("hours", 0)
+    anchor = manifest.get("anchor") if isinstance(manifest.get("anchor"), dict) else {}
+    out["anchor"] = {k: str(anchor.get(k, "") or "") for k in ANCHOR_KEYS}
     out["milestones"] = [m for m in (manifest.get("milestones") or [])
                          if isinstance(m, dict) and "text" in m]
     out["parts"] = [{"id": p.get("id"), "name": p.get("name"), "hours": p.get("hours"),
@@ -84,6 +88,10 @@ def update_settings(root: str, changes: Dict[str, Any]) -> Dict[str, Any]:
 
     if "milestones" in changes:
         manifest["milestones"] = _clean_milestones(changes["milestones"])
+
+    if isinstance(changes.get("anchor"), dict):
+        anchor = {k: _TEXT(changes["anchor"].get(k), 300) for k in ANCHOR_KEYS}
+        manifest["anchor"] = {k: v for k, v in anchor.items() if v}
 
     if "parts" in changes:
         by_id = {p.get("id"): p for p in (changes["parts"] or []) if isinstance(p, dict)}

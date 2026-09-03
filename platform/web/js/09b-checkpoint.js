@@ -57,7 +57,7 @@ function viewCheck() {
   // the hub
   let h = `<div class="wrap-wide"><h2 class="big">Checkpoints</h2>
     <p class="sub" style="margin-bottom:22px">A module quiz measures recognition ten minutes after reading. A checkpoint asks the same questions weeks later, mixed with everything else, and that is the number that predicts whether you can use it. Take one when a part is done, and again every couple of weeks.</p>
-    ${S.cp && !S.cp.finished ? `<div class="card" style="margin-bottom:18px;border-color:var(--accent)"><p class="eyebrow">In progress</p><p class="sub" style="margin-bottom:10px">${S.cp.kind === "course" ? "Course challenge" : "Checkpoint · " + esc(partName(S.cp.pid))} · question ${S.cp.i + 1} of ${S.cp.items.length}</p><button class="btn primary" onclick="go('#/check/run')">Continue →</button> <button class="btn ghost" onclick="abandonCheck()">Abandon</button></div>` : ""}
+    ${S.cp && !S.cp.finished ? `<div class="card" style="margin-bottom:18px;border-color:var(--accent)"><p class="eyebrow">In progress</p><p class="sub" style="margin-bottom:10px">${S.cp.kind === "course" ? "Course challenge" : "Checkpoint · " + esc(partName(S.cp.pid))} · question ${S.cp.i + 1} of ${S.cp.items.length}</p><button class="btn primary" onclick="go('#/check/run')">Continue</button> <button class="btn ghost" onclick="abandonCheck()">Abandon</button></div>` : ""}
     <div class="grid g2">`;
   DATA.parts.forEach(p => {
     const ms = MODS.filter(m => m.part === p.id), el = eligibleFor("part", p.id), last = lastCheck("part", p.id);

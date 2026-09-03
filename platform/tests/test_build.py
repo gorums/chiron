@@ -176,6 +176,21 @@ class TestManifest(TempCourseTest):
         self.assertEqual(runtime["localFile"], "fixture-course-local.html")
         self.assertNotIn("parts", runtime)
         self.assertNotIn("modules", runtime)
+        # the reader's own case is named by the course, never by the engine
+        self.assertEqual(set(runtime["anchor"]), {"label", "prompt", "placeholder", "noun"})
+        self.assertEqual(runtime["anchor"]["label"], "Your own case")
+
+    def test_anchor_overrides_merge_over_defaults(self):
+        path = os.path.join(self.course.root, "course.json")
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        raw["anchor"] = {"label": "Your kitchen", "bogus": "ignored"}
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(raw, fh)
+        anchor = config.load(self.course.root).runtime()["anchor"]
+        self.assertEqual(anchor["label"], "Your kitchen")
+        self.assertEqual(anchor["noun"], "my own case")
+        self.assertNotIn("bogus", anchor)
 
 
 class TestLoader(TempCourseTest):
