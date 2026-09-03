@@ -34,9 +34,9 @@ $("#opensearch").onclick = openPalette;
 $("#themebtn").onclick = cycleTheme;
 $("#helpbtn").onclick = openHelp;
 $("#menubtn").onclick = toggleSidebar;
-applySide();
-migrateChats();
-applyReading();
 parseHash();
-// Pull the platform copy of progress first, when there is one, so the first paint is right.
-syncPull().finally(() => { render(); setTimeout(() => checkBridge(true), 250); setTimeout(notifyDue, 1500); });
+// Who is reading (Studio may have switched profiles), then the platform copy of their
+// progress, so the first paint is right. Device settings are applied once S is final.
+profileInit()
+  .then(() => { applySide(); migrateChats(); applyReading(); return syncPull(); })
+  .finally(() => { render(); setTimeout(() => checkBridge(true), 250); setTimeout(notifyDue, 1500); });

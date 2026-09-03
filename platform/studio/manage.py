@@ -135,6 +135,59 @@ def _tidy(value: float):
     return int(value) if float(value).is_integer() else round(float(value), 2)
 
 
+# --------------------------------------------------------------------------- moving a module
+
+
+def move_module(root: str, mid: str, part_id: str = "", index: int = -1) -> Dict[str, Any]:
+    """Put one module somewhere else in the reading order, optionally in another part.
+
+    The file moves folders when the part changes; the order is written to `order` in
+    course.json as the full list of ids, which is what the loader sorts by. Progress is keyed
+    by id and does not notice. Returns the new order.
+    """
+    if not _SAFE_MID.match(mid or ""):
+        raise CourseError("Bad module id.")
+    from coursekit import loader as ck_loader
+    cfg = ck_config.load(root)
+    modules = ck_loader.load_modules(cfg)
+    current = next((m for m in modules if m.id == mid), None)
+    if current is None:
+        raise CourseError("No module '%s' in this course." % mid)
+    part_id = part_id or current.part
+    part = next((p for p in cfg.parts if p.id == part_id), None)
+    if part is None:
+        raise CourseError("No part '%s' in this course." % part_id)
+
+    if part.id != current.part:
+        dest_dir = os.path.join(cfg.modules_dir, part.dir)
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, os.path.basename(current.source))
+        if os.path.exists(dest):
+            raise CourseError("A file named %s already exists in that part." % os.path.basename(dest))
+        shutil.move(current.source, dest)
+        # the source folder must keep at least one module or the loader refuses the course
+        src_dir = os.path.dirname(current.source)
+        if not any(f.endswith(".md") for f in os.listdir(src_dir)):
+            shutil.move(dest, current.source)
+            raise CourseError("That would leave the part '%s' with no modules." % current.part)
+
+    # rebuild the order: every part's ids in current sequence, with mid re-inserted
+    order: List[str] = []
+    for p in cfg.parts:
+        ids = [m.id for m in modules if m.part == p.id and m.id != mid]
+        if p.id == part.id:
+            pos = len(ids) if index is None or index < 0 or index > len(ids) else int(index)
+            ids.insert(pos, mid)
+        order.extend(ids)
+
+    manifest_path = os.path.join(root, "course.json")
+    manifest = _read_json(manifest_path)
+    manifest["order"] = order
+    _write_json(manifest_path, manifest)
+    ck_config.load(root)
+    return {"order": order, "part": part.id, "moved": part.id != current.part}
+
+
 # --------------------------------------------------------------------------- removing a module
 
 
@@ -193,8 +246,14 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
 
     manifest_path = os.path.join(root, "course.json")
     manifest = _read_json(manifest_path)
+    changed = False
     if mid in (manifest.get("shortTitles") or {}):
         del manifest["shortTitles"][mid]
+        changed = True
+    if mid in (manifest.get("order") or []):
+        manifest["order"] = [x for x in manifest["order"] if x != mid]
+        changed = True
+    if changed:
         _write_json(manifest_path, manifest)
     return removed
 

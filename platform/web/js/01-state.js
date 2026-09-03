@@ -1,5 +1,7 @@
 /* ============================ state ============================ */
-const KEY = CFG.storageKey;
+/* The storage key carries the reader profile when Studio is reading as someone other than
+   the default, so two readers on one browser never share a state object. */
+let KEY = CFG.storageKey, PROFILE = "default";
 const DAY = 86400000;
 const todayNum = () => Math.floor(Date.now() / DAY);
 /* Platform settings, injected at build time from platform/settings.json (see
@@ -55,7 +57,20 @@ const STUDIO = (() => {
   return m && m[1] === CFG.id ? { origin: location.origin, id: m[1] } : null;
 })();
 let syncTimer = null, syncOn = false, syncState = "off";
-function syncUrl() { return `${STUDIO.origin}/api/courses/${STUDIO.id}/progress`; }
+function syncUrl() { return `${STUDIO.origin}/api/courses/${STUDIO.id}/progress?profile=${encodeURIComponent(PROFILE)}`; }
+/* Ask Studio who is reading before anything is loaded. Off disk there is no one to ask. */
+async function profileInit() {
+  if (!STUDIO) return;
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), SYNC.pullTimeoutMs);
+    const r = await fetch(`${STUDIO.origin}/api/profile`, { signal: ctrl.signal, cache: "no-store" });
+    clearTimeout(t);
+    if (!r.ok) return;
+    const j = await r.json();
+    const name = String((j && j.profile) || "default");
+    if (name !== "default") { PROFILE = name; KEY = CFG.storageKey + "_" + name; S = load(); applyTheme(); }
+  } catch (e) { /* off-line or not Studio: the default profile */ }
+}
 function syncBody() {
   const o = Object.assign({}, S);
   delete o.bridge; delete o.ui; delete o.theme;

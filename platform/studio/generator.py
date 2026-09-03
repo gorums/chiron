@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from typing import Any, Dict, List
 
 from coursekit import assessments as ck_assess
@@ -881,6 +882,92 @@ def rewrite(job: Job, courses_dir: str, dist_dir: str, course_id: str, mid: str,
     job.progress(4, total, "Done")
     job.emit("built", **result)
     return dict(result, course=course_id, root=root, module=mid)
+
+
+REVIEW_VERDICTS = ("solid", "needs work", "rewrite")
+
+
+def _fix_review(raw: Any) -> Dict[str, Any]:
+    """Coerce a review reply into the shape the UI renders. Prose is trusted; structure is not."""
+    raw = raw if isinstance(raw, dict) else {}
+    verdict = str(raw.get("verdict") or "").strip().lower()
+    if verdict not in REVIEW_VERDICTS:
+        verdict = "needs work"
+    def rows(key, first):
+        out = []
+        for r in (raw.get(key) or []) if isinstance(raw.get(key), list) else []:
+            if isinstance(r, str) and r.strip():
+                out.append({first: "", "issue": r.strip()[:600], "fix": ""})
+            elif isinstance(r, dict):
+                issue = str(r.get("issue") or "").strip()
+                if issue:
+                    out.append({first: str(r.get(first) or "").strip()[:200],
+                                "issue": issue[:600], "fix": str(r.get("fix") or "").strip()[:600]})
+        return out[:12]
+    return {
+        "verdict": verdict,
+        "summary": str(raw.get("summary") or "").strip()[:1200],
+        "gaps": rows("gaps", "where"),
+        "errors": rows("errors", "where"),
+        "quiz": rows("quiz", "item"),
+        "rewriteBrief": str(raw.get("rewriteBrief") or "").strip()[:1500],
+    }
+
+
+def reviews_dir(state_root: str, course_id: str) -> str:
+    return os.path.join(state_root, "reviews", course_id)
+
+
+def load_reviews(state_root: str, course_id: str) -> Dict[str, Any]:
+    """Every stored review for a course, keyed by module id."""
+    directory = reviews_dir(state_root, course_id)
+    out: Dict[str, Any] = {}
+    if not os.path.isdir(directory):
+        return out
+    for name in sorted(os.listdir(directory)):
+        if name.endswith(".json"):
+            try:
+                out[name[:-5]] = _read_json(os.path.join(directory, name))
+            except (OSError, ValueError):
+                continue
+    return out
+
+
+def review(job: Job, courses_dir: str, state_root: str, course_id: str, mid: str,
+           brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Have Claude read one module critically and store what it found.
+
+    The result lives in state/, not in the course: it is an opinion about the content, not
+    content, and a course repository should not fill up with review files. The UI turns the
+    brief it ends with into a Rewrite.
+    """
+    root = os.path.join(courses_dir, course_id)
+    cfg = ck_config.load(root)
+    modules = ck_loader.load_modules(cfg)
+    current = next((m for m in modules if m.id == mid), None)
+    if current is None:
+        raise GenerationError("No module '%s' in this course." % mid)
+    plan = plan_from_course(cfg, modules)
+    spec = next(m for m in plan["modules"] if m["id"] == mid)
+    assess = ck_assess.load_assessments(cfg).get(mid) or {}
+    model = brief.get("model", "")
+    job.meta["course"] = course_id
+    job.meta["module"] = mid
+
+    job.progress(1, 2, "Reading %s · %s" % (mid, current.title))
+    with open(current.source, encoding="utf-8") as fh:
+        body = fh.read()
+    result = _fix_review(claude_cli.ask_json(
+        prompts.review(plan, plan["modules"], spec, body, assess), model=model,
+        timeout=_timeout("review")))
+    result.update(module=mid, title=current.title, at=int(time.time() * 1000), model=model or "")
+    directory = reviews_dir(state_root, course_id)
+    os.makedirs(directory, exist_ok=True)
+    _write_json(os.path.join(directory, "%s.json" % mid), result)
+    job.emit("review", id=mid, verdict=result["verdict"], gaps=len(result["gaps"]),
+             errors=len(result["errors"]), quiz=len(result["quiz"]))
+    job.progress(2, 2, "Done")
+    return dict(result, course=course_id, root=root)
 
 
 def build_course(root: str, dist_dir: str) -> Dict[str, Any]:

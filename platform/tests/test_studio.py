@@ -886,5 +886,206 @@ class TestCourseEditing(unittest.TestCase):
             server.COURSES_DIR = saved
 
 
+class TestPhase3(unittest.TestCase):
+    """Reordering, profiles, the study calendar, search, export/import and the review pass."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        sys.path.insert(0, HERE)
+        from test_build import CourseFixture
+        self.tmp = tempfile.mkdtemp(prefix="studio-p3-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.courses = os.path.join(self.tmp, "courses")
+        self.fixture = CourseFixture(self.courses)
+
+    def _ids(self):
+        from coursekit import loader as ck_loader
+        return [m.id for m in ck_loader.load_modules(config.load(self.fixture.root))]
+
+    # ---- P3.1 order ----
+
+    def test_order_in_manifest_drives_the_loader_and_the_cheap_listing(self):
+        from studio import server
+        self.assertEqual(self._ids(), ["M01", "M02", "M03", "M04", "M05", "M06"])
+        self.fixture.edit_manifest(order=["M02", "M01", "M04", "M03", "M99"])
+        cfg = config.load(self.fixture.root)
+        self.assertEqual(self._ids(), ["M02", "M01", "M04", "M03", "M05", "M06"],
+                         "listed ids first in that sequence, unknown ids ignored, the rest by filename")
+        self.assertEqual(server._module_ids(cfg), self._ids())
+        self.assertEqual(self.fixture.problems(), [])
+
+    def test_move_module_within_and_between_parts(self):
+        from studio import manage
+        r = manage.move_module(self.fixture.root, "M02", "p1", 0)
+        self.assertEqual(r["order"][:2], ["M02", "M01"])
+        self.assertFalse(r["moved"])
+        self.assertEqual(self._ids()[:2], ["M02", "M01"])
+        r = manage.move_module(self.fixture.root, "M01", "p3", 0)
+        self.assertTrue(r["moved"])
+        cfg = config.load(self.fixture.root)
+        from coursekit import loader as ck_loader
+        mods = ck_loader.load_modules(cfg)
+        m01 = next(m for m in mods if m.id == "M01")
+        self.assertEqual(m01.part, "p3")
+        self.assertEqual([m.id for m in mods if m.part == "p3"][0], "M01")
+        self.assertEqual(self.fixture.problems(), [], "moving touches no study data")
+        with self.assertRaises(CourseError):
+            manage.move_module(self.fixture.root, "M02", "p2", 0)   # p1 would be left empty
+        with self.assertRaises(CourseError):
+            manage.move_module(self.fixture.root, "M42", "p1", 0)
+        manage.remove_module(self.fixture.root, "M04", os.path.join(self.tmp, "trash"))
+        with open(self.fixture.cfg_path, encoding="utf-8") as fh:
+            self.assertNotIn("M04", json.load(fh)["order"])
+
+    # ---- P3.3 profiles ----
+
+    def test_profile_stores_and_prefs(self):
+        from studio import prefs, progress
+        base = os.path.join(self.tmp, "progress")
+        default = progress.Store(base)
+        alex = progress.Store(base, "alex")
+        self.assertEqual(default.path("bread"), os.path.join(base, "bread.json"))
+        self.assertEqual(alex.path("bread"), os.path.join(base, "alex", "bread.json"))
+        default.save("bread", {"progress": {"M01": {"done": True}}})
+        alex.save("bread", {"progress": {}})
+        self.assertEqual(progress.profiles(base), ["default", "alex"])
+        self.assertTrue(default.load("bread")["state"]["progress"]["M01"]["done"])
+        self.assertEqual(alex.load("bread")["state"]["progress"], {})
+        self.assertEqual(default.delete_everywhere("bread"), 2)
+        self.assertIsNone(alex.load("bread"))
+        with self.assertRaises(ValueError):
+            progress.Store(base, "../x")
+        pf = prefs.Prefs(os.path.join(self.tmp, "studio.json"))
+        self.assertEqual(pf.profile, "default")
+        pf.save({"profile": "Alex"})
+        self.assertEqual(pf.profile, "alex")
+        with self.assertRaises(ValueError):
+            pf.save({"profile": "not ok"})
+
+    # ---- P3.4 calendar ----
+
+    def test_calendar_across_courses(self):
+        from studio import progress, server
+        today = int(time.time() // 86400)
+        summary = progress.summarise({"streak": {"seen": [today, today - 1, today - 5]}}, ["M01"])
+        self.assertEqual(summary["seen"], [today - 5, today - 1, today])
+        cal = server.calendar([
+            {"id": "a", "progress": {"seen": [today - 1, today - 2]}},
+            {"id": "b", "progress": {"seen": [today - 2, today - 9]}},
+        ])
+        self.assertEqual(cal["streak"], 2, "yesterday and the day before, today not yet studied")
+        self.assertEqual(sorted(cal["days"][str(today - 2)]), ["a", "b"])
+        self.assertEqual(cal["total"], 3)
+        self.assertEqual(server.calendar([])["streak"], 0)
+
+    # ---- P3.2 search ----
+
+    def test_search_finds_titles_sections_passages_and_terms(self):
+        from studio import search
+        with open(os.path.join(self.fixture.root, "reference", "glossary.md"), "a", encoding="utf-8") as fh:
+            fh.write("\n**Autolyse** — Resting flour and water before the salt.\n")
+        r = search.search(self.courses, "lesson 3")
+        self.assertEqual(r["courses"], 1)
+        kinds = {(h["kind"], h["mid"]) for h in r["hits"]}
+        self.assertIn(("module", "M03"), kinds)
+        self.assertIn(("passage", "M03"), kinds)
+        self.assertEqual(r["hits"][0]["kind"], "module", "a title hit outranks a passage")
+        r = search.search(self.courses, "autolyse")
+        self.assertEqual([h["kind"] for h in r["hits"]], ["term"])
+        r = search.search(self.courses, "core concepts", limit=2)
+        self.assertEqual(len(r["hits"]), 2)
+        self.assertGreater(r["total"], 2)
+        self.assertEqual(search.search(self.courses, "x")["hits"], [])
+
+    # ---- P3.5 / P3.6 export and import ----
+
+    def test_zip_round_trip_and_refusals(self):
+        import zipfile
+        import io as _io
+        from studio import transfer
+        os.makedirs(os.path.join(self.fixture.root, ".git"))
+        with open(os.path.join(self.fixture.root, ".git", "HEAD"), "w") as fh:
+            fh.write("ref: refs/heads/main\n")
+        data = transfer.export_zip(self.fixture.root)
+        names = zipfile.ZipFile(_io.BytesIO(data)).namelist()
+        self.assertIn("fixture/course.json", names)
+        self.assertFalse(any("/.git/" in n for n in names), ".git stays behind")
+
+        other = os.path.join(self.tmp, "elsewhere")
+        course = transfer.import_zip(other, data)
+        self.assertEqual(course["id"], "fixture")
+        self.assertEqual(course["modules"], 6)
+        self.assertTrue(os.path.isfile(os.path.join(other, "fixture", "course.json")))
+        with self.assertRaises(CourseError):
+            transfer.import_zip(other, data)            # already there
+        self.assertEqual(sorted(os.listdir(other)), ["fixture"], "a refused import leaves no staging folder")
+
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("notes.md", "hello")
+        with self.assertRaises(CourseError):
+            transfer.import_zip(other, buf.getvalue())   # no course.json
+        with self.assertRaises(CourseError):
+            transfer.import_zip(other, b"not a zip")
+
+        # a hostile member never escapes the staging folder
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(_io.BytesIO(data)) as src, zipfile.ZipFile(buf, "w") as zf:
+            for m in src.infolist():
+                zf.writestr(m.filename.replace("fixture/", "evil/", 1), src.read(m))
+            zf.writestr("evil/../../escaped.txt", "x")
+        evil_dir = os.path.join(self.tmp, "evil-target")
+        # the id inside course.json is still "fixture", so import into a fresh dir
+        transfer.import_zip(evil_dir, buf.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "escaped.txt")))
+        self.assertFalse(os.path.exists(os.path.join(evil_dir, "escaped.txt")))
+
+    def test_git_url_is_checked_before_anything_runs(self):
+        from studio import transfer
+        for bad in ("", "ftp://x/y", "https://host/path; rm -rf /", "--upload-pack=evil", "file:///etc"):
+            self.assertFalse(transfer.is_git_url(bad), bad)
+            with self.assertRaises(CourseError):
+                transfer.import_git(self.tmp, bad)
+        for good in ("https://github.com/you/course-repo", "https://github.com/you/course-repo.git",
+                     "git@github.com:you/course-repo.git", "http://localhost:3000/a/b"):
+            self.assertTrue(transfer.is_git_url(good), good)
+
+    # ---- P3.7 review ----
+
+    def test_review_prompt_and_coercion(self):
+        from studio import prompts
+        from coursekit import loader as ck_loader
+        cfg = config.load(self.fixture.root)
+        mods = ck_loader.load_modules(cfg)
+        plan = generator.plan_from_course(cfg, mods)
+        spec = plan["modules"][2]
+        text = prompts.review(plan, plan["modules"], spec, "# M03 — Lesson 3\n\n## Why", {"quiz": [{"type": "tf", "q": "Is it?"}]})
+        for needle in ("M03", "Lesson 3", "[tf] Is it?", '"verdict"', "rewriteBrief", "Do not list what is fine"):
+            self.assertIn(needle, text)
+
+        fixed = generator._fix_review({
+            "verdict": "Needs Work", "summary": "  ok  ",
+            "gaps": [{"where": "Core concepts", "issue": "no numbers", "fix": "add two"}, "loose string", {"issue": ""}, 7],
+            "errors": "not a list", "quiz": [{"item": "Q2", "issue": "key wrong"}],
+            "rewriteBrief": "Add the arithmetic.",
+        })
+        self.assertEqual(fixed["verdict"], "needs work")
+        self.assertEqual(fixed["summary"], "ok")
+        self.assertEqual([g["issue"] for g in fixed["gaps"]], ["no numbers", "loose string"])
+        self.assertEqual(fixed["errors"], [])
+        self.assertEqual(fixed["quiz"][0]["item"], "Q2")
+        self.assertEqual(generator._fix_review("garbage")["verdict"], "needs work")
+        self.assertEqual(generator._fix_review({"verdict": "solid"})["verdict"], "solid")
+
+        state_root = os.path.join(self.tmp, "state")
+        d = generator.reviews_dir(state_root, "fixture")
+        os.makedirs(d)
+        with open(os.path.join(d, "M03.json"), "w", encoding="utf-8") as fh:
+            json.dump(dict(fixed, module="M03", at=1), fh)
+        self.assertEqual(list(generator.load_reviews(state_root, "fixture")), ["M03"])
+        self.assertEqual(generator.load_reviews(state_root, "nothing"), {})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

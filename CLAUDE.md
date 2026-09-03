@@ -31,6 +31,11 @@ Consequences:
   directory are invisible to this one.
 - A new course gets a `README.md` from `scaffold.write_readme` so the folder reads as a
   repository of its own. It is never overwritten.
+- A course can also arrive as a zip (`POST /api/import`, the drop zone on the library page)
+  or be cloned from a git URL (`POST /api/import/git`); `studio/transfer.py` renames the
+  folder to the id in its `course.json`, because the folder name *is* the course id
+  everywhere in Studio, and refuses to overwrite an existing one. `GET /api/courses/<id>/export`
+  is the reverse: the folder as a zip, `.git` left behind.
 - `folderLabel` in `course.json` is now just the course id. Older manifests carrying
   `courses/<id>` still work; the field is only shown to the reader.
 - Inside the container `COURSES_DIR` and `DIST_DIR` are set in the image to `/work/courses`
@@ -94,7 +99,9 @@ courses/<id>/               one course = one separate git repository (gitignored
   data/assessments/ data/suggestions/
 dist/<id>/                  build output (generated — do not edit)
 state/                      generated, gitignored, personal:
-  progress/<id>.json        the platform's copy of a reader's progress
+  progress/<id>.json        the platform's copy of a reader's progress (the default profile)
+  progress/<profile>/       the same, for every other reader profile
+  reviews/<id>/<mid>.json   what Claude found when asked to review a module
   jobs/<id>.json            finished generation jobs, replayable after a restart
   trash/                    removed modules and deleted courses — moved, never erased
   logs/studio.log           every Claude call and job event, rotating (2 MB × 3)
@@ -287,6 +294,12 @@ Always point a user at the `-local.html` copy.
   position. This is the most common authoring failure.
 - No duplicate module ids; no assessment or suggestion entry that matches no module.
 
+**Module order** is filename order within each part unless `course.json` carries an `order`
+list of ids; then listed ids come first in that sequence and the rest follow by filename.
+`loader.module_files` is the one place that rule lives, and `server._module_ids` calls it,
+so the cheap listing and the build never disagree. Part membership is still the folder the
+file sits in; `manage.move_module` moves the file when the part changes and rewrites `order`.
+
 The reading timer (`07-module.js`) pauses after `page.study.idleSeconds` without input, so a
 tab left open does not count as study. `page.ui.readMin` is the narrowest the reading column
 may get before the rail is capped; the section list beside the prose hides itself through a
@@ -373,7 +386,9 @@ Without a model (`studio/manage.py`):
 | | |
 |---|---|
 | `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
-| `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title goes; the reply carries the check result. |
+| `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title and its `order` entry go; the reply carries the check result. |
+| `POST /api/courses/<id>/modules/<mid>/move` | `{part, index}`: reorder within a part or move to another; writes `order`, moves the file, never touches study data. |
+| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. |
 | `POST /api/courses/<id>/delete` | needs `{confirm: <id>}`; moves `courses/<id>` and `dist/<id>` to `state/trash/<id>-<stamp>/` and forgets the progress copy. |
 
 The reader's open questions (`state.marks` with status `open`/`answered`) come back in the
@@ -410,6 +425,21 @@ Use the `course-author` skill for hand-guided work. Its references are the speci
 
 Do not write course content freehand without reading those; the format is enforced and the
 pedagogy is the point.
+
+## Reader profiles and the study calendar
+
+`state/studio.json` names the active reader profile (`prefs.profile`, default `default`).
+`progress.Store(dir, profile)` keeps the default profile's files exactly where they were,
+`state/progress/<id>.json`, and gives every other profile a folder of its own; `server.store()`
+resolves the active one per request. A page served by Studio asks `GET /api/profile` before it
+loads anything, keys its localStorage as `course_<id>_v1_<profile>` for a non-default profile,
+and puts `?profile=` on every progress sync - the server answers 409 if Studio has since
+switched readers, so one reader's state can never land in another's file. Off disk there is
+no Studio and therefore one profile.
+
+`GET /api/state` also carries `calendar`: the union of every course's study days for the
+active profile, and the streak across them. `GET /api/search?q=` searches every course at once
+through the build's own loader (`studio/search.py`).
 
 ## Progress and chat storage
 

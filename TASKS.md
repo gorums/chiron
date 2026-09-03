@@ -84,12 +84,13 @@ Found in a code-and-browser pass over the reader (`platform/web/`) and Studio (`
 - [x] U4.23 Editor: Save / Save and check, then back to the course page to build. Add "Save, check and build"
 - [x] U4.24 Same template tells as the reader: caps eyebrows, arrows on buttons, uppercase file-group labels
 
-## Phase 3 — later
+## Phase 3 — the library grows (2026-09-03)
 
-- [ ] P3.1 Reorder / move modules between parts (ordering metadata in `course.json`)
-- [ ] P3.2 Cross-course search in Studio
-- [ ] P3.3 Reader profiles in `state/`
-- [ ] P3.4 Study calendar / streak across courses
-- [ ] P3.5 Course export/import as zip
-- [ ] P3.6 Course import as github repo
-- [ ] P3.7 "Review this module" pass by Claude before the reader finds the gap
+- [x] P3.1 Reorder / move modules: optional `order` list in `course.json`, honoured by `loader.module_files` (the build) and `server._module_ids` (the listing) alike; `manage.move_module` moves the file between part folders and rewrites `order`; `POST /api/courses/<id>/modules/<mid>/move {part, index}`; ▲▼ and a part select on every module row
+- [x] P3.2 Cross-course search: `studio/search.py` parses every course with the build's loader and matches titles, headings, passages and glossary terms, ranked by where the hit landed; `GET /api/search?q=`; a search box in the Studio header and a `#/search?q=` results page with Read / Rewrite links
+- [x] P3.3 Reader profiles: `progress.Store(dir, profile)` — the default profile keeps `state/progress/<id>.json`, every other one gets `state/progress/<profile>/`; the active profile is a Studio preference (`prefs.profile`); `GET/POST /api/profiles`; a "Reading as" picker in the header and a profiles card in Settings; a served page asks `GET /api/profile` on boot, keys its localStorage by profile, and names its profile on every sync so a switch in Studio cannot write one reader's state into another's file (409)
+- [x] P3.4 Study calendar across courses: `summarise` exposes the days each course was studied; `server.calendar` unions them into a 17-week heatmap and a cross-course streak on the library page, coloured warm on a day with more than one course
+- [x] P3.5 Export / import as zip: `transfer.export_zip` (without `.git`) behind `GET /api/courses/<id>/export`; `transfer.import_zip` behind `POST /api/import` (base64 body, zip-slip safe, refuses a taken id, builds if consistent); drop zone on the library page
+- [x] P3.6 Import from a git repository: `transfer.import_git` shallow-clones an https:// or git@ URL into a staging folder, renames it to the id in `course.json`, keeps `.git` so the course stays a repository; `POST /api/import/git`; the Clone box is disabled when git is missing
+- [x] P3.7 "Review this module": `prompts.review` + `generator.review` ask Claude for a verdict, gaps, errors, quiz issues and a rewrite brief, coerced by `_fix_review` and stored in `state/reviews/<course>/<mid>.json`; `POST /api/courses/<id>/modules/<mid>/review` runs it as a job; the module row shows the verdict, the findings unfold beneath it, and "Rewrite with these notes" prefills the rewrite form
+- [x] P3.8 Tests for all of the above in `TestPhase3` (order, move, profiles, calendar, search, zip round trip and refusals, git URL gate, review coercion); docs in `CLAUDE.md` and the `server.py` route list

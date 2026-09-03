@@ -23,19 +23,41 @@ import time
 from typing import Any, Dict, Optional
 
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,48}$")
+SAFE_PROFILE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
+DEFAULT_PROFILE = "default"
 
 # Keys in the page's state object that describe the browser, not the reader.
 DEVICE_KEYS = ("bridge", "ui", "theme")
 
 
 class Store:
-    def __init__(self, directory: str):
-        self.directory = directory
+    """The progress files of one reader profile.
+
+    The default profile keeps the original layout, `state/progress/<course>.json`, so nothing
+    moves for a platform that has only ever had one reader. Every other profile gets a folder
+    of its own under the same directory.
+    """
+
+    def __init__(self, directory: str, profile: str = DEFAULT_PROFILE):
+        profile = (profile or DEFAULT_PROFILE).strip().lower()
+        if not SAFE_PROFILE.match(profile):
+            raise ValueError("Bad profile name.")
+        self.root = directory
+        self.profile = profile
+        self.directory = directory if profile == DEFAULT_PROFILE else os.path.join(directory, profile)
 
     def path(self, course_id: str) -> str:
         if not SAFE_ID.match(course_id):
             raise ValueError("Bad course id.")
         return os.path.join(self.directory, "%s.json" % course_id)
+
+    def delete_everywhere(self, course_id: str) -> int:
+        """Forget a course for every profile - used when the course itself is trashed."""
+        n = 0
+        for prof in profiles(self.root):
+            if Store(self.root, prof).delete(course_id):
+                n += 1
+        return n
 
     def load(self, course_id: str) -> Optional[Dict[str, Any]]:
         """The stored record: {course, updatedAt, receivedAt, state} — or None."""
@@ -96,6 +118,17 @@ class Store:
         return dict(out, **summarise(record["state"], ids), updatedAt=record["updatedAt"])
 
 
+def profiles(directory: str) -> list:
+    """Every profile that has a folder, plus the default. Sorted, default first."""
+    names = set()
+    if os.path.isdir(directory):
+        for name in os.listdir(directory):
+            if SAFE_PROFILE.match(name) and os.path.isdir(os.path.join(directory, name)):
+                names.add(name)
+    names.discard(DEFAULT_PROFILE)
+    return [DEFAULT_PROFILE] + sorted(names)
+
+
 def summarise(state: Dict[str, Any], ids) -> Dict[str, Any]:
     """Derive the headline numbers from a page's state, without loading the course."""
     raw = state.get("progress")
@@ -111,7 +144,10 @@ def summarise(state: Dict[str, Any], ids) -> Dict[str, Any]:
               if isinstance(c, dict) and _number(c.get("due")) <= today)
     # Continue where the reader left off: first started module, else first undone one.
     nxt = started[0] if started else next((mid for mid in ids if mid not in done), None)
+    streak = state.get("streak") if isinstance(state.get("streak"), dict) else {}
+    seen = [int(d) for d in (streak.get("seen") or []) if isinstance(d, (int, float))]
     return {
+        "seen": sorted(set(seen))[-400:],
         "done": len(done),
         "started": len(started),
         "pct": (len(done) / len(ids)) if ids else 0.0,

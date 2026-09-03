@@ -12,7 +12,9 @@
     "port": 8790,
     "maxBodyBytes": 8388608,
     "askTimeout": 240,
-    "recentJobs": 12
+    "recentJobs": 12,
+    "gitTimeout": 180,
+    "searchLimit": 60
   },
   "bridge": {
     "host": "127.0.0.1",
@@ -74,7 +76,8 @@
       "planDocs": 600,
       "worksheetPlan": 420,
       "worksheet": 600,
-      "moduleSpec": 420
+      "moduleSpec": 420,
+      "review": 600
     }
   },
   "build": {

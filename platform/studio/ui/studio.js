@@ -8,6 +8,7 @@
      #/course/<id>?tab=add&from=M07   the same page, opened from inside a course
      #/course/<id>/edit?path=...   a file of the course, in an editor
      #/job/<id>                    a running job
+     #/search?q=...                every course, searched at once
 
    A job screen is driven entirely by the server's event stream, so reloading the page
    mid-generation reattaches instead of losing the run — the stream replays from the last
@@ -68,10 +69,54 @@ function courseUrl(c, hash) {
 
 async function refresh() {
   STATE = await api("/api/state");
+  paintProfilePicker();
   const pill = $("#claudestate");
   pill.textContent = STATE.claude.available ? "Claude Code connected" : "Claude Code not found";
   pill.className = "pill " + (STATE.claude.available ? "on" : "off");
   return STATE;
+}
+
+/* ---------- reader profiles ---------- */
+
+function paintProfilePicker() {
+  const sel = $("#profilesel"); if (!sel) return;
+  const names = STATE.profiles || ["default"], active = STATE.profile || "default";
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}" ${n === active ? "selected" : ""}>${esc(n)}</option>`).join("")
+    + `<option value="__manage">Manage profiles…</option>`;
+  sel.onchange = async () => {
+    if (sel.value === "__manage") { sel.value = active; location.hash = "#/settings"; return; }
+    await switchProfile(sel.value);
+  };
+}
+
+async function switchProfile(name) {
+  try {
+    await api("/api/profiles", { action: "switch", name });
+    toast("Reading as " + name);
+    courseCache = {};
+    await refresh(); render();
+  } catch (err) { toast(err.message); }
+}
+
+async function addProfile() {
+  const input = $("#newprofile"); if (!input) return;
+  const name = input.value.trim().toLowerCase();
+  if (!name) { input.focus(); return; }
+  try {
+    await api("/api/profiles", { action: "add", name });
+    toast("Profile " + name + " created — reading as them now");
+    courseCache = {};
+    await refresh(); render();
+  } catch (err) { toast(err.message); }
+}
+
+async function removeProfile(name) {
+  try {
+    await api("/api/profiles", { action: "remove", name });
+    toast("Profile " + name + " moved to trash");
+    courseCache = {};
+    await refresh(); render();
+  } catch (err) { toast(err.message); }
 }
 
 /* ---------- theme ---------- */
@@ -141,6 +186,27 @@ function todayStrip() {
   return `<div class="todaystrip"><span class="eyebrow" style="margin:0 6px 0 0">Today</span>${items.join("")}</div>`;
 }
 
+function calendarStrip() {
+  const cal = STATE.calendar; if (!cal || !cal.total) return "";
+  const t = cal.today, days = cal.days || {};
+  const dow = (new Date(t * 86400000).getUTCDay() + 6) % 7;
+  const weeks = 17, start = t - dow - (weeks - 1) * 7;
+  let heat = "";
+  for (let w = 0; w < weeks; w++) {
+    heat += `<div class="hcol">`;
+    for (let d = 0; d < 7; d++) {
+      const day = start + w * 7 + d, who = days[String(day)] || [];
+      const label = new Date(day * 86400000).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      heat += `<i class="${day > t ? "future" : who.length > 1 ? "many" : who.length ? "on" : ""}" title="${esc(label)}${who.length ? " · " + esc(who.join(", ")) : ""}"></i>`;
+    }
+    heat += `</div>`;
+  }
+  const active = (STATE.profile && STATE.profile !== "default") ? ` as ${esc(STATE.profile)}` : "";
+  return `<div class="calendar">
+    <div class="caltext"><b>${cal.streak} day${cal.streak === 1 ? "" : "s"}</b>study streak across every course${active} · ${cal.total} study day${cal.total === 1 ? "" : "s"} on record</div>
+    <div class="heat">${heat}</div></div>`;
+}
+
 function viewLibrary() {
   const cards = STATE.courses.map(courseCard).join("");
   const newCard = `<div class="coursecard new">
@@ -148,13 +214,108 @@ function viewLibrary() {
     <p>Name a subject and an hour budget. Claude designs the curriculum, you approve it, then it writes every module.</p>
     <a class="btn" href="#/new" ${STATE.claude.available ? "" : 'style="pointer-events:none;opacity:.45"'}>+ Write a course</a>
     ${STATE.claude.available ? "" : `<p style="font-size:12.5px;margin-top:10px">Needs the <span class="mono">claude</span> command on this machine's PATH.</p>`}
+  </div>
+  <div class="coursecard" id="importcard">
+    <h3>Bring a course in</h3>
+    <p class="tagline">A zip exported from another Studio, or a course repository on GitHub or anywhere git can reach.</p>
+    <div class="importbox">
+      <div class="dropzone" id="dropzone">Drop a course .zip here, or <label style="display:inline;font-weight:600;color:var(--accent-ink);cursor:pointer">choose one<input type="file" id="zipfile" accept=".zip,application/zip" style="display:none"></label></div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="giturl" placeholder="https://github.com/you/course-repo" autocomplete="off" ${STATE.git ? "" : 'disabled title="git is not installed on this machine"'}>
+        <button class="btn sm" onclick="importGit()" ${STATE.git ? "" : "disabled"}>Clone</button>
+      </div>
+    </div>
+    <div id="importout"></div>
   </div>`;
   $("#view").innerHTML = `
     <h2 class="big">Your courses</h2>
     <p class="sub">Progress is kept here when a course is opened from Studio, so you can pick up where you left off. Each course is a folder of markdown - its own repository - in the courses directory shown under Settings.</p>
+    ${calendarStrip()}
     ${todayStrip()}
     <div class="cards">${cards}${newCard}</div>`;
+  bindImport();
 }
+
+function bindImport() {
+  const file = $("#zipfile"), zone = $("#dropzone");
+  if (file) file.onchange = () => { if (file.files[0]) importZipFile(file.files[0]); };
+  if (zone) {
+    zone.ondragover = e => { e.preventDefault(); zone.classList.add("over"); };
+    zone.ondragleave = () => zone.classList.remove("over");
+    zone.ondrop = e => { e.preventDefault(); zone.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) importZipFile(f); };
+  }
+  const url = $("#giturl");
+  if (url) url.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); importGit(); } };
+}
+
+function importReport(course) {
+  const b = course.build || {};
+  const built = b.built
+    ? `Built. <a href="#/course/${encodeURIComponent(course.id)}">Open ${esc(course.title)}</a>.`
+    : `Imported but not built — ${(b.problems || []).length} problem${(b.problems || []).length === 1 ? "" : "s"}: <a href="#/course/${encodeURIComponent(course.id)}">open it to fix them</a>.`;
+  return `<p class="sub ${b.built ? "ok-text" : ""}" style="margin:10px 0 0;font-size:13px">${esc(course.id)} · ${course.modules} module${course.modules === 1 ? "" : "s"}. ${built}</p>`;
+}
+
+function importZipFile(f) {
+  const out = $("#importout");
+  if (!/\.zip$/i.test(f.name)) { toast("That is not a .zip file"); return; }
+  out.innerHTML = `<p class="sub" style="margin:10px 0 0;font-size:13px">Uploading ${esc(f.name)}…</p>`;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const course = await api("/api/import", { name: f.name, data: reader.result });
+      toast("Imported " + course.id);
+      await refresh(); render();
+      const o = $("#importout"); if (o) o.innerHTML = importReport(course);
+    } catch (err) { const o = $("#importout"); if (o) o.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
+  };
+  reader.readAsDataURL(f);
+}
+
+async function importGit() {
+  const url = ($("#giturl") || {}).value || "", out = $("#importout");
+  if (!url.trim()) { $("#giturl").focus(); return; }
+  out.innerHTML = `<p class="sub" style="margin:10px 0 0;font-size:13px">Cloning…</p>`;
+  try {
+    const course = await api("/api/import/git", { url: url.trim() });
+    toast("Cloned " + course.id);
+    await refresh(); render();
+    const o = $("#importout"); if (o) o.innerHTML = importReport(course);
+  } catch (err) { const o = $("#importout"); if (o) o.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
+}
+
+/* ---------- search ---------- */
+
+function viewSearch() {
+  const q = route.query.q || "";
+  const input = $("#searchq"); if (input && input.value !== q) input.value = q;
+  $("#view").innerHTML = `<p class="crumb"><a href="#/">Courses</a> › Search</p>
+    <h2 class="big">${q ? `Results for “${esc(q)}”` : "Search every course"}</h2>
+    <p class="sub">Module titles, section headings, the text itself and glossary terms, across the whole library.</p>
+    <div id="searchout">${q ? `<p class="sub">Searching…</p>` : ""}</div>`;
+  if (!q) return;
+  api(`/api/search?q=${encodeURIComponent(q)}`).then(r => {
+    if (route.name !== "search" || route.query.q !== q) return;
+    const out = $("#searchout"); if (!out) return;
+    if (!r.hits.length) { out.innerHTML = `<div class="card"><p class="sub" style="margin:0">Nothing in ${r.courses} course${r.courses === 1 ? "" : "s"} mentions that.</p></div>`; return; }
+    const byCourse = {};
+    r.hits.forEach(h => (byCourse[h.course] = byCourse[h.course] || []).push(h));
+    out.innerHTML = Object.keys(byCourse).map(cid => {
+      const hits = byCourse[cid], c = STATE.courses.find(x => x.id === cid);
+      return `<div class="card"><h3><a href="#/course/${encodeURIComponent(cid)}" style="text-decoration:none;color:inherit">${esc(hits[0].title)}</a></h3>
+        ${hits.map(h => searchHit(h, c)).join("")}</div>`;
+    }).join("") + (r.total > r.hits.length ? `<p class="sub">Showing ${r.hits.length} of ${r.total} hits — narrow the search.</p>` : "");
+  }).catch(err => { const out = $("#searchout"); if (out) out.innerHTML = `<div class="problems">${esc(err.message)}</div>`; });
+}
+
+function searchHit(h, c) {
+  const mark = esc(h.text).replace(new RegExp(esc(route.query.q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig"), m => `<mark>${m}</mark>`);
+  const where = h.kind === "term" ? "Glossary" : `<b>${esc(h.mid)}</b> · ${esc(h.module)}${h.heading ? " · " + esc(h.heading) : ""}`;
+  const read = c && c.built && h.mid ? `<a class="btn sm" href="${courseUrl(c, "#/m/" + h.mid + (h.sec != null ? "/1" : ""))}">Read</a>` : "";
+  const edit = h.mid ? `<a class="btn sm ghost" href="#/course/${encodeURIComponent(h.course)}?tab=modules&rewrite=${encodeURIComponent(h.mid)}">Rewrite</a>` : "";
+  return `<div class="hit"><p class="where">${where} · ${esc(h.kind)}</p><p class="what">${mark}</p><div class="actions">${read}${edit}</div></div>`;
+}
+
 
 async function buildFromCard(id) {
   const out = $("#out-" + id);
@@ -276,7 +437,8 @@ function paintCourse(c) {
         ${live ? `<a class="btn ghost" href="#/job/${c.job.id}">${esc(c.job.kind)} running — view</a>`
                : `${c.resumable ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${c.id}')">Resume the run</button>` : ""}
                   <button class="btn ghost" onclick="checkCourse('${c.id}')">Check</button>
-                  <button class="btn ghost" onclick="buildCourse('${c.id}')">${c.built ? "Rebuild" : "Build"}</button>`}
+                  <button class="btn ghost" onclick="buildCourse('${c.id}')">${c.built ? "Rebuild" : "Build"}</button>
+                  <a class="btn ghost" href="/api/courses/${encodeURIComponent(c.id)}/export" download="${esc(c.id)}.zip" title="The course folder as a zip, without .git">Export .zip</a>`}
       </div>
     </div>
     <div id="courseout"></div>
@@ -306,25 +468,30 @@ function setTab(tab) {
 }
 
 function paintModules(c) {
-  const mp = c.moduleProgress || {};
+  const mp = c.moduleProgress || {}, reviews = c.reviews || {};
+  const manyParts = (c.parts || []).length > 1;
   const parts = (c.parts || []).map(part => {
     const mods = (c.moduleList || []).filter(m => m.part === part.id);
-    const rows = mods.map(m => {
+    const rows = mods.map((m, i) => {
       const st = mp[m.id] || {};
       const dot = st.done ? "done" : (st.read || st.minutes || st.quiz) ? "part" : "";
       const state = st.done ? "completed" : st.read ? `${st.read}/${m.sections} sections read${st.quiz ? " · quiz done" : ""}` : "";
       const open = c.built ? `<a class="btn sm ghost" href="${courseUrl(c, "#/m/" + m.id)}">Read</a>` : "";
       const rewriting = route.query.rewrite === m.id;
+      const rv = reviews[m.id];
+      const verdict = rv ? `<button class="verdict ${rv.verdict === "solid" ? "solid" : rv.verdict === "rewrite" ? "rewrite" : "needs"}" title="Reviewed ${new Date(rv.at).toLocaleDateString()} — click for the findings" onclick="toggleEl('rv-${m.id}')">${esc(rv.verdict)}</button>` : "";
       return `<div class="modrow" id="mod-${m.id}">
-        <span class="dot ${dot}" title="${esc(state)}"></span>
+        <span class="order"><button title="Move up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">▲</button><button title="Move down" aria-label="Move ${esc(m.id)} down" ${i === mods.length - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">▼</button></span>
         <span class="mid">${esc(m.id)}</span>
-        <span class="title">${esc(m.title)}<small>${m.minutes} min · ${m.sections} sections${state ? " · " + esc(state) : ""}</small></span>
-        <span class="state"></span>
+        <span class="title"><span class="dot ${dot}" title="${esc(state)}" style="margin-right:6px"></span>${esc(m.title)} ${verdict}<small>${m.minutes} min · ${m.sections} sections${state ? " · " + esc(state) : ""}</small></span>
+        <span class="state">${manyParts ? `<select class="partsel" title="Move to another part" aria-label="Part of ${esc(m.id)}" onchange="moveModule('${c.id}','${m.id}',this.value,-1)">${(c.parts || []).map(p => `<option value="${esc(p.id)}" ${p.id === part.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>` : ""}</span>
         <span class="actions">${open}
           <a class="btn sm ghost" href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(m.path)}">Edit</a>
+          <button class="btn sm ghost" onclick="reviewModule('${c.id}','${m.id}')" ${STATE.claude.available ? "" : "disabled"} title="Have Claude read this module critically">${rv ? "Review again" : "Review"}</button>
           <button class="btn sm ghost" onclick="toggleRewrite('${m.id}')">Rewrite…</button>
           <button class="btn sm ghost rm" title="Remove this module" aria-label="Remove ${esc(m.id)}" onclick="toggleRemove('${m.id}')">×</button></span>
       </div>
+      ${rv ? reviewBox(c, m, rv) : ""}
       <div class="inlineform ${rewriting ? "" : "hidden"}" id="rw-${m.id}">
         <label for="rwn-${m.id}">What should change in ${esc(m.id)}?</label>
         <textarea id="rwn-${m.id}" rows="3" placeholder="Go much deeper on the worked example in Core concepts; the current version stops before the arithmetic. Keep the exercise.">${esc(route.query.rewrite === m.id && route.query.q ? route.query.q : "")}</textarea>
@@ -354,6 +521,40 @@ function paintModules(c) {
     const el = document.getElementById("rwn-" + route.query.rewrite);
     if (el) { el.scrollIntoView({ block: "center" }); el.focus(); }
   }
+}
+
+function reviewBox(c, m, rv) {
+  const list = (rows, first) => rows.length ? `<ul style="margin:0;padding-left:18px">${rows.map(r => `<li>${r[first] ? `<b>${esc(r[first])}</b> — ` : ""}${esc(r.issue)}${r.fix ? ` <i>Fix: ${esc(r.fix)}</i>` : ""}</li>`).join("")}</ul>` : `<p class="sub" style="margin:0;font-size:13px">Nothing.</p>`;
+  return `<div class="reviewbox hidden" id="rv-${m.id}">
+    <p style="margin:0 0 8px;font-size:14px">${esc(rv.summary)}</p>
+    <h4>Gaps</h4>${list(rv.gaps || [], "where")}
+    <h4>Errors</h4>${list(rv.errors || [], "where")}
+    <h4>Quiz</h4>${list(rv.quiz || [], "item")}
+    <div class="actions" style="margin-top:12px">
+      ${rv.rewriteBrief ? `<a class="btn sm" href="#/course/${encodeURIComponent(c.id)}?tab=modules&rewrite=${encodeURIComponent(m.id)}&q=${encodeURIComponent(rv.rewriteBrief)}">Rewrite with these notes</a>` : ""}
+      <button class="btn sm ghost" onclick="toggleEl('rv-${m.id}')">Close</button>
+      <span class="sub" style="font-size:12px;margin-left:6px">Reviewed ${new Date(rv.at).toLocaleString()}${rv.model ? " · " + esc(rv.model) : ""}</span>
+    </div></div>`;
+}
+
+async function moveModule(id, mid, part, index) {
+  try {
+    const r = await api(`/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/move`, { part, index });
+    toast(r.moved ? `${mid} moved` : `${mid} reordered`);
+    delete courseCache[id];
+    await viewCourse();
+    const out = $("#courseout");
+    if (out) out.innerHTML = r.problems && r.problems.length
+      ? `<div class="problems"><b>Moved, but the course now has ${r.problems.length} problem${r.problems.length === 1 ? "" : "s"}</b><ul>${r.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`
+      : `<p class="sub ok-text" style="margin:12px 0 0">Order saved to course.json. Rebuild to publish the change; reader progress is keyed by id and unaffected.</p>`;
+  } catch (err) { toast(err.message); }
+}
+
+async function reviewModule(id, mid) {
+  try {
+    const { job: j } = await api(`/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/review`, {});
+    location.hash = "#/job/" + j.id;
+  } catch (err) { toast(err.message); }
 }
 
 function toggleRewrite(mid) {
@@ -685,6 +886,13 @@ async function viewSettingsPage() {
     </div>
 
     <div class="card">
+      <p class="eyebrow">Reader profiles</p>
+      <p class="sub" style="font-size:13.5px">Each profile has its own progress for every course. Studio shows, and a course opened from Studio syncs to, the profile chosen in the header. The default profile keeps its files where they always were; the others live in a folder of their own under <span class="mono">state/progress/</span>.</p>
+      <div id="profilelist">${(STATE.profiles || ["default"]).map(n => `<div class="profilerow"><span class="name">${esc(n)}</span>${n === STATE.profile ? `<span class="pill on">reading as</span>` : `<button class="btn sm ghost" onclick="switchProfile('${esc(n)}')">Read as</button>`}${n === "default" ? "" : `<button class="btn sm ghost rm" title="Move this profile's progress to the trash" onclick="removeProfile('${esc(n)}')">×</button>`}</div>`).join("")}</div>
+      <div class="actions" style="margin-top:12px"><input type="text" id="newprofile" placeholder="new profile name, e.g. alex" style="max-width:240px" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addProfile()}"><button class="btn sm" onclick="addProfile()">Add and switch</button></div>
+    </div>
+
+    <div class="card">
       <p class="eyebrow">Claude Code</p>
       <p style="margin:0 0 6px">${s.claude.available ? `<span class="pill on">found</span> <span class="mono">${esc(s.claude.path)}</span>` : `<span class="pill off">not found on PATH</span> — generation and the tutor are disabled until it is installed and signed in.`}</p>
     </div>
@@ -859,6 +1067,7 @@ function stepLine(e) {
   if (e.kind === "module") return { text: `${e.id} written — ${e.sections} sections, ${e.words} words`, cls: "ok" };
   if (e.kind === "studydata") return { text: `${e.id} study data — ${e.quiz} quiz, ${e.cards} cards, ${e.sections} question sets`, cls: "ok" };
   if (e.kind === "worksheet") return { text: `Worksheet: ${e.name}`, cls: "ok" };
+  if (e.kind === "review") return { text: `${e.id} reviewed — ${e.verdict}; ${e.gaps} gap${e.gaps === 1 ? "" : "s"}, ${e.errors} error${e.errors === 1 ? "" : "s"}, ${e.quiz} quiz issue${e.quiz === 1 ? "" : "s"}`, cls: e.verdict === "solid" ? "ok" : "" };
   if (e.kind === "plan") return { text: `Curriculum proposed — ${e.plan.modules.length} modules` };
   if (e.kind === "await") return { text: "Waiting for you to approve the curriculum" };
   if (e.kind === "built") return { text: `Built — ${e.modules} modules, ${e.sections} sections, ${e.kb} KB`, cls: "ok" };
@@ -871,6 +1080,7 @@ function jobTitle() {
   const m = job.meta || {};
   if (job.kind === "extend") return `Adding a module to ${m.course || ""}`;
   if (job.kind === "rewrite") return `Rewriting ${m.module || ""} in ${m.course || ""}`;
+  if (job.kind === "review") return `Reviewing ${m.module || ""} in ${m.course || ""}`;
   return m.theme ? `Writing ${m.theme}` : "Working";
 }
 
@@ -919,6 +1129,17 @@ function doneHTML(back) {
   const r = job.result || {};
   const id = r.course || "";
   const c = (STATE.courses || []).find(x => x.id === id);
+  if (job.kind === "review") {
+    const n = (r.gaps || []).length + (r.errors || []).length + (r.quiz || []).length;
+    return `<div class="card">
+      <p class="eyebrow" style="color:${r.verdict === "solid" ? "var(--ok)" : r.verdict === "rewrite" ? "var(--bad)" : "var(--warm)"}">Verdict: ${esc(r.verdict || "")}</p>
+      <h3>${esc(r.module || "")} · ${esc(r.title || "")}</h3>
+      <p style="margin:6px 0 0;color:var(--text-2)">${esc(r.summary || "")}</p>
+      <p class="sub" style="margin:8px 0 0;font-size:13px">${n} finding${n === 1 ? "" : "s"}. The full list is on the course page, under the module.</p>
+      <div class="actions" style="margin-top:14px">
+        ${r.rewriteBrief && r.verdict !== "solid" ? `<a class="btn" href="#/course/${encodeURIComponent(id)}?tab=modules&rewrite=${encodeURIComponent(r.module || "")}&q=${encodeURIComponent(r.rewriteBrief)}">Rewrite with these notes</a>` : ""}
+        ${back}</div></div>`;
+  }
   const target = r.module ? "#/m/" + r.module : "#/home";
   const open = c && c.built
     ? `<a class="btn" href="${courseUrl(c, target)}">${r.module ? "Read " + esc(r.module) : "Open the course"}</a>`
@@ -1016,6 +1237,7 @@ function parseRoute() {
   new URLSearchParams(qs || "").forEach((v, k) => { query[k] = v; });
   const bits = path.split("/").filter(Boolean);
   if (bits[0] === "new") return { name: "new", id: null, query };
+  if (bits[0] === "search") return { name: "search", id: null, query };
   if (bits[0] === "settings") return { name: "settings", id: null, query };
   if (bits[0] === "job" && bits[1]) return { name: "job", id: bits[1], query };
   if (bits[0] === "course" && bits[1]) {
@@ -1033,6 +1255,7 @@ function render() {
     || (route.name === "settings" && a.id === "nav-settings")));
   window.scrollTo(0, 0);
   if (route.name === "new") return viewNew();
+  if (route.name === "search") return viewSearch();
   if (route.name === "settings") return viewSettingsPage();
   if (route.name === "job") return viewJob();
   if (route.name === "course") return viewCourse();
@@ -1042,6 +1265,11 @@ function render() {
 
 window.addEventListener("hashchange", () => { refresh().then(render).catch(render); });
 $("#themebtn").onclick = cycleTheme;
+$("#searchform").onsubmit = e => {
+  e.preventDefault();
+  const q = $("#searchq").value.trim();
+  if (q) location.hash = "#/search?q=" + encodeURIComponent(q);
+};
 
 refresh().then(() => {
   // Reattach to a run that is still going, so closing the tab is not the same as stopping.

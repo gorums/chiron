@@ -77,6 +77,10 @@ class CourseConfig:
     short_titles: Dict[str, str] = field(default_factory=dict)
     milestones: List[Dict[str, Any]] = field(default_factory=list)
     anchor: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_ANCHOR))
+    # Module ids in reading order. Optional: a module not listed sorts after the listed ones,
+    # by filename, so an untouched course still reads M01, M02, ... Studio writes this when
+    # a module is moved; part membership is still the folder the file sits in.
+    order: List[str] = field(default_factory=list)
     library: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_LIBRARY))
     data: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_DATA))
 
@@ -182,6 +186,7 @@ def load(root: str) -> CourseConfig:
         short_titles=raw.get("shortTitles") or {},
         milestones=raw.get("milestones") or [],
         anchor=anchor,
+        order=[str(x) for x in (raw.get("order") or []) if isinstance(x, str)],
         library=library,
         data=data,
     )

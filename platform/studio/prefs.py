@@ -14,6 +14,7 @@ from typing import Any, Dict
 from coursekit.settings import SETTINGS
 
 from . import claude_cli
+from .progress import DEFAULT_PROFILE, SAFE_PROFILE
 
 # (alias, label, note) for every model in settings.json - the only list Settings offers.
 MODELS = tuple((m.get("alias") or m["id"], m.get("label") or m["id"], m.get("note", ""))
@@ -35,7 +36,10 @@ class Prefs:
         except (OSError, ValueError):
             pass
         model = data.get("model") if data.get("model") in _ALLOWED else claude_cli.DEFAULT_MODEL
-        return {"model": model}
+        profile = str(data.get("profile") or DEFAULT_PROFILE).strip().lower()
+        if not SAFE_PROFILE.match(profile):
+            profile = DEFAULT_PROFILE
+        return {"model": model, "profile": profile}
 
     def save(self, changes: Dict[str, Any]) -> Dict[str, Any]:
         current = self.load()
@@ -45,6 +49,11 @@ class Prefs:
                 raise ValueError("Unknown model '%s'. Choose one of: %s."
                                  % (model, ", ".join(sorted(_ALLOWED))))
             current["model"] = model
+        if "profile" in changes:
+            profile = str(changes["profile"] or "").strip().lower()
+            if not SAFE_PROFILE.match(profile):
+                raise ValueError("A profile name is lowercase letters, digits and hyphens, up to 31 characters.")
+            current["profile"] = profile
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -55,3 +64,8 @@ class Prefs:
     @property
     def model(self) -> str:
         return self.load()["model"]
+
+    @property
+    def profile(self) -> str:
+        """The reader whose progress Studio shows and the served pages sync to."""
+        return self.load()["profile"]

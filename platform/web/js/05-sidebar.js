@@ -8,7 +8,7 @@ function renderSidebar() {
     <svg class="ring" viewBox="0 0 46 46"><circle cx="23" cy="23" r="${R}" fill="none" stroke="var(--surface-3)" stroke-width="4"/>
     <circle cx="23" cy="23" r="${R}" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"
       stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" transform="rotate(-90 23 23)"/></svg>
-    <span class="ringtxt"><b>${doneCount()} of ${MODS.length} modules</b>${timeSpent() ? fmtSpent(timeSpent()) + " studied · " : ""}${fmtH(CFG.hours * 60)} course</span>
+    <span class="ringtxt"><b>${doneCount()} of ${MODS.length} modules</b>${timeSpent() ? fmtSpent(timeSpent()) + " studied · " : ""}${fmtH(CFG.hours * 60)} course${PROFILE !== "default" ? `<br>Reading as <b style="display:inline;font-size:12px">${esc(PROFILE)}</b>` : ""}</span>
   </button>
   <div class="navsec">
     ${STUDIO ? `<a class="navlink" href="${STUDIO.origin}/#/course/${STUDIO.id}" style="text-decoration:none"><span class="ico">${ico("courses")}</span>All courses${syncState === "on" ? `<span class="dotstat on" title="Progress is saved on the platform" style="margin-left:auto"></span>` : ""}</a>` : ""}

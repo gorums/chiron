@@ -83,6 +83,21 @@ class Module:
         }
 
 
+def module_files(cfg: CourseConfig, part) -> List[str]:
+    """The .md files of one part, in reading order.
+
+    Filename order unless `course.json` carries an `order` list; then listed ids come first
+    in that sequence and anything unlisted follows by filename. Studio's course listing uses
+    this too, so the two never disagree about what "M03 comes after M07" means.
+    """
+    directory = os.path.join(cfg.modules_dir, part.dir)
+    files = sorted(f for f in os.listdir(directory) if f.endswith(".md"))
+    if not cfg.order:
+        return files
+    rank = {mid: i for i, mid in enumerate(cfg.order)}
+    return sorted(files, key=lambda f: (rank.get(f.split("-", 1)[0], len(rank)), f))
+
+
 def load_modules(cfg: CourseConfig) -> List[Module]:
     """Read every part folder in manifest order; number modules across the whole course."""
     modules: List[Module] = []
@@ -92,7 +107,7 @@ def load_modules(cfg: CourseConfig) -> List[Module]:
             raise ContentError(
                 "Part '%s' points at %s, which does not exist." % (part.id, directory)
             )
-        files = sorted(f for f in os.listdir(directory) if f.endswith(".md"))
+        files = module_files(cfg, part)
         if not files:
             raise ContentError("Part '%s' has no .md modules in %s." % (part.id, directory))
         for name in files:

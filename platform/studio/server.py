@@ -6,7 +6,14 @@ course. Bound to 127.0.0.1 so nothing outside this machine can reach it — it w
 and spawns processes, so that binding is a security boundary, not a default.
 
     GET  /                                  the UI
-    GET  /api/state                         courses (with progress), Claude availability, jobs
+    GET  /api/state                         courses (with progress), Claude availability, jobs,
+                                            the active profile, the study calendar
+    GET  /api/search?q=                     every course: modules, sections, passages, glossary terms
+    GET  /api/profile                       the active reader profile (a served page asks on boot)
+    GET  /api/profiles                      every profile, and which is active
+    POST /api/profiles                      {action: switch|add|remove, name}
+    POST /api/import                        a course zip  {name, data: base64}  -> {course}
+    POST /api/import/git                    clone a course repository  {url}    -> {course}
     GET  /api/settings                      Studio-wide preferences (model), paths, log file
     POST /api/settings                      change them  {model}
     GET  /api/logs?limit=&level=&q=         the newest log lines, for the Settings page
@@ -19,12 +26,16 @@ and spawns processes, so that binding is a security boundary, not a default.
     POST /api/courses/<id>/check
     POST /api/courses/<id>/build
     GET  /api/courses/<id>/settings         the editable subset of course.json
+    GET  /api/courses/<id>/export           the course folder as a zip (without .git)
+    GET  /api/courses/<id>/reviews          every stored "review this module" result
     POST /api/courses/<id>/settings         change it (id is locked)
     POST /api/courses/<id>/delete           move the course and its build to state/trash/
     POST /api/courses/<id>/resume           finish a generation run that died  -> {job}
     POST /api/courses/<id>/extend           add a module  {topic, part, minutes, notes} -> {job}
     POST /api/courses/<id>/modules/<mid>/rewrite   rewrite one module  {notes} -> {job}
     POST /api/courses/<id>/modules/<mid>/remove    take one module out (file to state/trash/)
+    POST /api/courses/<id>/modules/<mid>/move      reorder, or move to another part  {part, index}
+    POST /api/courses/<id>/modules/<mid>/review    have Claude read it critically  -> {job}
     POST /api/generate                      start a generation job  -> {job}
     POST /api/jobs/<id>/answer              supply the approved curriculum
     POST /api/jobs/<id>/cancel              stop a job
@@ -35,6 +46,7 @@ and spawns processes, so that binding is a security boundary, not a default.
 
 from __future__ import annotations
 
+import base64
 import json
 import mimetypes
 import os
@@ -54,7 +66,7 @@ from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
 from coursekit import settings as ck_settings
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, generator, jobs, manage, prefs, progress
+from . import claude_cli, generator, jobs, manage, prefs, progress, search, transfer
 from .log import log
 from . import log as logmod
 
@@ -86,12 +98,19 @@ EDITABLE = (".md", ".json")
 MAX_BODY = int(SETTINGS.get("studio.maxBodyBytes"))
 ASK_TIMEOUT = int(SETTINGS.get("studio.askTimeout"))
 RECENT_JOBS = int(SETTINGS.get("studio.recentJobs"))
+GIT_TIMEOUT = int(SETTINGS.get("studio.gitTimeout"))
+SEARCH_LIMIT = int(SETTINGS.get("studio.searchLimit"))
 MIN_HOURS = float(SETTINGS.get("generation.minHours"))
 MAX_HOURS = float(SETTINGS.get("generation.maxHours"))
 
 REGISTRY = jobs.Registry(JOBS_DIR)
-PROGRESS = progress.Store(STATE_DIR)
 PREFS = prefs.Prefs(PREFS_PATH)
+
+
+def store() -> progress.Store:
+    """The progress store of the active reader profile. Resolved per request, so switching
+    profiles in Studio takes effect without a restart."""
+    return progress.Store(STATE_DIR, PREFS.profile)
 LOG_FILE = logmod.configure(LOGS_DIR)
 
 
@@ -99,13 +118,13 @@ LOG_FILE = logmod.configure(LOGS_DIR)
 
 
 def _module_ids(cfg) -> List[str]:
-    """Module ids in course order, from filenames alone - cheap enough for every listing."""
+    """Module ids in course order, from filenames alone - cheap enough for every listing.
+    The order is the loader's (`course.json` `order`, then filename), so it matches the build."""
     ids = []
     for part in cfg.parts:
-        directory = os.path.join(cfg.modules_dir, part.dir)
-        if not os.path.isdir(directory):
+        if not os.path.isdir(os.path.join(cfg.modules_dir, part.dir)):
             continue
-        for name in sorted(f for f in os.listdir(directory) if f.endswith(".md")):
+        for name in ck_loader.module_files(cfg, part):
             ids.append(name.split("-", 1)[0])
     return ids
 
@@ -120,7 +139,7 @@ def course_summary(course_id: str) -> Dict[str, Any]:
         info.update(ok=True, title=cfg.title, hours=cfg.hours, tagline=cfg.tagline,
                     subject=cfg.subject, parts=len(cfg.parts), modules=len(ids),
                     localFile=cfg.local_file, webFile=cfg.web_file,
-                    progress=PROGRESS.summary(course_id, ids))
+                    progress=store().summary(course_id, ids))
         built = os.path.join(DIST_DIR, cfg.id, cfg.local_file)
         if os.path.isfile(built):
             info.update(built=True, builtAt=os.path.getmtime(built))
@@ -156,11 +175,14 @@ def course_detail(course_id: str) -> Dict[str, Any]:
     except CourseError as exc:
         info["error"] = str(exc)
     info["files"] = course_files(root)
-    record = PROGRESS.load(course_id)
+    record = store().load(course_id)
     state_obj = record["state"] if record else {}
     info["moduleProgress"] = _module_progress(state_obj)
     info["questions"] = open_questions(state_obj, info["moduleList"])
     info["settings"] = manage.settings(root)
+    info["order"] = cfg.order
+    info["reviews"] = generator.load_reviews(STATE_ROOT, course_id)
+    info["profile"] = PREFS.profile
     return info
 
 
@@ -220,19 +242,49 @@ def list_courses() -> list:
     return [course_summary(cid) for cid in ids]
 
 
+def calendar(courses: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Study days across every course, for the library's heatmap and the cross-course streak.
+
+    A day counts when any course marked it. The streak is the run of consecutive days ending
+    today or yesterday - yesterday, so a reader who has not opened anything yet today does not
+    see their streak vanish at breakfast.
+    """
+    by_day: Dict[str, List[str]] = {}
+    for c in courses:
+        for day in ((c.get("progress") or {}).get("seen") or []):
+            by_day.setdefault(str(int(day)), []).append(c["id"])
+    today = int(time.time() // 86400)
+    days = {int(k) for k in by_day}
+    streak, cursor = 0, today if today in days else today - 1
+    while cursor in days:
+        streak += 1
+        cursor -= 1
+    return {"days": by_day, "streak": streak, "today": today, "total": len(days)}
+
+
 def state() -> Dict[str, Any]:
+    courses = list_courses()
     return {
-        "courses": list_courses(),
+        "courses": courses,
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or "",
                    "model": PREFS.model},
         "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
         "root": REPO_ROOT,
+        "profile": PREFS.profile,
+        "profiles": progress.profiles(STATE_DIR),
+        "calendar": calendar(courses),
+        "git": bool(transfer.shutil.which("git")),
     }
+
+
+def profiles_view() -> Dict[str, Any]:
+    return {"active": PREFS.profile, "profiles": progress.profiles(STATE_DIR)}
 
 
 def settings_view() -> Dict[str, Any]:
     return {
         "model": PREFS.model,
+        "profile": PREFS.profile,
         "models": [{"id": m[0], "name": m[1], "note": m[2]} for m in prefs.MODELS],
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or ""},
         "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,
@@ -362,6 +414,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static(self._under(UI_DIR, path[4:]))
             if path == "/api/state":
                 return self._json(state())
+            if path == "/api/search":
+                q = (parse_qs(url.query).get("q") or [""])[0]
+                return self._json(search.search(COURSES_DIR, q, SEARCH_LIMIT))
+            if path == "/api/profile":
+                return self._json({"profile": PREFS.profile})
+            if path == "/api/profiles":
+                return self._json(profiles_view())
             if path.startswith("/api/jobs/") and path.endswith("/events"):
                 return self._events(path.split("/")[3], url)
             if path.startswith("/api/courses/"):
@@ -374,6 +433,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._file_get(bits[3], url)
                 if len(bits) == 5 and bits[4] == "settings":
                     return self._settings_get(bits[3])
+                if len(bits) == 5 and bits[4] == "export":
+                    return self._export(bits[3])
+                if len(bits) == 5 and bits[4] == "reviews":
+                    if not self._course_root(bits[3]):
+                        return
+                    return self._json({"reviews": generator.load_reviews(STATE_ROOT, bits[3])})
             if path == "/api/settings":
                 return self._json(settings_view())
             if path == "/api/logs":
@@ -431,9 +496,19 @@ class Handler(BaseHTTPRequestHandler):
     def _progress_get(self, course_id: str) -> None:
         if not self._course_root(course_id):
             return
-        record = PROGRESS.load(course_id)
+        record = store().load(course_id)
         self._json({"state": record["state"] if record else None,
-                    "updatedAt": record["updatedAt"] if record else None})
+                    "updatedAt": record["updatedAt"] if record else None,
+                    "profile": PREFS.profile})
+
+    def _export(self, course_id: str) -> None:
+        root = self._course_root(course_id)
+        if not root:
+            return
+        data = transfer.export_zip(root)
+        log.info("export %s: %d KB", course_id, len(data) // 1024)
+        self._send(200, data, "application/zip",
+                   {"Content-Disposition": 'attachment; filename="%s.zip"' % course_id})
 
     def _file_get(self, course_id: str, url) -> None:
         root = self._course_root(course_id)
@@ -492,7 +567,7 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/courses/"):
                 bits = path.split("/")
                 if len(bits) == 5 and bits[4] == "progress":
-                    return self._progress_put(bits[3])
+                    return self._progress_put(bits[3], url)
                 if len(bits) == 5 and bits[4] == "files":
                     return self._file_put(bits[3], url)
             return self._fail("Not found", 404)
@@ -503,15 +578,21 @@ class Handler(BaseHTTPRequestHandler):
             log.exception("PUT %s failed", path)
             self._fail(str(exc), 500)
 
-    def _progress_put(self, course_id: str) -> None:
+    def _progress_put(self, course_id: str, url=None) -> None:
         if not self._course_root(course_id):
             return
+        # A page names the profile it loaded under. If Studio has since switched to another
+        # reader, its state must not land in that reader's file.
+        asked = (parse_qs(url.query).get("profile") or [""])[0] if url is not None else ""
+        if asked and asked != PREFS.profile:
+            return self._fail("Studio is now reading as '%s'; this page belongs to '%s'. Reload it."
+                              % (PREFS.profile, asked), 409)
         body = self._body()
         state_obj = body.get("state") if "state" in body else body
         if not isinstance(state_obj, dict) or not state_obj:
             return self._fail("Send the page state as a JSON object.")
-        record = PROGRESS.save(course_id, state_obj)
-        self._json({"ok": True, "updatedAt": record["updatedAt"]})
+        record = store().save(course_id, state_obj)
+        self._json({"ok": True, "updatedAt": record["updatedAt"], "profile": PREFS.profile})
 
     def _file_put(self, course_id: str, url) -> None:
         if not self._course_root(course_id):
@@ -556,6 +637,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/logs/clear":
                 logmod.clear()
                 return self._json({"ok": True})
+            if path == "/api/profiles":
+                return self._profiles()
+            if path == "/api/import":
+                return self._import_zip()
+            if path == "/api/import/git":
+                return self._import_git()
             if path.startswith("/api/jobs/"):
                 bits = path.split("/")
                 if len(bits) == 5 and bits[4] in ("answer", "cancel"):
@@ -565,7 +652,7 @@ class Handler(BaseHTTPRequestHandler):
                 if len(bits) == 5 and bits[4] in ("check", "build"):
                     return self._course_action(bits[3], bits[4])
                 if len(bits) == 5 and bits[4] == "progress":   # sendBeacon can only POST
-                    return self._progress_put(bits[3])
+                    return self._progress_put(bits[3], urlparse(self.path))
                 if len(bits) == 5 and bits[4] == "extend":
                     return self._extend(bits[3])
                 if len(bits) == 5 and bits[4] == "resume":
@@ -578,6 +665,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._rewrite(bits[3], bits[5])
                 if len(bits) == 7 and bits[4] == "modules" and bits[6] == "remove":
                     return self._remove_module(bits[3], bits[5])
+                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "move":
+                    return self._move_module(bits[3], bits[5])
+                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "review":
+                    return self._review(bits[3], bits[5])
             return self._fail("Not found", 404)
         except CourseError as exc:
             log.warning("POST %s: %s", path, exc)
@@ -694,7 +785,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail("That course has a job running; stop it first.")
         if (self._body().get("confirm") or "") != course_id:
             return self._fail("Type the course id to confirm.")
-        PROGRESS.delete(course_id)
+        store().delete_everywhere(course_id)
         self._json(dict(manage.trash_course(COURSES_DIR, DIST_DIR, TRASH_DIR, course_id), ok=True))
 
     def _remove_module(self, course_id: str, mid: str) -> None:
@@ -705,6 +796,98 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail("That course has a job running; wait for it to finish.")
         removed = manage.remove_module(root, mid, TRASH_DIR)
         self._json(dict(removed, ok=True, problems=generator.check_course(root)))
+
+    def _move_module(self, course_id: str, mid: str) -> None:
+        root = self._course_root(course_id)
+        if not root:
+            return
+        if REGISTRY.active_for(course_id):
+            return self._fail("That course has a job running; wait for it to finish.")
+        body = self._body()
+        try:
+            index = int(body.get("index")) if body.get("index") is not None else -1
+        except (TypeError, ValueError):
+            index = -1
+        moved = manage.move_module(root, mid, str(body.get("part") or ""), index)
+        log.info("move %s/%s -> part %s index %s", course_id, mid, moved["part"], index)
+        self._json(dict(moved, ok=True, problems=generator.check_course(root)))
+
+    def _review(self, course_id: str, mid: str) -> None:
+        if not self._course_root(course_id):
+            return
+        if not SAFE_MID.match(mid):
+            return self._fail("Bad module id.")
+        if not claude_cli.available():
+            return self._fail("Claude Code is not on this PATH, so nothing can be reviewed.")
+        if REGISTRY.active_for(course_id):
+            return self._fail("That course already has a job running.")
+        brief = self._body()
+        brief["model"] = self._model(brief)
+        log.info("review: course=%s module=%s model=%s", course_id, mid, brief["model"])
+        job = REGISTRY.add(jobs.Job("review", {"course": course_id, "module": mid}))
+        job.start(lambda j: generator.review(j, COURSES_DIR, STATE_ROOT, course_id, mid, brief))
+        self._json({"job": job.summary()})
+
+    def _profiles(self) -> None:
+        body = self._body()
+        action = str(body.get("action") or "switch")
+        name = str(body.get("name") or "").strip().lower()
+        if action in ("switch", "add"):
+            try:
+                PREFS.save({"profile": name})
+            except ValueError as exc:
+                return self._fail(str(exc))
+            if action == "add":
+                os.makedirs(progress.Store(STATE_DIR, name).directory, exist_ok=True)
+            log.info("profile -> %s", name)
+        elif action == "remove":
+            if name == progress.DEFAULT_PROFILE:
+                return self._fail("The default profile cannot be removed.")
+            if not progress.SAFE_PROFILE.match(name):
+                return self._fail("Bad profile name.")
+            directory = progress.Store(STATE_DIR, name).directory
+            if os.path.isdir(directory):
+                dest = os.path.join(TRASH_DIR, "profile-%s-%s" % (name, time.strftime("%Y%m%d-%H%M%S")))
+                os.makedirs(TRASH_DIR, exist_ok=True)
+                os.replace(directory, dest)
+            if PREFS.profile == name:
+                PREFS.save({"profile": progress.DEFAULT_PROFILE})
+            log.info("profile %s removed (to trash)", name)
+        else:
+            return self._fail("Unknown action.")
+        self._json(dict(profiles_view(), ok=True))
+
+    def _import_zip(self) -> None:
+        body = self._body()
+        raw = str(body.get("data") or "")
+        if "," in raw[:80] and raw.lstrip().startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        try:
+            data = base64.b64decode(raw, validate=True)
+        except (ValueError, TypeError):
+            return self._fail("Send the zip as base64 in {data}.")
+        if not data:
+            return self._fail("The upload is empty.")
+        course = transfer.import_zip(COURSES_DIR, data)
+        log.info("import zip: %s (%d modules) from %s", course["id"], course["modules"], body.get("name") or "upload")
+        self._json(dict(course, ok=True, build=self._try_build(course["id"])))
+
+    def _import_git(self) -> None:
+        body = self._body()
+        course = transfer.import_git(COURSES_DIR, str(body.get("url") or ""), timeout=GIT_TIMEOUT)
+        log.info("import git: %s from %s", course["id"], course["url"])
+        self._json(dict(course, ok=True, build=self._try_build(course["id"])))
+
+    def _try_build(self, course_id: str) -> Dict[str, Any]:
+        """Build a freshly imported course if it is consistent; report why not otherwise."""
+        root = os.path.join(COURSES_DIR, course_id)
+        try:
+            problems = generator.check_course(root)
+            if problems:
+                return {"built": False, "problems": problems}
+            return {"built": True, "result": generator.build_course(root, DIST_DIR)}
+        except CourseError as exc:
+            return {"built": False, "problems": [str(exc)]}
 
     def _ask(self) -> None:
         """The tutor, for a course served from here: same origin, no key, no bridge."""
@@ -767,7 +950,7 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = True,
     print("  Claude Code: %s" % (claude_cli.find_cli() or "NOT FOUND — generation disabled"))
     print("  Courses: %s" % COURSES_DIR)
     print("  State: %s" % STATE_ROOT)
-    print("  Model: %s   Log: %s" % (PREFS.model, LOG_FILE or "console only"))
+    print("  Model: %s   Profile: %s   Log: %s" % (PREFS.model, PREFS.profile, LOG_FILE or "console only"))
     log.info("studio started on %s, model %s, claude %s", url, PREFS.model,
              claude_cli.find_cli() or "NOT FOUND")
     print("\n  Leave this window open. Ctrl+C to stop.\n")
