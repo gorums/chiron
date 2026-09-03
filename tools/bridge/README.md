@@ -42,7 +42,7 @@ start-bridge.bat
 | What you see | What it means |
 |---|---|
 | Settings dot stays grey | The bridge window is not running, or it started on a different port. |
-| "Could not start on port 8787" | Something else is using that port. Run `set BRIDGE_PORT=8788`, start again, and change the URL in Settings to match. |
+| "Could not start on port 8787" | Something else is using that port. Put `BRIDGE_PORT=8788` in the repo's `.env` (or `set BRIDGE_PORT=8788` before starting), start again, and change the URL in the course's Settings to match. Every other default — the API endpoint, the model list, timeouts — is in `platform/settings.json`. |
 | "The API key was rejected" | Bad or revoked key. Make a new one in the Anthropic console. |
 | "Rate limited or out of credit" | The key has no credit left, or you are sending too fast. |
 | Python not found | Install Python from python.org and tick "Add python.exe to PATH". |

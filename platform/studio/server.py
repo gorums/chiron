@@ -51,6 +51,8 @@ from coursekit import config as ck_config
 from coursekit import loader as ck_loader
 from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
+from coursekit import settings as ck_settings
+from coursekit.settings import SETTINGS
 
 from . import claude_cli, generator, jobs, manage, prefs, progress
 from .log import log
@@ -62,23 +64,30 @@ PLATFORM_DIR = os.path.dirname(HERE)
 # COURSES_DIR and DIST_DIR come from coursekit.paths: courses are separate repositories
 # and live wherever `.env` or the environment says, not inside this one.
 # Reader progress, kept apart from both the course (which is content) and dist/ (which is
-# regenerated). Overridable so a container can point it at a volume of its own.
-STATE_ROOT = os.environ.get("STUDIO_STATE_ROOT") or os.path.join(REPO_ROOT, "state")
-STATE_DIR = os.environ.get("STUDIO_STATE_DIR") or os.path.join(STATE_ROOT, "progress")
+# regenerated). `paths.state` / `paths.progress` in settings.json; STUDIO_STATE_ROOT and
+# STUDIO_STATE_DIR override them so a container can point at a volume of its own.
+STATE_ROOT = SETTINGS.state_dir
+STATE_DIR = SETTINGS.progress_dir
 JOBS_DIR = os.path.join(STATE_ROOT, "jobs")       # finished jobs, replayable after a restart
 TRASH_DIR = os.path.join(STATE_ROOT, "trash")     # removed modules and courses, never deleted
 LOGS_DIR = os.path.join(STATE_ROOT, "logs")       # studio.log, rotating
 PREFS_PATH = os.path.join(STATE_ROOT, "studio.json")
 
-DEFAULT_PORT = int(os.environ.get("STUDIO_PORT", "8790"))
-# Loopback unless told otherwise. Studio writes files and spawns processes, so the default
-# must stay local. A container sets 0.0.0.0 to be reachable through its published port, and
-# compose publishes that port to 127.0.0.1 on the host so the boundary is preserved.
-DEFAULT_HOST = os.environ.get("STUDIO_HOST", "127.0.0.1")
+# `studio.port` / `studio.host` in settings.json; STUDIO_PORT and STUDIO_HOST override them.
+# The host is loopback unless told otherwise. Studio writes files and spawns processes, so
+# the default must stay local. A container sets 0.0.0.0 to be reachable through its
+# published port, and compose publishes that port to loopback on the host so the boundary
+# is preserved.
+DEFAULT_PORT = int(SETTINGS.get("studio.port"))
+DEFAULT_HOST = str(SETTINGS.get("studio.host"))
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,48}$")
 SAFE_MID = re.compile(r"^M\d{2,3}$")
 EDITABLE = (".md", ".json")
-MAX_BODY = 8 * 1024 * 1024
+MAX_BODY = int(SETTINGS.get("studio.maxBodyBytes"))
+ASK_TIMEOUT = int(SETTINGS.get("studio.askTimeout"))
+RECENT_JOBS = int(SETTINGS.get("studio.recentJobs"))
+MIN_HOURS = float(SETTINGS.get("generation.minHours"))
+MAX_HOURS = float(SETTINGS.get("generation.maxHours"))
 
 REGISTRY = jobs.Registry(JOBS_DIR)
 PROGRESS = progress.Store(STATE_DIR)
@@ -216,7 +225,7 @@ def state() -> Dict[str, Any]:
         "courses": list_courses(),
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or "",
                    "model": PREFS.model},
-        "jobs": [j.summary() for j in REGISTRY.all()[:12]],
+        "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
         "root": REPO_ROOT,
     }
 
@@ -227,8 +236,12 @@ def settings_view() -> Dict[str, Any]:
         "models": [{"id": m[0], "name": m[1], "note": m[2]} for m in prefs.MODELS],
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or ""},
         "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,
-                  "state": STATE_ROOT, "log": LOG_FILE},
-        "env": {k: os.environ.get(k, "") for k in ("STUDIO_MODEL", "STUDIO_LOG_LEVEL", "STUDIO_HOST")},
+                  "state": STATE_ROOT, "log": LOG_FILE, "settings": SETTINGS.path,
+                  "overlay": SETTINGS.overlay},
+        "platform": SETTINGS.describe(),
+        "overrides": dict(SETTINGS.overrides),
+        "envKeys": dict(ck_settings.ENV_KEYS),
+        "logs": {"maxBytes": logmod.MAX_BYTES, "backups": logmod.BACKUPS},
     }
 
 
@@ -587,10 +600,10 @@ class Handler(BaseHTTPRequestHandler):
             hours = float(brief.get("hours") or 0)
         except (TypeError, ValueError):
             return self._fail("Hours must be a number.")
-        if hours < 3:
-            return self._fail("Three hours is the shortest course worth structuring.")
-        if hours > 200:
-            return self._fail("Two hundred hours is beyond what one course should hold.")
+        if hours < MIN_HOURS:
+            return self._fail("%g hours is the shortest course worth structuring." % MIN_HOURS)
+        if hours > MAX_HOURS:
+            return self._fail("%g hours is beyond what one course should hold." % MAX_HOURS)
         if not claude_cli.available():
             return self._fail("Claude Code is not on this PATH, so nothing can be written.")
 
@@ -703,7 +716,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail("Claude Code is not on this PATH.", 503)
         prompt = claude_cli.chat_prompt(str(body.get("system") or ""), messages)
         try:
-            text = claude_cli.ask(prompt, model=self._model(body), timeout=240)
+            text = claude_cli.ask(prompt, model=self._model(body), timeout=ASK_TIMEOUT)
         except claude_cli.ClaudeFailed as exc:
             log.warning("ask: %s", exc)
             return self._fail(str(exc), 502)
@@ -747,7 +760,7 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = True,
     host = host or DEFAULT_HOST
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
-    url = "http://%s:%d/" % ("127.0.0.1" if host in ("0.0.0.0", "") else host, port)
+    url = SETTINGS.local_url(host, port) + "/"
 
     print("  Course Studio")
     print("  %s" % url)

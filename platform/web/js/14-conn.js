@@ -7,10 +7,10 @@
      bridge  — the optional little Python program in tools/bridge/. Useful if you would rather
                use Claude Code than an API key.
 */
-const API_URL = "https://api.anthropic.com/v1/messages";
-const API_VERSION = "2023-06-01";
 let bridgeOk = null, bridgeErr = "", bridgeChecking = false, studioOk = false;
-function BR() { if (!S.bridge) S.bridge = Object.assign({}, BRIDGE_DEFAULT); return S.bridge; }
+function BR() { if (!S.bridge) S.bridge = connDefaults(); return S.bridge; }
+/* An empty model in a saved state (or one this build no longer offers) means the default. */
+function modelFor(b) { return PLATFORM.models.some(m => m.id === b.model) ? b.model : PLATFORM.defaultModel; }
 function isLocalFile() { return location.protocol === "file:"; }
 /* Three routes, in order of preference:
      studio  — this page is served by Course Studio, which answers on the same origin
@@ -25,7 +25,7 @@ function connMode() {
 async function checkStudio() {
   if (!STUDIO) return false;
   try {
-    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000);
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), TUTOR.probeTimeoutMs);
     const r = await fetch(STUDIO.origin + "/api/state", { signal: ctrl.signal, cache: "no-store" });
     clearTimeout(t);
     const j = await r.json();
@@ -36,17 +36,17 @@ async function checkStudio() {
 
 async function callAnthropic(key, system, messages, model, maxTokens) {
   const body = {
-    model: model || "claude-sonnet-5",
-    max_tokens: maxTokens || 1400,
-    messages: messages.slice(-20)
+    model: model || PLATFORM.defaultModel,
+    max_tokens: maxTokens || TUTOR.maxTokens,
+    messages: messages.slice(-TUTOR.history)
   };
   if (system) body.system = system;
-  const r = await fetch(API_URL, {
+  const r = await fetch(PLATFORM.apiUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-api-key": key,
-      "anthropic-version": API_VERSION,
+      "anthropic-version": PLATFORM.apiVersion,
       "anthropic-dangerous-direct-browser-access": "true"
     },
     body: JSON.stringify(body)
@@ -69,7 +69,7 @@ async function callAnthropic(key, system, messages, model, maxTokens) {
 
 async function verifyKey(key) {
   try {
-    await callAnthropic(key, "", [{ role: "user", content: "hi" }], BR().model, 4);
+    await callAnthropic(key, "", [{ role: "user", content: "hi" }], modelFor(BR()), 4);
     return { ok: true };
   } catch (e) {
     const net = /failed|network|load/i.test(e.message || "") && !e.status;
@@ -104,7 +104,7 @@ async function checkBridge(quiet) {
   }
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 3000);
+    const t = setTimeout(() => ctrl.abort(), TUTOR.probeTimeoutMs);
     const r = await fetch(b.url.replace(/\/$/, "") + "/health", { signal: ctrl.signal });
     clearTimeout(t);
     const j = await r.json();
@@ -129,12 +129,12 @@ async function checkBridge(quiet) {
 async function askBridge(system, messages) {
   const b = BR();
   if (connMode() === "direct") {
-    return callAnthropic(b.key, system, messages, b.model, 1400);
+    return callAnthropic(b.key, system, messages, modelFor(b), TUTOR.maxTokens);
   }
   if (connMode() === "studio") {
     const r = await fetch(STUDIO.origin + "/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: b.model || "claude-sonnet-5", system, messages })
+      body: JSON.stringify({ model: modelFor(b), system, messages })
     });
     const j = await r.json().catch(() => ({ error: "Studio sent something unreadable." }));
     if (!r.ok || j.error) throw new Error(j.error || ("Studio error " + r.status));
@@ -142,7 +142,7 @@ async function askBridge(system, messages) {
   }
   const r = await fetch(b.url.replace(/\/$/, "") + "/ask", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ key: "", model: b.model || "claude-sonnet-5", system, messages, max_tokens: 1400 })
+    body: JSON.stringify({ key: "", model: modelFor(b), system, messages, max_tokens: TUTOR.maxTokens })
   });
   const j = await r.json().catch(() => ({ error: "The bridge sent something unreadable." }));
   if (!r.ok || j.error) throw new Error(j.error || ("Bridge error " + r.status));

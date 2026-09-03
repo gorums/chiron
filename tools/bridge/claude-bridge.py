@@ -19,8 +19,9 @@ Stop it:  close the window, or press Ctrl+C
 
 Environment overrides:
     ANTHROPIC_API_KEY   use this key and never touch config.json
-    BRIDGE_PORT         default 8787
-    BRIDGE_HOST         default 127.0.0.1 (containers set 0.0.0.0)
+    BRIDGE_PORT         overrides `bridge.port` in platform/settings.json
+    BRIDGE_HOST         overrides `bridge.host` (containers set 0.0.0.0)
+    BRIDGE_API_URL      overrides `anthropic.apiUrl`
     BRIDGE_MODE         force "api" or "cli"
     BRIDGE_ECHO=1       test mode: echo messages back, call nothing
 """
@@ -37,17 +38,30 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 VERSION = "2.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
-PORT = int(os.environ.get("BRIDGE_PORT", "8787"))
+
+# Every default - port, host, API endpoint, model list, budgets, timeouts - comes from
+# platform/settings.json, the same file Studio and the build read. BRIDGE_PORT, BRIDGE_HOST
+# and BRIDGE_API_URL in .env or the environment override it (see coursekit.settings).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "platform"))
+from coursekit.settings import SETTINGS  # noqa: E402  (stdlib only; needs no `markdown`)
+
+PORT = int(SETTINGS.get("bridge.port"))
 # Loopback unless told otherwise. A container has to bind 0.0.0.0 to be reachable through a
-# published port; the port is still published to 127.0.0.1 on the host, so the boundary holds.
-HOST = os.environ.get("BRIDGE_HOST", "127.0.0.1")
+# published port; the port is still published to loopback on the host, so the boundary holds.
+HOST = str(SETTINGS.get("bridge.host"))
 ECHO = os.environ.get("BRIDGE_ECHO") == "1"
 FORCE_MODE = os.environ.get("BRIDGE_MODE", "").strip().lower()
-API_URL = os.environ.get("BRIDGE_API_URL", "https://api.anthropic.com/v1/messages")
-API_VERSION = "2023-06-01"
-ALLOWED_MODELS = {"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"}
+API_URL = str(SETTINGS.get("anthropic.apiUrl"))
+API_VERSION = str(SETTINGS.get("anthropic.apiVersion"))
+API_TIMEOUT = int(SETTINGS.get("bridge.apiTimeout"))
+MAX_TOKENS = int(SETTINGS.get("page.tutor.maxTokens"))
+MAX_TOKENS_CAP = int(SETTINGS.get("bridge.maxTokensCap"))
+HISTORY = int(SETTINGS.get("page.tutor.history"))
+SYSTEM_CHARS = int(SETTINGS.get("bridge.systemChars"))
+DEFAULT_MODEL = SETTINGS.model_id(SETTINGS.default_model)
+ALLOWED_MODELS = {m["id"] for m in SETTINGS.models}
 
-CFG = {"key": "", "model": "claude-sonnet-5"}
+CFG = {"key": "", "model": DEFAULT_MODEL}
 
 
 def load_config():
@@ -115,14 +129,15 @@ def active_mode():
     return "none"
 
 
-CLI_BUDGET = 60000         # characters. The prompt goes in on stdin, so the Windows command-line
-                           # cap does not apply; this only bounds what one question can cost.
+CLI_BUDGET = int(SETTINGS.get("bridge.cliBudgetChars"))   # characters. The prompt goes in on
+                           # stdin, so the Windows command-line cap does not apply; this only
+                           # bounds what one question can cost.
+CLI_TIMEOUT = int(SETTINGS.get("bridge.cliTimeout"))
+CLI_PROBE_TIMEOUT = int(SETTINGS.get("bridge.cliProbeTimeout"))
 # Claude Code asks whether to trust the directory it starts in, which would hang a headless
 # call. The bridge hands it everything in the prompt, so it runs from an empty scratch folder.
-import tempfile
-CLI_CWD = os.path.join(tempfile.gettempdir(), "coursekit-claude")
-CLI_MODELS = {"claude-opus-5": "opus", "claude-sonnet-5": "sonnet",
-              "claude-haiku-4-5-20251001": "haiku"}
+CLI_CWD = SETTINGS.scratch_dir
+CLI_MODELS = SETTINGS.model_aliases
 
 
 def flatten(system, messages, budget=None):
@@ -229,7 +244,7 @@ def cli_works():
     try:
         os.makedirs(CLI_CWD, exist_ok=True)
         p = subprocess.run(cli_argv(cli, ["-p"]), input="Reply with the single word: ready",
-                           capture_output=True, text=True, timeout=120, cwd=CLI_CWD,
+                           capture_output=True, text=True, timeout=CLI_PROBE_TIMEOUT, cwd=CLI_CWD,
                            encoding="utf-8", errors="replace")
         return p.returncode == 0 and bool((p.stdout or "").strip())
     except Exception:
@@ -241,22 +256,22 @@ def call_api(system, messages, model, max_tokens, key=None):
     if not key:
         raise RuntimeError("No API key configured.")
     if model not in ALLOWED_MODELS:
-        model = CFG.get("model") or "claude-sonnet-5"
+        model = CFG.get("model") or DEFAULT_MODEL
     payload = {
         "model": model,
-        "max_tokens": min(int(max_tokens or 1400), 4000),
+        "max_tokens": min(int(max_tokens or MAX_TOKENS), MAX_TOKENS_CAP),
         "messages": [{"role": m.get("role", "user"), "content": str(m.get("content", ""))}
-                     for m in messages][-20:],
+                     for m in messages][-HISTORY:],
     }
     if system:
-        payload["system"] = str(system)[:8000]
+        payload["system"] = str(system)[:SYSTEM_CHARS]
     req = urllib.request.Request(
         API_URL,
         data=json.dumps(payload).encode("utf-8"),
         headers={"content-type": "application/json", "x-api-key": key,
                  "anthropic-version": API_VERSION},
         method="POST")
-    with urllib.request.urlopen(req, timeout=180) as r:
+    with urllib.request.urlopen(req, timeout=API_TIMEOUT) as r:
         data = json.loads(r.read().decode("utf-8"))
     return "".join(c.get("text", "") for c in data.get("content", []) if c.get("type") == "text")
 
@@ -279,7 +294,7 @@ def call_cli(system, messages, model=None):
             # The prompt travels on stdin, never as an argument: a Windows command line caps
             # at 8191 characters, and a long passage plus a few turns is past that.
             proc = subprocess.run(cli_argv(cli, args), capture_output=True, text=True,
-                                  timeout=240, input=prompt, cwd=CLI_CWD,
+                                  timeout=CLI_TIMEOUT, input=prompt, cwd=CLI_CWD,
                                   encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired:
             raise
@@ -337,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
                 "has_key": bool(active_key()),
                 "key_source": key_source(),
                 "key_hint": key_hint(),
-                "model": CFG.get("model", "claude-sonnet-5"),
+                "model": CFG.get("model", DEFAULT_MODEL),
             })
         return self._send(404, {"error": "Not found. This bridge serves /health, /ask, /configure and /testkey."})
 
@@ -506,7 +521,7 @@ def main():
         srv = ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError as e:
         print("\n  Could not start on port %d: %s" % (PORT, e))
-        print("  Something else may be using it. Try:  set BRIDGE_PORT=8788\n")
+        print("  Something else may be using it. Try:  set BRIDGE_PORT=%d\n" % (PORT + 1))
         return 1
     mode = active_mode()
     label = {"api": "Anthropic API key (%s)" % (CFG.get("_found_in") or key_source()),
@@ -517,7 +532,7 @@ def main():
     print("  Course platform - Claude bridge v%s" % VERSION)
     print("  " + "-" * 46)
     print("  Listening on   http://%s:%d" % (HOST, PORT))
-    print("  Reachable by   %s" % ("this computer only" if HOST == "127.0.0.1"
+    print("  Reachable by   %s" % ("this computer only" if HOST in ("127.0.0.1", "localhost", "::1")
                                    else "anything that can reach %s" % HOST))
     print("  Using          %s" % label)
     print("")

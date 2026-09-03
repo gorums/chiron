@@ -18,30 +18,28 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import time
 from typing import Any, Optional
+
+from coursekit.settings import SETTINGS
 
 from .log import log
 
 # Long enough for a full module; short enough that a wedged call cannot stall a job forever.
-DEFAULT_TIMEOUT = 600
+DEFAULT_TIMEOUT = int(SETTINGS.get("claude.timeout"))
+JSON_ATTEMPTS = int(SETTINGS.get("claude.jsonAttempts"))
+CHAT_HISTORY = int(SETTINGS.get("claude.chatHistory"))
 
-# Short aliases the CLI accepts. Unknown values are dropped rather than passed through.
-MODEL_ALIASES = {
-    "opus": "opus",
-    "sonnet": "sonnet",
-    "haiku": "haiku",
-    "claude-opus-5": "opus",
-    "claude-sonnet-5": "sonnet",
-    "claude-haiku-4-5-20251001": "haiku",
-}
+# Every accepted spelling of a model -> the short alias the CLI takes. Unknown values are
+# dropped rather than passed through. The list is `models.list` in settings.json.
+MODEL_ALIASES = SETTINGS.model_aliases
 
 # Every call names its model. Without `--model` the CLI inherits whatever the person last
 # picked interactively - which can be a model the headless SDK path does not accept (a
 # `[1m]` context variant, say), and then a run dies mid-module with "unrecognized_model".
-# Overridable per call, per Studio (state/studio.json) and per environment.
-DEFAULT_MODEL = os.environ.get("STUDIO_MODEL", "sonnet")
+# `models.default` in settings.json; STUDIO_MODEL in .env or the environment overrides it,
+# and Studio's own preference (state/studio.json) overrides that per call.
+DEFAULT_MODEL = SETTINGS.default_model
 
 _FENCE = re.compile(r"^\s*```(?:json|markdown|md)?\s*\n(.*?)\n\s*```\s*$", re.S)
 
@@ -50,7 +48,7 @@ _FENCE = re.compile(r"^\s*```(?:json|markdown|md)?\s*\n(.*?)\n\s*```\s*$", re.S)
 # call — and is worse in a container, where the workspace is a bind mount it has never seen.
 # Studio hands the model everything it needs in the prompt and asks it to read nothing, so
 # the calls run from an empty scratch directory rather than the repo.
-_SCRATCH = os.path.join(tempfile.gettempdir(), "coursekit-claude")
+_SCRATCH = SETTINGS.scratch_dir
 
 
 class ClaudeUnavailable(RuntimeError):
@@ -154,7 +152,7 @@ def chat_prompt(system: str, messages) -> str:
     parts = []
     if system:
         parts.append(str(system))
-    for m in list(messages or [])[-20:]:
+    for m in list(messages or [])[-CHAT_HISTORY:]:
         who = "User" if (m or {}).get("role") == "user" else "Assistant"
         parts.append("%s: %s" % (who, (m or {}).get("content", "")))
     parts.append("Assistant:")
@@ -199,7 +197,7 @@ def _slice_json(text: str) -> str:
 
 
 def ask_json(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT,
-             attempts: int = 3) -> Any:
+             attempts: int = JSON_ATTEMPTS) -> Any:
     """Ask for JSON and insist on getting it.
 
     A retry re-sends the original prompt with the parse error appended, which recovers a

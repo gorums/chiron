@@ -27,10 +27,11 @@ from typing import Any, Dict, List
 from .config import CourseConfig
 from .errors import ContentError
 from .markdown_render import to_html, to_text
+from .settings import SETTINGS
 
 # How much of a section the tutor is handed as context. Long enough to reason about,
 # short enough to keep the prompt cheap on every message.
-EXCERPT_CHARS = 2200
+EXCERPT_CHARS = int(SETTINGS.get("build.excerptChars"))
 
 _TIME = re.compile(r"^\*\*Time:\*\*\s*(.+)$", re.M)
 _REQUIRES = re.compile(r"^\*\*Requires:\*\*\s*(.+)$", re.M)

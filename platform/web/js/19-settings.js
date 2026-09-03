@@ -52,10 +52,9 @@ function viewSettings() {
 
   <div class="card" style="margin-bottom:20px">
     <p class="eyebrow">Settings</p>
-    <div class="setrow"><span class="lab">Model<small>Sonnet is the sensible default. Opus for hard questions, Haiku for speed.</small></span>
+    <div class="setrow"><span class="lab">Model<small>Which Claude answers your questions. The list comes from the platform's settings.</small></span>
       <select id="setmodel" onchange="saveSettings()" style="padding:10px 12px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px">
-        ${[["claude-sonnet-5", "Claude Sonnet 5"], ["claude-opus-5", "Claude Opus 5"], ["claude-haiku-4-5-20251001", "Claude Haiku 4.5"]]
-          .map(([v, l]) => `<option value="${v}" ${b.model === v ? "selected" : ""}>${l}</option>`).join("")}
+        ${PLATFORM.models.map(m => `<option value="${esc(m.id)}" ${modelFor(b) === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("")}
       </select></div>
     <div class="setrow" style="border-bottom:0"><span class="lab">Your key<small>Kept in this browser only, sent only to Anthropic.</small></span>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -92,7 +91,7 @@ function viewSettings() {
     <div class="setrow"><span class="lab">Position</span><div class="chips" style="margin:0">${DOCKS.map(([p, ico, tip]) => `<button class="chip ${railPos() === p ? "on" : ""}" onclick="setRailPos('${p}')">${ico} ${tip.replace("Dock ", "").replace("along the ", "")}</button>`).join("")}</div></div>
     <div class="setrow" style="border-bottom:0"><span class="lab">Size<small>Width when docked at a side, height when docked at the bottom.</small></span>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="sub">${railPos() === "bottom" ? railHeight() + "px tall" : railWidth() + "px wide"}</span>
-      <button class="btn sm" onclick="if(!S.ui)S.ui={};S.ui.railW=RAIL_DEFAULT;S.ui.railH=RAIL_H_DEFAULT;save();applyRail();viewSettings()">Reset</button></div></div>
+      <button class="btn sm" onclick="if(!S.ui)S.ui={};S.ui.railW=LAYOUT.railDefault;S.ui.railH=LAYOUT.railHeightDefault;save();applyRail();viewSettings()">Reset</button></div></div>
   </div>
 
   <div class="card">

@@ -87,7 +87,7 @@ async function finishRoleplay(mid) {
   try {
     const transcript = c.msgs.filter(x => x.r !== "e").map(x => (x.r === "u" ? "READER: " : "OTHER SIDE: ") + x.t).join("\n\n");
     const sys = graderPersona() + `\n\nThe reader just practised a conversation from module ${m.id}, "${m.title}". They played themselves; the other side was played by a model. Judge the reader's lines only, against this rubric:\n${rp.rubric.map((r, i) => (i + 1) + ". " + r).join("\n")}\n\nGoal they were given: ${rp.goal}\n\nReply in this exact shape:\nVERDICT: correct | partial | wrong   (correct = goal reached and rubric met; partial = some of it; wrong = neither)\nThen one line per rubric item, quoting the reader's own words where they helped or hurt.\nThen **Say it instead** — the single line they should have said at the moment that mattered most.\nUnder 200 words after the verdict line.`;
-    const fb = parseVerdict(await askBridge(sys, [{ role: "user", content: transcript.slice(-14000) }]));
+    const fb = parseVerdict(await askBridge(sys, [{ role: "user", content: transcript.slice(-TUTOR.gradeChars) }]));
     const p = P(mid); p.transfer = Object.assign({}, p.transfer, { rp: fb }); save(); markDay();
     c.msgs.push({ r: "a", t: "**Feedback**\n\n" + fb.text, ts: Date.now() }); c.updated = Date.now(); c.finished = true; save();
     renderRail();

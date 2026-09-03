@@ -19,6 +19,7 @@ from typing import Any, Dict
 
 from . import bundler
 from .config import CourseConfig
+from .settings import SETTINGS
 
 DOCTYPE_HEAD = (
     '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
@@ -56,6 +57,13 @@ def payload(cfg: CourseConfig, modules, library: Dict[str, Any]) -> Dict[str, An
     }
 
 
+def runtime_config(cfg: CourseConfig) -> Dict[str, Any]:
+    """The CFG object: the course's presentation strings plus, under `platform`, the
+    platform settings the page needs - bridge address, API endpoint, model list, study
+    rules, layout sizes. Nothing in platform/web/ carries a default of its own."""
+    return dict(cfg.runtime(), platform=SETTINGS.page())
+
+
 def _inject(template: str, marker: str, value: str) -> str:
     if marker not in template:
         raise ValueError("shell.html has no %s placeholder" % marker)
@@ -72,7 +80,7 @@ def render(cfg: CourseConfig, modules, library: Dict[str, Any]) -> str:
     html = html.replace("{{TITLE}}", cfg.title)
     html = _inject(html, "/*__CSS__*/", bundler.css())
     html = _inject(html, "/*__JS__*/", bundler.js())
-    html = _inject(html, "/*__CONFIG__*/", _embed_json(cfg.runtime()))
+    html = _inject(html, "/*__CONFIG__*/", _embed_json(runtime_config(cfg)))
     html = _inject(html, "/*__DATA__*/", _embed_json(payload(cfg, modules, library)))
     return html
 

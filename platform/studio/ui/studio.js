@@ -676,7 +676,12 @@ async function viewSettingsPage() {
     <div class="card">
       <p class="eyebrow">Claude Code</p>
       <p style="margin:0 0 6px">${s.claude.available ? `<span class="pill on">found</span> <span class="mono">${esc(s.claude.path)}</span>` : `<span class="pill off">not found on PATH</span> — generation and the tutor are disabled until it is installed and signed in.`}</p>
-      <p class="sub" style="font-size:12.5px;margin:8px 0 0">Environment overrides: ${["STUDIO_MODEL", "STUDIO_LOG_LEVEL", "STUDIO_HOST"].map(k => `<span class="mono">${k}=${esc(s.env[k] || "")}</span>`).join(" · ")}</p>
+    </div>
+
+    <div class="card">
+      <p class="eyebrow">Platform settings</p>
+      <p class="sub" style="font-size:13.5px">Every default the platform has - ports, the API endpoint, the model list, timeouts, generation counts, the page's study rules and layout - is in <span class="mono">${esc(s.paths.settings)}</span>. Per-machine overrides go in <span class="mono">.env</span> or the environment under these names: ${Object.entries(s.envKeys || {}).map(([k, v]) => `<span class="mono" title="${esc(v)}">${esc(k)}</span>`).join(" · ")}. A JSON overlay named by <span class="mono">SETTINGS_FILE</span> can override anything. Restart Studio after changing any of them.${s.paths.overlay ? ` Overlay in use: <span class="mono">${esc(s.paths.overlay)}</span>.` : ""}</p>
+      <table class="paths">${(s.platform || []).map(r => `<tr><td>${esc(r.key)}</td><td class="mono">${esc(String(r.value))}</td><td class="sub" style="font-size:12px">${r.source === "settings.json" ? "" : esc(r.source)}</td></tr>`).join("")}</table>
     </div>
 
     <div class="card">
@@ -697,7 +702,7 @@ async function viewSettingsPage() {
         <button class="btn sm ghost" onclick="clearLogs()">Clear view</button>
       </div>
       <pre class="logbox" id="logbox">loading…</pre>
-      <p class="sub" style="font-size:12px;margin:8px 0 0">The full file is <span class="mono">${esc(s.paths.log || "console only")}</span>, rotating at 2 MB. Every Claude call is one line: model, time taken, prompt and reply size, and the CLI's stderr when it fails.</p>
+      <p class="sub" style="font-size:12px;margin:8px 0 0">The full file is <span class="mono">${esc(s.paths.log || "console only")}</span>, rotating at ${Math.round((s.logs.maxBytes || 0) / 100000) / 10} MB × ${s.logs.backups}. Every Claude call is one line: model, time taken, prompt and reply size, and the CLI's stderr when it fails.</p>
     </div>`;
   loadLogs();
   followLogs();

@@ -2,13 +2,19 @@
 const KEY = CFG.storageKey;
 const DAY = 86400000;
 const todayNum = () => Math.floor(Date.now() / DAY);
-const BRIDGE_DEFAULT = { url: "http://127.0.0.1:8787", key: "", model: "claude-sonnet-5", route: "direct", mode: "none" };
-const MAX_FREEZES = 3;
+/* Platform settings, injected at build time from platform/settings.json (see
+   coursekit.settings.Settings.page). Nothing in this folder carries a default of its own:
+   addresses, models, limits and layout sizes all come from here. */
+const PLATFORM = CFG.platform;
+const TUTOR = PLATFORM.tutor, SYNC = PLATFORM.sync, STUDY = PLATFORM.study, LAYOUT = PLATFORM.ui;
+/* The connection block of a fresh state: where the bridge is expected and which model to
+   ask for. Whatever the reader changes in Settings is kept on top of this. */
+const connDefaults = () => ({ url: PLATFORM.bridgeUrl, key: "", model: PLATFORM.defaultModel, route: "direct", mode: "none" });
 const blank = () => ({
   progress: {}, cards: {}, mcards: {}, notes: {}, marks: {}, convos: {}, active: {}, biz: "",
   chk: {}, cp: null, cpHist: [], plan: { mode: null, weekly: null, target: null, start: null },
   bookmarks: {}, pos: {}, sheets: {},
-  bridge: Object.assign({}, BRIDGE_DEFAULT),
+  bridge: connDefaults(),
   streak: { days: 0, last: null, seen: [], freezes: 0, frozen: [] },
   theme: null, v: 1
 });
@@ -58,7 +64,7 @@ function syncBody() {
 async function syncPull() {
   if (!STUDIO) return false;
   try {
-    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 2500);
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), SYNC.pullTimeoutMs);
     const r = await fetch(syncUrl(), { signal: ctrl.signal, cache: "no-store" });
     clearTimeout(t);
     if (!r.ok) return false;
@@ -83,7 +89,7 @@ function syncPush(now) {
       const r = await fetch(syncUrl(), { method: "PUT", headers: { "content-type": "application/json" }, body: syncBody() });
       syncState = r.ok ? "on" : "err";
     } catch (e) { syncState = "err"; }
-  }, now ? 0 : 1200);
+  }, now ? 0 : SYNC.debounceMs);
 }
 window.addEventListener("pagehide", () => {
   if (!STUDIO || !syncOn) return;
@@ -106,12 +112,12 @@ function markDay() {
   else st.days = 1;
   st.last = t;
   if (!st.seen.includes(t)) st.seen.push(t);
-  st.seen = st.seen.slice(-400);
-  st.frozen = st.frozen.slice(-60);
+  st.seen = st.seen.slice(-STUDY.seenDays);
+  st.frozen = st.frozen.slice(-STUDY.frozenDays);
   save();
 }
 function earnFreeze() {
   const st = S.streak;
-  if ((st.freezes || 0) >= MAX_FREEZES) return false;
+  if ((st.freezes || 0) >= STUDY.maxFreezes) return false;
   st.freezes = (st.freezes || 0) + 1; save(); return true;
 }

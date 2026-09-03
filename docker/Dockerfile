@@ -45,6 +45,7 @@ ENV PYTHONUNBUFFERED=1 \
     COURSES_DIR=/work/courses \
     DIST_DIR=/work/dist
 
+# Documentation only; the real ports are STUDIO_PORT / BRIDGE_PORT (see compose.yaml).
 EXPOSE 8790 8787
 
 CMD ["python", "platform/build.py", "studio", "--no-open"]

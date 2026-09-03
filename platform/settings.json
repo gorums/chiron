@@ -1,0 +1,133 @@
+{
+  "_": "Every tunable of the platform, in one place. Nothing in platform/ or tools/ carries its own default; it reads this file through coursekit.settings. Per-machine overrides go in .env or the environment (see .env.example), or in a JSON overlay named by SETTINGS_FILE. The `page` block, plus the bridge address, the API endpoint and the model list, reach the browser as CFG.platform.",
+
+  "paths": {
+    "courses": "courses",
+    "dist": "dist",
+    "state": "state",
+    "progress": "",
+    "scratch": "coursekit-claude"
+  },
+
+  "studio": {
+    "host": "127.0.0.1",
+    "port": 8790,
+    "maxBodyBytes": 8388608,
+    "askTimeout": 240,
+    "recentJobs": 12
+  },
+
+  "bridge": {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "url": "",
+    "apiTimeout": 180,
+    "cliTimeout": 240,
+    "cliProbeTimeout": 120,
+    "cliBudgetChars": 60000,
+    "systemChars": 8000,
+    "maxTokensCap": 4000
+  },
+
+  "anthropic": {
+    "apiUrl": "https://api.anthropic.com/v1/messages",
+    "apiVersion": "2023-06-01"
+  },
+
+  "models": {
+    "default": "sonnet",
+    "list": [
+      {
+        "id": "claude-sonnet-5",
+        "alias": "sonnet",
+        "label": "Claude Sonnet 5",
+        "note": "the sensible default: fast, capable, and always accepted headless"
+      },
+      {
+        "id": "claude-opus-5",
+        "alias": "opus",
+        "label": "Claude Opus 5",
+        "note": "slower and dearer; for a course where the reasoning has to be best"
+      },
+      {
+        "id": "claude-haiku-4-5-20251001",
+        "alias": "haiku",
+        "label": "Claude Haiku 4.5",
+        "note": "cheap and quick; fine for the tutor, thin for writing modules"
+      }
+    ]
+  },
+
+  "claude": {
+    "timeout": 600,
+    "jsonAttempts": 3,
+    "chatHistory": 20
+  },
+
+  "generation": {
+    "quizItems": 6,
+    "cardItems": 6,
+    "questionsPerSection": 3,
+    "maxCorpusChars": 60000,
+    "maxWorksheets": 10,
+    "minHours": 3,
+    "maxHours": 200,
+    "timeouts": {
+      "plan": 420,
+      "module": 900,
+      "studyData": 600,
+      "reference": 900,
+      "resources": 600,
+      "planDocs": 600,
+      "worksheetPlan": 420,
+      "worksheet": 600,
+      "moduleSpec": 420
+    }
+  },
+
+  "build": {
+    "excerptChars": 2200,
+    "blurbChars": 95,
+    "minutesPerModule": 60,
+    "minModules": 3
+  },
+
+  "logs": {
+    "level": "INFO",
+    "maxBytes": 2000000,
+    "backups": 3,
+    "ring": 2000,
+    "pageLines": 400
+  },
+
+  "page": {
+    "tutor": {
+      "maxTokens": 1400,
+      "history": 20,
+      "railTurns": 12,
+      "summaryChars": 12000,
+      "gradeChars": 14000,
+      "probeTimeoutMs": 3000
+    },
+    "sync": {
+      "pullTimeoutMs": 2500,
+      "debounceMs": 1200
+    },
+    "study": {
+      "maxFreezes": 3,
+      "checkpointGapDays": 14,
+      "checkpointPassPct": 80,
+      "seenDays": 400,
+      "frozenDays": 60,
+      "checkpointHistory": 60
+    },
+    "ui": {
+      "railMin": 340,
+      "railDefault": 560,
+      "railHeightMin": 220,
+      "railHeightDefault": 380,
+      "sideWidth": 290,
+      "readMin": 420
+    }
+  }
+}

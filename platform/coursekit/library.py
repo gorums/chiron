@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Tuple
 
 from .config import CourseConfig
 from .markdown_render import read_html, to_html
+from .settings import SETTINGS
 
 # **Term** — definition.  A leading \* marks a term worth memorising first.
 _GLOSSARY_LINE = re.compile(r"^\*\*(\\\*)?(.+?)\*\*\s*[—–-]\s*(.+)$")
@@ -36,7 +37,7 @@ _EMPTY_CELL = re.compile(r"<td>(?:\s|&nbsp;)*</td>")
 _CHECK_ITEM = re.compile(r"<li>\s*\[ \]\s*")
 _HTML_TAG = re.compile(r"<[^>]+>")
 
-BLURB_CHARS = 95
+BLURB_CHARS = int(SETTINGS.get("build.blurbChars"))
 
 
 def build(cfg: CourseConfig) -> Dict[str, Any]:

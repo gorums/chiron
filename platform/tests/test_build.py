@@ -21,7 +21,7 @@ PLATFORM = os.path.dirname(HERE)
 REPO = os.path.dirname(PLATFORM)
 sys.path.insert(0, PLATFORM)
 
-from coursekit import assessments, bundler, config, library, loader, paths, renderer, scaffold, validate  # noqa: E402
+from coursekit import assessments, bundler, config, library, loader, paths, renderer, scaffold, settings, validate  # noqa: E402
 from coursekit.errors import CourseError, DataError, ManifestError  # noqa: E402
 
 MODULE_MD = """# M{n:02d} — Lesson {n}
@@ -392,6 +392,17 @@ class TestRender(TempCourseTest):
         self.assertEqual(len(data["modules"]), 6)
         self.assertEqual(len(data["parts"]), 3)
 
+    @unittest.skipUnless(shutil.which("node"), "node not on PATH")
+    def test_page_boots_under_node(self):
+        """`node --check` only parses. Booting the built page in a stub DOM catches a name the
+        bundle uses but never declares - the class of bug a rename leaves behind."""
+        import subprocess
+        harness = os.path.join(HERE, "page_smoke.js")
+        proc = subprocess.run(["node", harness, self.result.local_path],
+                              capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        self.assertIn("booted", proc.stdout)
+
     def test_library_degrades_when_reference_files_are_absent(self):
         """A course with no glossary or worksheets must still build."""
         shutil.rmtree(os.path.join(self.course.root, "reference"))
@@ -422,6 +433,35 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
     def test_bundles_are_non_empty(self):
         self.assertGreater(len(bundler.js()), 10000)
         self.assertGreater(len(bundler.css()), 1000)
+
+    # Addresses, endpoints, model names and ports reach the page through CFG.platform,
+    # built from platform/settings.json. A literal here would be a second source of truth.
+    HARDCODED = ("api.anthropic.com/", "claude-sonnet", "claude-opus", "claude-haiku",
+                 "127.0.0.1", "localhost:", ":8787", ":8790", "anthropic-version\": \"20")
+
+    def test_no_hardcoded_endpoints_or_models_in_the_front_end(self):
+        offenders = []
+        for path in bundler.source_files():
+            if not path.endswith(".js"):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    code = line.split("//")[0] if not line.lstrip().startswith(("/*", "*")) else ""
+                    for word in self.HARDCODED:
+                        if word in code:
+                            offenders.append("%s:%d has %r" % (os.path.basename(path), n, word))
+        self.assertEqual(offenders, [], "\n".join(offenders))
+
+    def test_page_receives_platform_settings(self):
+        cfg = config.load(scaffold.create(tempfile.mkdtemp(prefix="cfg-"), "knots", 4))
+        got = renderer.runtime_config(cfg)
+        self.assertEqual(got["id"], cfg.id)
+        platform = got["platform"]
+        for key in ("bridgeUrl", "apiUrl", "apiVersion", "defaultModel", "models",
+                    "tutor", "sync", "study", "ui"):
+            self.assertIn(key, platform)
+        self.assertIn(platform["defaultModel"], [m["id"] for m in platform["models"]])
+        self.assertEqual(platform, settings.SETTINGS.page())
 
 
 class TestPaths(unittest.TestCase):
@@ -478,6 +518,82 @@ class TestPaths(unittest.TestCase):
             self.assertEqual(fh.read(), "mine\n")
         cfg = config.load(root)
         self.assertEqual(cfg.folder_label, "knot-tying")
+
+
+class TestSettings(unittest.TestCase):
+    """One file holds every default; .env and the environment override the scalar knobs."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="settings-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _file(self, name, obj):
+        path = os.path.join(self.tmp, name)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(obj, fh)
+        return path
+
+    def test_shipped_file_is_complete(self):
+        s = settings.SETTINGS
+        for key in ("studio.host", "studio.port", "bridge.host", "bridge.port", "anthropic.apiUrl",
+                    "anthropic.apiVersion", "models.default", "claude.timeout", "logs.maxBytes",
+                    "generation.timeouts.module", "build.excerptChars", "page.tutor.maxTokens",
+                    "page.study.maxFreezes", "page.ui.railDefault"):
+            self.assertIsNotNone(s.get(key), key)
+        self.assertIn(s.default_model, s.model_aliases)
+        self.assertTrue(s.model_id(s.default_model).startswith("claude-"))
+        self.assertEqual(s.model_id("nonsense"), s.model_id(s.default_model))
+        self.assertEqual(s.bridge_url, "http://%s:%d" % (s.get("bridge.host"), s.get("bridge.port")))
+
+    def test_environment_beats_dotenv_beats_file_and_is_typed(self):
+        s = settings.load(env={"STUDIO_PORT": "9000", "STUDIO_MODEL": "claude-opus-5"},
+                          dotenv={"STUDIO_PORT": "9500", "BRIDGE_PORT": "9001", "BRIDGE_HOST": "0.0.0.0"},
+                          overlay="")
+        self.assertEqual(s.get("studio.port"), 9000)
+        self.assertIsInstance(s.get("studio.port"), int)
+        self.assertEqual(s.default_model, "opus")
+        self.assertEqual(s.bridge_url, "http://127.0.0.1:9001", "a page must never be told 0.0.0.0")
+        self.assertEqual(s.overrides["studio.port"], "environment")
+        self.assertEqual(s.overrides["bridge.port"], ".env")
+        self.assertNotIn("studio.host", s.overrides)
+        with self.assertRaises(settings.SettingsError):
+            settings.load(env={"STUDIO_PORT": "eighty"}, dotenv={}, overlay="")
+
+    def test_explicit_bridge_url_wins(self):
+        s = settings.load(env={"BRIDGE_URL": "http://tutor.local:1234/"}, dotenv={}, overlay="")
+        self.assertEqual(s.bridge_url, "http://tutor.local:1234")
+        self.assertEqual(s.page()["bridgeUrl"], "http://tutor.local:1234")
+
+    def test_overlay_file_deep_merges(self):
+        overlay = self._file("over.json", {
+            "studio": {"port": 8100},
+            "models": {"default": "mini", "list": [{"id": "claude-mini-9", "alias": "mini", "label": "Mini"}]},
+        })
+        s = settings.load(env={}, dotenv={}, overlay=overlay)
+        self.assertEqual(s.get("studio.port"), 8100)
+        self.assertEqual(s.get("studio.host"), settings.SETTINGS.get("studio.host"), "untouched keys survive")
+        self.assertEqual(s.default_model, "mini")
+        self.assertEqual(s.page()["models"], [{"id": "claude-mini-9", "label": "Mini"}])
+        self.assertEqual(s.overrides["studio.port"], overlay)
+        self.assertIn({"key": "studio.port", "value": 8100, "source": overlay}, s.describe())
+
+    def test_paths_resolve_relative_to_the_repo(self):
+        s = settings.load(env={"COURSES_DIR": "../elsewhere", "STUDIO_STATE_ROOT": self.tmp},
+                          dotenv={}, overlay="")
+        self.assertEqual(s.courses_dir, os.path.normpath(os.path.join(settings.REPO_ROOT, "..", "elsewhere")))
+        self.assertEqual(s.state_dir, os.path.normpath(self.tmp))
+        self.assertEqual(s.progress_dir, os.path.join(os.path.normpath(self.tmp), "progress"))
+
+    def test_missing_or_broken_file_is_loud(self):
+        with self.assertRaises(settings.SettingsError):
+            settings.load(os.path.join(self.tmp, "absent.json"), env={}, dotenv={}, overlay="")
+        broken = os.path.join(self.tmp, "broken.json")
+        with open(broken, "w", encoding="utf-8") as fh:
+            fh.write("{")
+        with self.assertRaises(settings.SettingsError):
+            settings.load(broken, env={}, dotenv={}, overlay="")
 
 
 class TestShippedMarketingCourse(unittest.TestCase):

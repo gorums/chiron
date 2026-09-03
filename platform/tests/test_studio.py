@@ -495,6 +495,20 @@ class TestModelChoice(unittest.TestCase):
         self.assertEqual(claude_cli.model_chain("nonsense"), [claude_cli.DEFAULT_MODEL])
         self.assertEqual(claude_cli.model_chain(claude_cli.DEFAULT_MODEL), [claude_cli.DEFAULT_MODEL])
 
+    def test_models_come_from_platform_settings(self):
+        from coursekit.settings import SETTINGS
+        from studio import prefs, server
+        self.assertEqual([m[0] for m in prefs.MODELS], [m["alias"] for m in SETTINGS.models])
+        self.assertEqual(claude_cli.MODEL_ALIASES, SETTINGS.model_aliases)
+        view = server.settings_view()
+        self.assertEqual([m["id"] for m in view["models"]], [m[0] for m in prefs.MODELS])
+        self.assertEqual(view["paths"]["settings"], SETTINGS.path)
+        self.assertIn("STUDIO_PORT", view["envKeys"])
+        keys = {row["key"] for row in view["platform"]}
+        self.assertIn("studio.port", keys)
+        self.assertIn("page.tutor.maxTokens", keys)
+        self.assertEqual(server.DEFAULT_PORT, SETTINGS.get("studio.port"))
+
     def test_prefs_store(self):
         import shutil
         import tempfile

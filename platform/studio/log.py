@@ -23,9 +23,17 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from coursekit.settings import SETTINGS
+
 log = logging.getLogger("studio")
 
-_RING = collections.deque(maxlen=2000)
+RING_LINES = int(SETTINGS.get("logs.ring"))
+PAGE_LINES = int(SETTINGS.get("logs.pageLines"))
+MAX_BYTES = int(SETTINGS.get("logs.maxBytes"))
+BACKUPS = int(SETTINGS.get("logs.backups"))
+DEFAULT_LEVEL = str(SETTINGS.get("logs.level") or "INFO")
+
+_RING = collections.deque(maxlen=RING_LINES)
 _LOCK = threading.Lock()
 _configured = False
 
@@ -51,7 +59,7 @@ def configure(directory: str = "", level: str = "") -> str:
     if _configured:
         return _path(directory)
     _configured = True
-    log.setLevel(getattr(logging, (level or os.environ.get("STUDIO_LOG_LEVEL", "INFO")).upper(), logging.INFO))
+    log.setLevel(getattr(logging, (level or DEFAULT_LEVEL).upper(), logging.INFO))
     log.propagate = False
 
     plain = logging.Formatter("%(message)s")
@@ -68,7 +76,7 @@ def configure(directory: str = "", level: str = "") -> str:
     if path:
         try:
             os.makedirs(directory, exist_ok=True)
-            fh = logging.handlers.RotatingFileHandler(path, maxBytes=2_000_000, backupCount=3,
+            fh = logging.handlers.RotatingFileHandler(path, maxBytes=MAX_BYTES, backupCount=BACKUPS,
                                                       encoding="utf-8")
             fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s %(name)s %(message)s"))
             log.addHandler(fh)
@@ -82,7 +90,7 @@ def _path(directory: str) -> str:
     return os.path.join(directory, "studio.log") if directory else ""
 
 
-def recent(limit: int = 400, level: str = "", contains: str = "") -> List[Dict[str, Any]]:
+def recent(limit: int = 0, level: str = "", contains: str = "") -> List[Dict[str, Any]]:
     """The newest lines, oldest first, optionally filtered."""
     threshold = getattr(logging, (level or "DEBUG").upper(), logging.DEBUG)
     needle = (contains or "").lower()
@@ -90,7 +98,7 @@ def recent(limit: int = 400, level: str = "", contains: str = "") -> List[Dict[s
         rows = list(_RING)
     out = [r for r in rows
            if getattr(logging, r["level"], 0) >= threshold and (not needle or needle in r["msg"].lower())]
-    return out[-max(1, min(int(limit or 400), 2000)):]
+    return out[-max(1, min(int(limit or PAGE_LINES), RING_LINES)):]
 
 
 def clear() -> None:

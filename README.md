@@ -29,6 +29,9 @@ docker compose up -d --build
 | **http://127.0.0.1:8790** | Course Studio — write and build courses |
 | **http://127.0.0.1:8787** | the bridge — the tutor inside a course page |
 
+Both ports, and every other default of the platform, are in `platform/settings.json`; a
+line in `.env` (`STUDIO_PORT=…`, `BRIDGE_PORT=…`, see `.env.example`) overrides them.
+
 `docker compose logs -f studio` watches a generation run; `docker compose down` stops both.
 
 It mounts your `~/.claude` so the containers use the Claude Code subscription you are already

@@ -75,7 +75,7 @@ async function compactConvo(id) {
     const transcript = c.msgs.filter(m => m.r !== "e")
       .map(m => (m.r === "u" ? "LEARNER: " : "TUTOR: ") + m.t).join("\n\n");
     const sys = "You compress a tutoring conversation into a handover brief for the next conversation, written for the tutor who picks it up. Under 180 words. Cover: what was actually settled, the learner's situation and business as revealed, any conclusion or decision reached, and what is still open or confusing. No preamble, no headings, plain prose. Do not repeat explanations — record outcomes.";
-    const summary = await askBridge(sys, [{ role: "user", content: transcript.slice(-12000) }]);
+    const summary = await askBridge(sys, [{ role: "user", content: transcript.slice(-TUTOR.summaryChars) }]);
     const fresh = newConvo(c.mid, { parent: c.id, summary: summary.trim(),
                                     title: "Continued: " + convoTitle(c).slice(0, 40) });
     compacting = false; renderRail();
@@ -96,17 +96,16 @@ function toggleRail() {
   S.ui.rail = !railOpen(); save();
   applyRail(); if (railOpen()) renderRail();
 }
-const RAIL_MIN = 340, RAIL_DEFAULT = 560, RAIL_H_MIN = 220, RAIL_H_DEFAULT = 380, SIDE_W = 290;
 const DOCKS = [["right", "⇥", "Dock right"], ["bottom", "⤓", "Dock along the bottom"]];
 function railPos() { const p = S.ui && S.ui.railPos; return DOCKS.some(d => d[0] === p) ? p : "right"; }
-/* never wider than leaves READ_MIN for the text beside it */
-const READ_MIN = 420;
+/* Sizes come from the platform's `page.ui` settings (LAYOUT). The rail is never wider
+   than leaves `readMin` pixels for the text beside it. */
 function railWidth() {
-  const side = (S.ui && S.ui.sideOff) ? 0 : SIDE_W;
-  const cap = Math.max(RAIL_MIN, window.innerWidth - side - READ_MIN);
-  return Math.max(RAIL_MIN, Math.min((S.ui && S.ui.railW) || RAIL_DEFAULT, cap));
+  const side = (S.ui && S.ui.sideOff) ? 0 : LAYOUT.sideWidth;
+  const cap = Math.max(LAYOUT.railMin, window.innerWidth - side - LAYOUT.readMin);
+  return Math.max(LAYOUT.railMin, Math.min((S.ui && S.ui.railW) || LAYOUT.railDefault, cap));
 }
-function railHeight() { return Math.max(RAIL_H_MIN, Math.min((S.ui && S.ui.railH) || RAIL_H_DEFAULT, Math.floor(window.innerHeight * .8))); }
+function railHeight() { return Math.max(LAYOUT.railHeightMin, Math.min((S.ui && S.ui.railH) || LAYOUT.railHeightDefault, Math.floor(window.innerHeight * .8))); }
 function setRailPos(p) { if (!S.ui) S.ui = {}; S.ui.railPos = p; save(); applyRail(); if (route.v === "m" && railOpen()) renderRail(); if (route.v === "settings") viewSettings(); }
 /* Lays the page out: which columns the #app grid has, and where the rail sits in them.
    Everything is recomputed from state, so a drag, a dock change, a hidden sidebar and a
@@ -117,7 +116,7 @@ function applyRail() {
   const root = document.documentElement.style;
   root.setProperty("--railw", railWidth() + "px");
   root.setProperty("--railh", railHeight() + "px");
-  root.setProperty("--sidew", (side && !narrow ? SIDE_W : 0) + "px");
+  root.setProperty("--sidew", (side && !narrow ? LAYOUT.sideWidth : 0) + "px");
   document.body.classList.toggle("rail-on", show);
   ["rail-right", "rail-bottom"].forEach(c => document.body.classList.remove(c));
   document.body.classList.add("rail-" + pos);
@@ -127,7 +126,7 @@ function applyRail() {
   // grid columns: [sidebar] [main] [rail]  — the rail docks right, or along the bottom
   const cols = [], place = (node, col) => { if (node) node.style.gridColumn = String(col); };
   let col = 1;
-  if (side && !narrow) { cols.push(SIDE_W + "px"); place(sb, col++); } else place(sb, "");
+  if (side && !narrow) { cols.push(LAYOUT.sideWidth + "px"); place(sb, col++); } else place(sb, "");
   const inGrid = show && !narrow && pos !== "bottom";
   cols.push("1fr"); place(main, col++);
   if (inGrid) { cols.push("var(--railw)"); place(el, col++); } else place(el, "");
@@ -424,7 +423,7 @@ async function railSend() {
   if (pend) pend.innerHTML = `<div class="msg a typing"><i></i><i></i><i></i></div>`;
   const body = document.getElementById("railbody"); if (body) body.scrollTop = body.scrollHeight;
   try {
-    const msgs = c.msgs.filter(x => x.r !== "e").slice(-12).map(x => ({ role: x.r === "u" ? "user" : "assistant", content: x.t }));
+    const msgs = c.msgs.filter(x => x.r !== "e").slice(-TUTOR.railTurns).map(x => ({ role: x.r === "u" ? "user" : "assistant", content: x.t }));
     const reply = await askBridge(systemForRail(), msgs);
     c.msgs.push({ r: "a", t: reply, ts: Date.now() });
     if (markId) { const mk = findMark(m.id, markId); if (mk && mk.status === "open") setMarkStatus(m.id, markId, "answered"); }
@@ -477,6 +476,6 @@ function bindRailGrip() {
     };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
   });
-  g.addEventListener("dblclick", () => { if (!S.ui) S.ui = {}; if (railPos() === "bottom") S.ui.railH = RAIL_H_DEFAULT; else S.ui.railW = RAIL_DEFAULT; save(); applyRail(); toast("Chat size reset"); });
+  g.addEventListener("dblclick", () => { if (!S.ui) S.ui = {}; if (railPos() === "bottom") S.ui.railH = LAYOUT.railHeightDefault; else S.ui.railW = LAYOUT.railDefault; save(); applyRail(); toast("Chat size reset"); });
 }
 window.addEventListener("resize", () => { applyRail(); });

@@ -11,13 +11,13 @@ import json
 import os
 from typing import Any, Dict
 
+from coursekit.settings import SETTINGS
+
 from . import claude_cli
 
-MODELS = (
-    ("sonnet", "Claude Sonnet 5", "the sensible default: fast, capable, and always accepted headless"),
-    ("opus", "Claude Opus 5", "slower and dearer; for a course where the reasoning has to be best"),
-    ("haiku", "Claude Haiku 4.5", "cheap and quick; fine for the tutor, thin for writing modules"),
-)
+# (alias, label, note) for every model in settings.json - the only list Settings offers.
+MODELS = tuple((m.get("alias") or m["id"], m.get("label") or m["id"], m.get("note", ""))
+               for m in SETTINGS.models)
 _ALLOWED = {m[0] for m in MODELS}
 
 

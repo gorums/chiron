@@ -3,7 +3,6 @@
    the course challenge draws from everything. Questions are shuffled across modules so
    nothing is answered by remembering which module you are in. Results feed mastery: a hit
    makes a module Proficient, a miss drops it back to Practised. */
-const CHECK_GAP_DAYS = 14;
 function eligibleFor(kind, pid) {
   return MODS.filter(m => (kind === "course" || m.part === pid) && (isDone(m) || quizPct(m) != null));
 }
@@ -17,11 +16,11 @@ function checkOffers() {
     const ms = MODS.filter(m => m.part === p.id);
     if (!ms.length || !ms.every(isDone)) return;
     const last = lastCheck("part", p.id);
-    if (!last || todayNum() - last.day >= CHECK_GAP_DAYS || last.score / last.total < .8) out.push({ kind: "part", pid: p.id, label: "Checkpoint · " + p.name });
+    if (!last || todayNum() - last.day >= STUDY.checkpointGapDays || last.score / last.total < STUDY.checkpointPassPct / 100) out.push({ kind: "part", pid: p.id, label: "Checkpoint · " + p.name });
   });
   if (MODS.every(isDone)) {
     const last = lastCheck("course");
-    if (!last || todayNum() - last.day >= CHECK_GAP_DAYS) out.push({ kind: "course", pid: "", label: "Course challenge" });
+    if (!last || todayNum() - last.day >= STUDY.checkpointGapDays) out.push({ kind: "course", pid: "", label: "Course challenge" });
   }
   return out;
 }
@@ -89,7 +88,7 @@ function cpFinish() {
     cp.items.forEach((x, i) => { const st = cp.a[i] || {}; const b = byMod[x.mid] || (byMod[x.mid] = { ok: 0, n: 0 }); b.n++; if (st.ok && !st.hinted) b.ok++; });
     S.cpHist.push({ kind: cp.kind, pid: cp.pid, at: Date.now(), day: todayNum(), score: a.filter(x => x.ok).length, total: cp.items.length,
                     a: a.map(x => ({ answered: true, ok: !!x.ok, conf: x.conf })), byMod });
-    S.cpHist = S.cpHist.slice(-60);
+    S.cpHist = S.cpHist.slice(-STUDY.checkpointHistory);
     cp.recorded = true; save(); markDay();
   }
   cpResults();

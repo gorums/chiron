@@ -4,8 +4,12 @@
 #   docker compose logs -f studio    watch a generation run
 #   docker compose down              stop them
 #
-# Studio      http://127.0.0.1:8790   write and build courses
-# Bridge      http://127.0.0.1:8787   the tutor inside a course page
+# Studio      http://127.0.0.1:${STUDIO_PORT}   write and build courses     (default 8790)
+# Bridge      http://127.0.0.1:${BRIDGE_PORT}   the tutor inside a course page (default 8787)
+#
+# The ports are STUDIO_PORT and BRIDGE_PORT from .env - the same names the code reads, so
+# the container and the published port always agree. The defaults here must match
+# `studio.port` and `bridge.port` in platform/settings.json.
 #
 # Both publish to 127.0.0.1 explicitly. Without that prefix Docker would bind 0.0.0.0 and
 # expose a service that writes files and spawns processes to the whole network.
@@ -42,10 +46,10 @@ services:
     container_name: course-studio
     command: ["python", "platform/build.py", "studio", "--no-open"]
     ports:
-      - "127.0.0.1:8790:8790"
+      - "127.0.0.1:${STUDIO_PORT:-8790}:${STUDIO_PORT:-8790}"
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8790/api/state',timeout=5)"]
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:${STUDIO_PORT:-8790}/api/state',timeout=5)"]
       interval: 30s
       timeout: 10s
       start_period: 20s
@@ -56,10 +60,10 @@ services:
     container_name: course-bridge
     command: ["python", "tools/bridge/claude-bridge.py"]
     ports:
-      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:${BRIDGE_PORT:-8787}:${BRIDGE_PORT:-8787}"
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=5)"]
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:${BRIDGE_PORT:-8787}/health',timeout=5)"]
       interval: 30s
       timeout: 10s
       start_period: 20s

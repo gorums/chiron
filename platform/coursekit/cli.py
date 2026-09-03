@@ -18,6 +18,7 @@ from typing import List
 from . import assessments, config, library, loader, renderer, scaffold, validate
 from .errors import CourseError
 from .paths import COURSES_DIR, DIST_DIR
+from .settings import SETTINGS
 
 
 def _course_root(name: str) -> str:
@@ -105,14 +106,19 @@ def cmd_where(_args) -> int:
     print("platform  %s" % REPO_ROOT)
     print("courses   %s" % COURSES_DIR)
     print("dist      %s" % DIST_DIR)
+    print("settings  %s" % SETTINGS.path)
+    if SETTINGS.overlay:
+        print("overlay   %s" % SETTINGS.overlay)
     print("config    %s%s" % (ENV_FILE, "" if os.path.isfile(ENV_FILE) else "  (absent)"))
+    for key, source in sorted(SETTINGS.overrides.items()):
+        print("  %-24s = %-28s from %s" % (key, SETTINGS.get(key), source))
     return 0
 
 
 def cmd_studio(args) -> int:
     """Studio is imported lazily: the build path must not depend on the server or on Claude."""
-    from studio.server import DEFAULT_PORT, serve
-    return serve(port=args.port or DEFAULT_PORT, open_browser=not args.no_open,
+    from studio.server import serve
+    return serve(port=args.port or int(SETTINGS.get("studio.port")), open_browser=not args.no_open,
                  host=args.host)
 
 
@@ -142,9 +148,11 @@ def build_parser() -> argparse.ArgumentParser:
     build.set_defaults(func=cmd_build)
 
     studio = sub.add_parser("studio", help="open the Studio UI in a browser")
-    studio.add_argument("--port", type=int, default=0, help="port (default: 8790)")
+    studio.add_argument("--port", type=int, default=0,
+                        help="port (default: %s)" % SETTINGS.get("studio.port"))
     studio.add_argument("--no-open", action="store_true", help="do not open a browser")
-    studio.add_argument("--host", default="", help="bind address (default: 127.0.0.1)")
+    studio.add_argument("--host", default="",
+                        help="bind address (default: %s)" % SETTINGS.get("studio.host"))
     studio.set_defaults(func=cmd_studio)
     return parser
 

@@ -30,15 +30,23 @@ from coursekit import renderer as ck_renderer
 from coursekit import scaffold as ck_scaffold
 from coursekit import validate as ck_validate
 from coursekit.errors import CourseError
+from coursekit.settings import SETTINGS
 
 from . import claude_cli, prompts
 from .jobs import Job
 
 # Model output is trusted for prose and distrusted for structure; these bound the latter.
-QUIZ_ITEMS = 6
-CARD_ITEMS = 6
-QUESTIONS_PER_SECTION = 3
-MAX_CORPUS_CHARS = 60000     # what the glossary and mental-models calls see of the course
+# All from the `generation` block of settings.json.
+QUIZ_ITEMS = int(SETTINGS.get("generation.quizItems"))
+CARD_ITEMS = int(SETTINGS.get("generation.cardItems"))
+QUESTIONS_PER_SECTION = int(SETTINGS.get("generation.questionsPerSection"))
+MAX_CORPUS_CHARS = int(SETTINGS.get("generation.maxCorpusChars"))   # what the glossary and mental-models calls see
+MAX_WORKSHEETS = int(SETTINGS.get("generation.maxWorksheets"))
+
+
+def _timeout(step: str) -> int:
+    """Seconds allowed for one kind of Claude call: `generation.timeouts.<step>`."""
+    return int(SETTINGS.get("generation.timeouts." + step, claude_cli.DEFAULT_TIMEOUT))
 
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,48}$")
 
@@ -93,7 +101,7 @@ def make_plan(job: Job, brief: Dict[str, Any], model: str = "") -> Dict[str, Any
             brief.get("notes", ""),
         ),
         model=model,
-        timeout=420,
+        timeout=_timeout("plan"),
     )
     return normalise_plan(plan, theme, hours, brief)
 
@@ -196,7 +204,7 @@ def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
     if mod["id"] == "M01":
         prompt += prompts.module_first(plan)
     prompt += prompts.direction(notes)
-    body = claude_cli.strip_fence(claude_cli.ask(prompt, model=model, timeout=900))
+    body = claude_cli.strip_fence(claude_cli.ask(prompt, model=model, timeout=_timeout("module")))
 
     # The build keys everything off the title line; repair it rather than failing the run.
     expected = "# %s — %s" % (mod["id"], mod["title"])
@@ -396,12 +404,12 @@ def write_study_data(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, A
                      body: str, model: str = "") -> Dict[str, Any]:
     headings = headings_of(body)
     assess = _fix_assessment(
-        claude_cli.ask_json(prompts.assessment(plan, mod, body), model=model, timeout=600),
+        claude_cli.ask_json(prompts.assessment(plan, mod, body), model=model, timeout=_timeout("studyData")),
         mod["id"],
     )
     sugg = _fix_suggestions(
         claude_cli.ask_json(prompts.suggestions(plan, mod["id"], headings, body),
-                            model=model, timeout=600),
+                            model=model, timeout=_timeout("studyData")),
         headings,
     )
     job.emit("studydata", id=mod["id"], quiz=len(assess["quiz"]),
@@ -596,11 +604,11 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
         _write(path, claude_cli.strip_fence(make()))
 
     shelf("Glossary", "reference/glossary.md",
-          lambda: claude_cli.ask(prompts.glossary(plan, modules, corpus), model=model, timeout=900))
+          lambda: claude_cli.ask(prompts.glossary(plan, modules, corpus), model=model, timeout=_timeout("reference")))
     shelf("Mental models", "reference/mental-models.md",
-          lambda: claude_cli.ask(prompts.mental_models(plan, corpus), model=model, timeout=900))
+          lambda: claude_cli.ask(prompts.mental_models(plan, corpus), model=model, timeout=_timeout("reference")))
     shelf("Resources", "reference/resources.md",
-          lambda: claude_cli.ask(prompts.resources(plan), model=model, timeout=600))
+          lambda: claude_cli.ask(prompts.resources(plan), model=model, timeout=_timeout("resources")))
 
     job.check_cancelled()
     step += 1
@@ -611,7 +619,7 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
         if resume and _real_file(path):
             continue
         _write(path, claude_cli.strip_fence(claude_cli.ask(
-            prompts.plan_docs(plan, modules, kind), model=model, timeout=600)))
+            prompts.plan_docs(plan, modules, kind), model=model, timeout=_timeout("planDocs"))))
 
     job.check_cancelled()
     step += 1
@@ -636,13 +644,13 @@ def _write_worksheets(job: Job, root: str, plan: Dict[str, Any],
     """Worksheets are optional: a failure here must not lose a finished course."""
     try:
         wanted = claude_cli.ask_json(prompts.worksheet_plan(plan, modules),
-                                     model=model, timeout=420)
+                                     model=model, timeout=_timeout("worksheetPlan"))
     except Exception as exc:  # noqa: BLE001
         job.log("Could not plan worksheets (%s); continuing without them." % exc)
         return
     if not isinstance(wanted, list):
         return
-    for spec in wanted[:10]:
+    for spec in wanted[:MAX_WORKSHEETS]:
         if not isinstance(spec, dict) or not spec.get("name"):
             continue
         job.check_cancelled()
@@ -650,7 +658,7 @@ def _write_worksheets(job: Job, root: str, plan: Dict[str, Any],
         try:
             text = claude_cli.strip_fence(claude_cli.ask(
                 prompts.worksheet(plan, spec["name"], spec.get("purpose", "")),
-                model=model, timeout=600))
+                model=model, timeout=_timeout("worksheet")))
         except Exception as exc:  # noqa: BLE001
             job.log("Worksheet '%s' failed (%s); skipping." % (slug, exc))
             continue
@@ -807,7 +815,7 @@ def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
     job.progress(1, total, "Designing %s · %s" % (mid, topic))
     spec = _fix_spec(
         claude_cli.ask_json(prompts.module_spec(plan, plan["modules"], topic, part["name"],
-                                                minutes, notes), model=model, timeout=420),
+                                                minutes, notes), model=model, timeout=_timeout("moduleSpec")),
         mid, part["id"], topic, minutes, known_ids=[m["id"] for m in plan["modules"]],
     )
     plan["modules"].append(spec)

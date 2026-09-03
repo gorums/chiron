@@ -22,9 +22,10 @@ import re
 from typing import Any, Dict, List
 
 from .errors import CourseError
+from .settings import SETTINGS
 
-MINUTES_PER_MODULE = 60
-MIN_MODULES = 3
+MINUTES_PER_MODULE = int(SETTINGS.get("build.minutesPerModule"))
+MIN_MODULES = int(SETTINGS.get("build.minModules"))
 
 # (folder, display name, share of total hours, blurb template)
 PART_PLAN = [

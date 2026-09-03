@@ -39,15 +39,53 @@ Consequences:
 - The tests never assume a course is present: `TestShippedMarketingCourse` skips when the
   marketing course is not in `COURSES_DIR`.
 
+## Settings: one file, no literals
+
+**Every default the platform has lives in `platform/settings.json`.** Ports and hosts, the
+Anthropic endpoint and API version, the model list and the default model, every timeout,
+the generation counts, the log rotation, and the page's study rules and layout sizes. No
+module under `platform/` or `tools/` carries a literal of its own; it asks
+`coursekit.settings.SETTINGS` (`SETTINGS.get("studio.port")`, `SETTINGS.models`,
+`SETTINGS.bridge_url`, ...). The bridge imports the same module from outside the package,
+which is why `settings.py` is stdlib-only.
+
+Resolution, later layers winning:
+
+| | |
+|---|---|
+| `platform/settings.json` | the committed defaults |
+| `SETTINGS_FILE` | an optional JSON overlay, deep-merged: a different model list, longer timeouts |
+| `.env` at the repo root | the scalar knobs in `settings.ENV_KEYS` (`STUDIO_PORT`, `BRIDGE_HOST`, `STUDIO_MODEL`, ...) |
+| the environment | the same names, winning over `.env` |
+
+An environment value is coerced to the type of the default it replaces, so `STUDIO_PORT`
+becomes an int. `SETTINGS.overrides` records which layer supplied each overridden key;
+`build.py where` prints them and the Studio settings page (`#/settings`) lists every
+resolved value with its source. Studio's own preference file, `state/studio.json`, sits on
+top of all of this for the one thing the UI edits: the model.
+
+**The page gets its slice as `CFG.platform`.** `renderer.runtime_config` merges
+`SETTINGS.page()` into the `CFG` the shell receives: the bridge address, the API endpoint
+and version, the model list and default, and the `page` block (tutor budgets, sync timing,
+study rules, rail sizes). `01-state.js` binds them to `PLATFORM`, `TUTOR`, `SYNC`, `STUDY`
+and `LAYOUT`; a fresh state's connection block comes from `connDefaults()`. Do not write an
+address, a model id or a limit into `platform/web/js/` - add a key to `settings.json` and
+read it through `CFG.platform`. `test_build.py` fails on `api.anthropic.com`, a `claude-*`
+id, `127.0.0.1` or a port literal in the front end, the way it fails on a subject word.
+
+`paths.COURSES_DIR` and `paths.DIST_DIR` are the same mechanism: `paths.courses` and
+`paths.dist` in `settings.json`, overridden by `COURSES_DIR` / `DIST_DIR`.
+
 ## Layout
 
 ```
 platform/                   the engine — knows nothing about any subject
   build.py                  CLI entry point
+  settings.json             every default of the platform; see "Settings" above
   coursekit/                the build package
   studio/                   the local web app: generate + build from a browser
   web/                      front-end source: shell.html + css/ + js/
-  tests/                    test_build.py, test_studio.py
+  tests/                    test_build.py, test_studio.py, page_smoke.js (boots a built page under node)
 courses/<id>/               one course = one separate git repository (gitignored here;
                             the directory itself moves with COURSES_DIR)
   course.json               the manifest that makes a folder a course
@@ -85,8 +123,8 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      39 tests — engine
-python platform/tests/test_studio.py     79 tests — Studio
+python platform/tests/test_build.py      48 tests — engine (one boots the page under node, skipped without it)
+python platform/tests/test_studio.py     80 tests — Studio
 ```
 
 Requires Python 3 and the `markdown` package (`pip install markdown`). Nothing else.
@@ -100,7 +138,9 @@ docker compose down              stop them
 ```
 
 Needs a `.env` holding `CLAUDE_HOME` — the path to the host's `~/.claude`. Copy `.env.example`.
-The same file may set `COURSES_DIR`; compose mounts it at `/work/courses`.
+The same file may set `COURSES_DIR`; compose mounts it at `/work/courses`. `STUDIO_PORT` and
+`BRIDGE_PORT` there are read by compose *and* by the code, so the published port and the
+one the service binds always agree.
 
 **One image, two services.** Studio and the bridge need the same things — Python, and the
 Claude Code CLI — so they share a build and differ only in the command. Two Dockerfiles would
@@ -276,8 +316,9 @@ characters, and a module prompt is an order of magnitude larger. stdin removes t
 person last chose interactively, and the headless SDK path rejects some of those (a `[1m]`
 context variant fails with `unrecognized_model`) — which is how a run died at module 8 of 9.
 `claude_cli.model_chain()` tries the requested alias, then Studio's default (`prefs`, env
-`STUDIO_MODEL`, else `sonnet`), then the bare CLI as a last resort. `prefs.MODELS` is the
-only list the Settings page offers.
+`STUDIO_MODEL`, else `models.default` in `settings.json`), then the bare CLI as a last
+resort. `prefs.MODELS` is the only list the Settings page offers, and it is `models.list`
+from `settings.json`.
 
 **A run can be resumed.** `generate()` saves the approved curriculum to `plan/plan.json`;
 `brief["resume"]` reloads it (or `reconstruct_plan()` rebuilds one from `course.json` for
@@ -288,7 +329,8 @@ course page and the failed-job screen offer the button when `can_resume()` says 
 **Log first, then look.** `log.log` is the `studio` logger. Every Claude call logs model,
 duration, prompt/reply size and stderr on failure; every job event logs a line; every
 unhandled route error logs a traceback. Read it at **Settings & logs** (`#/settings`) or in
-`state/logs/studio.log`. `STUDIO_LOG_LEVEL=DEBUG` adds access lines.
+`state/logs/studio.log`. `STUDIO_LOG_LEVEL=DEBUG` adds access lines. Rotation size and
+count are `logs.maxBytes` / `logs.backups`.
 
 **Model output is trusted for prose and distrusted for structure.** `generator._fix_assessment`
 and `_fix_suggestions` coerce replies into shapes the validator accepts — clamping quiz answer
@@ -338,8 +380,9 @@ collide.
 
 `ui/studio.js` is hash-routed: `#/` library with a "today" strip and progress cards, `#/new`,
 `#/course/<id>` (tabs: Modules, Add a module, Questions, Files, Settings),
-`#/course/<id>/edit?path=`, `#/job/<id>`, and `#/settings` — Studio-wide: the model, where
-things are, and a live log viewer polling `/api/logs`. The course
+`#/course/<id>/edit?path=`, `#/job/<id>`, and `#/settings` — Studio-wide: the model, every
+resolved platform setting with the layer it came from, where things are, and a live log
+viewer polling `/api/logs`. The course
 page reads `GET /api/courses/<id>`, which parses modules and is therefore not used for the
 listing; `/api/state` counts module files instead (`server._module_ids`).
 
