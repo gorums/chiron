@@ -24,6 +24,7 @@ function handleSel() {
   bar.style.top = (rect.top + window.scrollY - 10) + "px";
   bar.innerHTML = `<button onclick="doMark('hl')">★ Highlight</button>
     <span class="div"></span><button onclick="doMark('note')">✎ Note</button>
+    <span class="div"></span><button onclick="doMark('q')">⚑ Open question</button>
     <span class="div"></span><button onclick="doMark('ask')">? Ask Claude</button>`;
   document.body.appendChild(bar);
 }
@@ -37,10 +38,11 @@ function doMark(kind) {
     pinQuote(text, sec);
     return;
   }
-  const m = addMark(mid, sec, text, "hl");
+  const m = addMark(mid, sec, text, kind === "q" ? "open" : "hl");
   selCtx = null;
   renderStep(byId(mid), 1); renderSidebar();
   if (kind === "hl") toast("Highlighted");
+  else if (kind === "q") { toast("Marked as an open question"); openNote(mid, m.id); }
   else openNote(mid, m.id);
 }
 document.addEventListener("mouseup", e => {

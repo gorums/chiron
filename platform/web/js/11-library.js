@@ -8,15 +8,19 @@ function viewLibrary() {
       <div class="card modelcard" onclick="go('#/library/models')"><h3>Mental models</h3><p class="sub">The ${DATA.library.models.length} ideas worth memorising. Tap to flip.</p></div>
       <div class="card modelcard" onclick="go('#/library/resources')"><h3>Resources</h3><p class="sub">The short, opinionated list of what is worth your time.</p></div>
     </div>
-    <p class="eyebrow" style="margin-top:26px">Worksheets</p><div class="grid g3">`;
+    <p class="eyebrow" style="margin-top:26px">Worksheets</p>
+    <p class="sub" style="margin-bottom:12px">Fill them in here. What you type stays with your progress.</p><div class="grid g3">`;
     DATA.library.templates.forEach(t => {
-      h += `<div class="card modelcard" onclick="go('#/library/t-${t.slug}')"><h3 style="font-size:16px">${esc(t.title)}</h3><p class="sub">${esc(t.blurb)}</p></div>`;
+      const n = sheetFilled(t.slug);
+      h += `<div class="card modelcard" onclick="go('#/library/t-${t.slug}')"><h3 style="font-size:16px">${esc(t.title)}</h3><p class="sub">${esc(t.blurb)}</p>
+        ${t.fields ? `<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><span class="bar" style="flex:1"><i style="width:${Math.round(n / t.fields * 100)}%"></i></span><span class="sub" style="font-size:11.5px">${n}/${t.fields}</span></div>` : ""}
+        ${(t.uses || []).length ? `<p class="sub" style="font-size:11.5px;margin-top:6px">Used in ${t.uses.join(", ")}</p>` : ""}</div>`;
     });
     h += `</div>
     <p class="eyebrow" style="margin-top:26px">The plan</p><div class="grid g3">
       <div class="card modelcard" onclick="go('#/plan/curriculum')"><h3 style="font-size:16px">Curriculum</h3><p class="sub">All ${MODS.length} modules and the time budget.</p></div>
       <div class="card modelcard" onclick="go('#/plan/how')"><h3 style="font-size:16px">How to study</h3><p class="sub">How not to waste the ${CFG.hours} hours.</p></div>
-      <div class="card modelcard" onclick="go('#/plan/expert')"><h3 style="font-size:16px">Path to expert</h3><p class="sub">Hours 30 to 500.</p></div>
+      <div class="card modelcard" onclick="go('#/plan/expert')"><h3 style="font-size:16px">Path to expert</h3><p class="sub">What comes after the last module.</p></div>
     </div></div>`;
     $("#view").innerHTML = h;
     return;
@@ -31,8 +35,7 @@ function viewLibrary() {
   if (sub.startsWith("t-")) {
     const t = DATA.library.templates.find(x => x.slug === sub.slice(2));
     if (!t) return go("#/library");
-    $("#view").innerHTML = `<div class="wrap"><button class="btn sm" onclick="go('#/library')">← Library</button>
-      <div class="prose" style="padding-left:0;margin-top:18px">${t.html}</div></div>`;
+    viewWorksheet(t);
   }
 }
 let glossFilter = "", glossStar = false;
@@ -57,9 +60,10 @@ function viewGlossary() {
   gf.addEventListener("input", e => { glossFilter = e.target.value; const p = gf.selectionStart; viewGlossary(); const n = $("#gf"); n.focus(); n.setSelectionRange(p, p); });
 }
 function viewModels() {
+  const n = DATA.library.models.length;
   let h = `<div class="wrap-wide"><button class="btn sm" onclick="go('#/library')">← Library</button>
     <h2 class="big" style="margin-top:14px">Mental models</h2>
-    <p class="sub" style="margin-bottom:20px">Twenty ideas that compress the whole course. Click any card to open it.</p><div class="grid g2">`;
+    <p class="sub" style="margin-bottom:20px">${n ? n + " idea" + (n === 1 ? "" : "s") + " that compress the whole course. Click any card to open it." : "This course ships no mental models yet."}</p><div class="grid g2">`;
   DATA.library.models.forEach((m, i) => {
     h += `<div class="card modelcard" onclick="toggleModel(${i})"><h3>${i + 1}. ${esc(m.title)}</h3>
       <div id="mm${i}" class="prose hidden" style="padding-left:0;font-size:15px;margin-top:8px">${m.html}</div>

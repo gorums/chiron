@@ -96,8 +96,11 @@ function toggleRail() {
   S.ui.rail = !railOpen(); save();
   applyRail(); if (railOpen()) renderRail();
 }
+const RAIL_MIN = 340, RAIL_DEFAULT = 560;
+function railWidth() { return Math.max(RAIL_MIN, Math.min((S.ui && S.ui.railW) || RAIL_DEFAULT, Math.floor(window.innerWidth * .7))); }
 function applyRail() {
   const show = route.v === "m" && railOpen();
+  document.documentElement.style.setProperty("--railw", railWidth() + "px");
   document.body.classList.toggle("rail-on", show);
   const el = document.getElementById("rail");
   if (el) { el.classList.toggle("hidden", route.v !== "m"); el.classList.toggle("shut", !railOpen()); }
@@ -182,10 +185,11 @@ function attachParaButtons(mid) {
 function setCurSec(i) {
   if (i === curSec) return;
   curSec = i;
+  if (route.v === "m" && route.id) S.pos[route.id] = i;      // picked up on the next save
   if (route.v === "m" && railOpen() && !pinned) { renderRailHead(); renderSuggest(); }
 }
-function pinQuote(text, sec, hints) {
-  pinned = { text: text, sec: sec };
+function pinQuote(text, sec, hints, markId) {
+  pinned = { text: text, sec: sec, markId: markId || null };
   pinnedQs = localQuestions(text, hints);
   if (!railOpen()) { S.ui = S.ui || {}; S.ui.rail = true; save(); applyRail(); }
   renderRail();
@@ -209,11 +213,19 @@ function railSuggestions() {
   const extra = S.biz ? ["How does this apply to " + S.biz + "?"] : ["How would I apply this to my own business?"];
   return set.concat(extra);
 }
+/* the tutor as a tool on the section in view, not just a question box */
+const TOOL_CHIPS = [
+  ["Summarise this section", "Summarise this section in five short bullets, then one sentence on what I should now be able to do that I could not before."],
+  ["Quiz me on this section", "Quiz me on this section. Ask ONE question at a time that tests whether I can use the idea, wait for my answer, grade it honestly in a line or two, then ask the next. Three questions, then tell me what I have and have not got."],
+  ["Explain it more simply", "Explain this section again more simply, as if to someone smart who has never worked in this field, with one concrete example."]
+];
+function activeIsRoleplay() { const c = activeConvo(route.id, false); return !!(c && c.kind === "rp"); }
 function systemForRail() {
   const m = byId(route.id);
   const sec = m.sections[pinned ? pinned.sec : curSec];
   const quote = pinned ? pinned.text : (sec ? sec.text.slice(0, 1200) : "");
   const c = activeConvo(m.id);
+  if (c && c.kind === "rp" && m.assess.roleplay) return roleplaySystem(m, m.assess.roleplay);
   return `${CFG.tutorPersona} The person is ${CFG.audience} working through a ${CFG.hours}-hour ${CFG.subject} course. Right now they are in module ${m.id}, "${m.title}", reading the section "${sec ? sec.h : ""}".
 
 ${pinned ? "They selected this passage and are asking about it:" : "The part of the text they are looking at:"}
@@ -238,12 +250,13 @@ function renderRail() {
   const m = byId(route.id); if (!m) return;
   const c = activeConvo(m.id);
   el.innerHTML = `
+    <div class="railgrip" id="railgrip" title="Drag to resize"></div>
     <div class="railhead" id="railhead"></div>
     <div class="railbody" id="railbody"></div>
     <div class="chatmenu hidden" id="chatmenu"></div>
     <div class="railfoot">
       <div class="row">
-        <textarea id="railin" rows="1" placeholder="Ask about this section…"></textarea>
+        <textarea id="railin" rows="1" placeholder="${c.kind === "rp" ? "Say what you would actually say…" : "Ask about this section…"}"></textarea>
         <button class="btn primary" id="railsend" onclick="railSend()">↑</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:7px">
@@ -252,6 +265,7 @@ function renderRail() {
       </div>
     </div>`;
   renderRailHead(); renderRailBody();
+  bindRailGrip();
   const inp = document.getElementById("railin");
   inp.addEventListener("keydown", e => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) { e.preventDefault(); railSend(); }
@@ -273,6 +287,7 @@ function renderRailHead() {
       <button class="iconbtn" style="width:28px;height:28px" title="Hide (a)" onclick="toggleRail()">→</button>
     </div>
     <div class="railctx">
+      ${c.kind === "rp" ? `<div class="rpbar"><span class="tag warn">role-play</span><span style="flex:1;font-size:12.5px;color:var(--text-2)">${c.finished ? "Finished — feedback below" : "Claude is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
       ${pinned
         ? `<div class="pinned"><span class="tag acc">selection</span>
              <button class="iconbtn" style="width:22px;height:22px;font-size:12px" title="Unpin" onclick="unpin()">✕</button>
@@ -340,10 +355,14 @@ function renderSuggest() {
     box.innerHTML = railSuggestions().map(q =>
       `<button class="chip" onclick="askThis(this)" data-q="${esc(q)}">${esc(q)}</button>`).join("")
       + (pinned ? `<button class="chip gen" onclick="genQuestions()" ${genning ? "disabled" : ""}>
-          ${genning ? "Thinking of better questions…" : "✦ Ask Claude for sharper questions"}</button>` : "");
+          ${genning ? "Thinking of better questions…" : "✦ Ask Claude for sharper questions"}</button>`
+        : `<div class="toolchips">${TOOL_CHIPS.map(([l, q]) => `<button class="chip tool" onclick="askThis(this)" data-q="${esc(q)}">${l}</button>`).join("")}</div>`);
+    if (activeIsRoleplay()) box.innerHTML = "";
   }
   const lead = document.getElementById("raillead2");
-  if (lead) lead.innerHTML = `<p class="sub" style="font-size:12px;margin:0 0 8px">${pinned
+  if (lead) lead.innerHTML = activeIsRoleplay()
+    ? `<p class="sub" style="font-size:12px;margin:0 0 8px">In character. Write "pause" to step out. When you are done, press <b>Finish &amp; get feedback</b> above.</p>`
+    : `<p class="sub" style="font-size:12px;margin:0 0 8px">${pinned
     ? "Questions about <b>the passage you picked</b>:"
     : "Questions worth asking about <b>" + esc(railCtxLabel()) + "</b>:"}</p>`;
 }
@@ -362,7 +381,8 @@ async function railSend() {
     if (!ok) { toast("Not connected — open Settings"); go("#/settings"); return; }
   }
   const c = activeConvo(m.id);
-  c.msgs.push({ r: "u", t: text, ts: Date.now(), sec: pinned ? pinned.sec : curSec, quote: pinned ? pinned.text : "" });
+  const markId = pinned ? pinned.markId : null;
+  c.msgs.push({ r: "u", t: text, ts: Date.now(), sec: pinned ? pinned.sec : curSec, quote: pinned ? pinned.text : "", mark: markId });
   c.updated = Date.now();
   save(); markDay();
   inp.value = ""; inp.style.height = "auto";
@@ -376,6 +396,7 @@ async function railSend() {
     const msgs = c.msgs.filter(x => x.r !== "e").slice(-12).map(x => ({ role: x.r === "u" ? "user" : "assistant", content: x.t }));
     const reply = await askBridge(systemForRail(), msgs);
     c.msgs.push({ r: "a", t: reply, ts: Date.now() });
+    if (markId) { const mk = findMark(m.id, markId); if (mk && mk.status === "open") setMarkStatus(m.id, markId, "answered"); }
   } catch (e) {
     c.msgs.push({ r: "e", t: (e && e.message) || "Something went wrong.", ts: Date.now() });
   }
@@ -389,7 +410,28 @@ async function railSend() {
 function closePanel() { const p = document.getElementById("panel"); if (p) p.remove(); }
 function openPanel(mid, id) {
   const m = findMark(mid, id); if (!m) return;
-  if (route.id !== mid) { go("#/m/" + mid + "/1"); setTimeout(() => pinQuote(m.text, m.sec), 260); return; }
-  pinQuote(m.text, m.sec);
+  if (route.id !== mid || route.step !== 1) { go("#/m/" + mid + "/1"); setTimeout(() => pinQuote(m.text, m.sec, null, id), 260); return; }
+  pinQuote(m.text, m.sec, null, id);
 }
-function statusOf(m) { return m.note && m.note.trim() ? "note" : "hl"; }
+/* the "?" beside a section heading: the whole section becomes the subject */
+function askSection(mid, i) {
+  const m = byId(mid), sec = m && m.sections[i]; if (!sec) return;
+  const txt = sec.text.length > 1500 ? sec.text.slice(0, 1500) + "…" : sec.text;
+  const hints = [sec.h];
+  pinQuote(txt, i, hints);
+  document.querySelectorAll(".prose .picked").forEach(n => n.classList.remove("picked"));
+}
+
+/* the rail is resizable: drag its left edge, width kept per device in S.ui.railW */
+function bindRailGrip() {
+  const g = document.getElementById("railgrip"); if (!g) return;
+  g.addEventListener("mousedown", e => {
+    e.preventDefault();
+    document.body.classList.add("raildrag");
+    const move = ev => { if (!S.ui) S.ui = {}; S.ui.railW = Math.round(window.innerWidth - ev.clientX); applyRail(); };
+    const up = () => { document.body.classList.remove("raildrag"); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); S.ui.railW = railWidth(); save(); };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+  });
+  g.addEventListener("dblclick", () => { if (!S.ui) S.ui = {}; S.ui.railW = RAIL_DEFAULT; save(); applyRail(); toast("Chat width reset"); });
+}
+window.addEventListener("resize", () => { if (document.getElementById("rail")) applyRail(); });

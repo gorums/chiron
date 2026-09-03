@@ -19,6 +19,8 @@ from .config import CourseConfig
 from .errors import DataError
 
 ASSESS_KEYS = ("predict", "quiz", "cards", "elaborate", "transfer")
+# Present only when the author wrote one: a live conversation the reader practises in.
+OPTIONAL_KEYS = ("roleplay",)
 
 
 def _read_json_dir(directory: str, label: str) -> List[Any]:
@@ -72,4 +74,7 @@ def attach(modules, assessments, suggestions) -> None:
     for module in modules:
         entry = assessments[module.id]
         module.assess = {k: entry[k] for k in ASSESS_KEYS}
+        for k in OPTIONAL_KEYS:
+            if entry.get(k):
+                module.assess[k] = entry[k]
         module.suggest = suggestions.get(module.id, [])

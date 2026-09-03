@@ -3,10 +3,13 @@ const KEY = CFG.storageKey;
 const DAY = 86400000;
 const todayNum = () => Math.floor(Date.now() / DAY);
 const BRIDGE_DEFAULT = { url: "http://127.0.0.1:8787", key: "", model: "claude-sonnet-5", route: "direct", mode: "none" };
+const MAX_FREEZES = 3;
 const blank = () => ({
-  progress: {}, cards: {}, notes: {}, marks: {}, convos: {}, active: {}, biz: "",
+  progress: {}, cards: {}, mcards: {}, notes: {}, marks: {}, convos: {}, active: {}, biz: "",
+  chk: {}, cp: null, cpHist: [], plan: { mode: null, weekly: null, target: null, start: null },
+  bookmarks: {}, pos: {}, sheets: {},
   bridge: Object.assign({}, BRIDGE_DEFAULT),
-  streak: { days: 0, last: null, seen: [] },
+  streak: { days: 0, last: null, seen: [], freezes: 0, frozen: [] },
   theme: null, v: 1
 });
 let S = load();
@@ -15,8 +18,18 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return blank();
-    return Object.assign(blank(), JSON.parse(raw));
+    return upgrade(Object.assign(blank(), JSON.parse(raw)));
   } catch (e) { return blank(); }
+}
+/* Older saves predate some fields; fill them in rather than guarding every read. */
+function upgrade(s) {
+  const b = blank();
+  ["mcards", "chk", "cpHist", "bookmarks", "pos", "sheets"].forEach(k => { if (!s[k] || typeof s[k] !== "object") s[k] = b[k]; });
+  s.plan = Object.assign({}, b.plan, s.plan || {});
+  s.streak = Object.assign({}, b.streak, s.streak || {});
+  if (!Array.isArray(s.streak.frozen)) s.streak.frozen = [];
+  if (!Array.isArray(s.streak.seen)) s.streak.seen = [];
+  return s;
 }
 function save() {
   S.updatedAt = Date.now();
@@ -28,7 +41,8 @@ function save() {
    When this page is served by Course Studio (http://…/course/<id>/…) progress is also kept
    on the platform, so Studio can show how far you are and you can carry on from another
    browser. localStorage stays the working copy; the platform copy is the durable one.
-   Device settings — the API key, bridge address, theme — never leave this browser. */
+   Device settings — the API key, bridge address, theme, reading preferences — never leave
+   this browser. */
 const STUDIO = (() => {
   if (!/^https?:$/.test(location.protocol)) return null;
   const m = location.pathname.match(/^\/course\/([a-z0-9-]+)\//);
@@ -53,7 +67,7 @@ async function syncPull() {
     const remote = j && j.state;
     if (remote && (remote.updatedAt || 0) > (S.updatedAt || 0)) {
       const keep = { bridge: S.bridge, ui: S.ui, theme: S.theme };
-      S = Object.assign(blank(), remote, keep);
+      S = upgrade(Object.assign(blank(), remote, keep));
       try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
       return true;
     }
@@ -77,15 +91,27 @@ window.addEventListener("pagehide", () => {
   try { navigator.sendBeacon(syncUrl(), new Blob([syncBody()], { type: "application/json" })); } catch (e) {}
 });
 function P(id) {
-  if (!S.progress[id]) S.progress[id] = { secs: {}, predict: "", quiz: null, elab: {}, transfer: null, done: false, doneAt: null, time: 0, step: 0 };
+  if (!S.progress[id]) S.progress[id] = { secs: {}, predict: "", quiz: null, elab: {}, elabFb: {}, transfer: null, done: false, doneAt: null, time: 0, step: 0 };
+  if (!S.progress[id].elabFb) S.progress[id].elabFb = {};
   return S.progress[id];
 }
+/* A day counts once you have done one real thing: read a section, answered a question,
+   reviewed a card, asked the tutor. A single missed day spends a freeze if you have one;
+   freezes are earned by finishing modules. */
 function markDay() {
-  const t = todayNum();
-  if (S.streak.last === t) return;
-  S.streak.days = (S.streak.last === t - 1) ? S.streak.days + 1 : 1;
-  S.streak.last = t;
-  if (!S.streak.seen.includes(t)) S.streak.seen.push(t);
-  S.streak.seen = S.streak.seen.slice(-120);
+  const t = todayNum(), st = S.streak;
+  if (st.last === t) return;
+  if (st.last === t - 1) st.days++;
+  else if (st.last === t - 2 && (st.freezes || 0) > 0) { st.freezes--; st.frozen.push(t - 1); st.days++; }
+  else st.days = 1;
+  st.last = t;
+  if (!st.seen.includes(t)) st.seen.push(t);
+  st.seen = st.seen.slice(-400);
+  st.frozen = st.frozen.slice(-60);
   save();
+}
+function earnFreeze() {
+  const st = S.streak;
+  if ((st.freezes || 0) >= MAX_FREEZES) return false;
+  st.freezes = (st.freezes || 0) + 1; save(); return true;
 }

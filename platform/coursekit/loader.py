@@ -33,6 +33,8 @@ from .markdown_render import to_html, to_text
 EXCERPT_CHARS = 2200
 
 _TIME = re.compile(r"^\*\*Time:\*\*\s*(.+)$", re.M)
+_REQUIRES = re.compile(r"^\*\*Requires:\*\*\s*(.+)$", re.M)
+_MODULE_ID = re.compile(r"\bM\d+\b")
 _MINUTES = re.compile(r"(\d+)")
 _TRAILING_RULE = re.compile(r"\n---\s*$")
 _NEXT_LINK = re.compile(r"\*\*Next:\*\*.*$", re.S)
@@ -60,6 +62,7 @@ class Module:
     minutes: int
     sections: List[Section]
     source: str
+    requires: List[str] = field(default_factory=list)
     assess: Dict[str, Any] = field(default_factory=dict)
     suggest: List[Any] = field(default_factory=list)
 
@@ -73,6 +76,7 @@ class Module:
             "meta": self.meta,
             "minutes": self.minutes,
             "sections": [s.public() for s in self.sections],
+            "requires": self.requires,
             "assess": self.assess,
             "suggest": self.suggest,
         }
@@ -112,10 +116,18 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
         raise ContentError("%s: could not read a module id from the title line." % path)
     title = head[1].strip() if len(head) > 1 else title_line
 
-    time_match = _TIME.search("\n".join(lines[1:8]))
+    head_lines = "\n".join(lines[1:8])
+    time_match = _TIME.search(head_lines)
     meta = time_match.group(1).strip() if time_match else ""
     minutes_match = _MINUTES.search(meta) if meta else None
     minutes = int(minutes_match.group(1)) if minutes_match else 60
+    # An optional `**Requires:** M03, M04` line declares what this module builds on. The
+    # page uses it to warn when a prerequisite is weak; nothing is ever locked.
+    req_match = _REQUIRES.search(head_lines)
+    requires: List[str] = []
+    for rid in (_MODULE_ID.findall(req_match.group(1)) if req_match else []):
+        if rid != module_id and rid not in requires:
+            requires.append(rid)
 
     sections = parse_sections(raw)
     if not sections:
@@ -131,6 +143,7 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
         minutes=minutes,
         sections=sections,
         source=path,
+        requires=requires,
     )
 
 

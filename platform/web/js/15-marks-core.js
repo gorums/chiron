@@ -1,4 +1,6 @@
-
+/* ---- marks: highlights, notes and open questions on a passage ----
+   status: "hl" a plain highlight · "open" a question you still need answered
+         · "answered" one that got its answer (from the tutor, or from you) */
 function marksOf(mid) { if (!S.marks) S.marks = {}; if (!S.marks[mid]) S.marks[mid] = []; return S.marks[mid]; }
 function allMarks() {
   const out = [];
@@ -10,6 +12,12 @@ function findMark(mid, id) { return marksOf(mid).find(x => x.id === id); }
 function addMark(mid, sec, text, status) {
   const m = { id: "k" + Date.now().toString(36) + Math.floor(Math.random() * 999), sec, text, note: "", q: "", ans: "", status: status || "hl", ts: Date.now() };
   marksOf(mid).push(m); save(); return m;
+}
+function setMarkStatus(mid, id, status) {
+  const m = findMark(mid, id); if (!m || m.status === status) return;
+  m.status = status; save();
+  if (route.v === "m" && route.id === mid && route.step === 1) applyMarksFresh(mid);
+  renderSidebar();
 }
 function delMark(mid, id) {
   S.marks[mid] = marksOf(mid).filter(x => x.id !== id); save();
@@ -23,6 +31,12 @@ function applyMarks(mid) {
     const host = document.querySelector("#sec" + mk.sec + " .prose");
     if (!host) return;
     wrapText(host, mk.text, markClass(mk), mk.id);
+  });
+}
+/* re-tint marks already in the page without re-rendering the step */
+function applyMarksFresh(mid) {
+  marksOf(mid).forEach(mk => {
+    document.querySelectorAll(`mark.hl[data-k="${mk.id}"]`).forEach(el => { el.className = "hl " + markClass(mk); });
   });
 }
 function wrapText(el, text, cls, id) {

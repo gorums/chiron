@@ -78,7 +78,9 @@ Three short files in `plan/`, all of which the reader sees before module 1:
 **Read `references/module-format.md` first — the format is a contract the build enforces.**
 
 One file per module, `modules/<part-dir>/M01-kebab-title.md`, ids sequential *across the
-whole course* (M01…M19, not restarting per part).
+whole course* (M01…M19, not restarting per part). Under the `**Time:**` line, a
+`**Requires:** M03, M05` line names the 0–3 earlier modules this one genuinely builds on;
+the page warns the reader when one of them is weak.
 
 Every module has the same seven sections, in this order:
 
@@ -105,7 +107,10 @@ that choice in M01 and refer back to it in every subsequent exercise.
   `## 1. Name` headings; anything under a non-numbered heading becomes the intro note.
 - `reference/resources.md` — a short, opinionated list. Say why each one earns its place.
 - `templates/*.md` — fill-in worksheets the reader reuses. First line `# Title`, then a
-  one-line description, then the worksheet. These are the course's lasting artefact.
+  `**Use with:** M07 — …` line naming the modules whose exercise it serves, then the
+  worksheet. Runs of underscores, empty table cells, `- [ ]` items and ```` ```answer ````
+  blocks become real inputs on the page (see `references/module-format.md`). These are the
+  course's lasting artefact.
 
 ## Phase 6 — study data
 
@@ -118,7 +123,10 @@ will reject you for breaking:
 Count the sections in the finished markdown — do not count the sections you planned.
 
 - `data/assessments/partN.json` — a JSON **list**, one object per module: `predict`, `quiz`
-  (6 questions), `cards` (6 flashcards), `elaborate`, `transfer`.
+  (6 questions, mixing at least three of the eight types — `numeric` for the arithmetic,
+  `order` for a real sequence, `cloze` for a term the reader must produce — with per-option
+  `feedback` and `hints` where they earn their place), `cards` (6 flashcards), `elaborate`,
+  `transfer`, and a `roleplay` wherever the module has a conversation worth practising.
 - `data/suggestions/partN.json` — a JSON **object** keyed by module id, each value a list of
   3-question sets, one set per section.
 

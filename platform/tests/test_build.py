@@ -243,6 +243,119 @@ class TestValidation(TempCourseTest):
             self.course.build(os.path.join(self.tmp, "out"))
 
 
+class TestQuestionTypes(TempCourseTest):
+    """Every type the page can render has a validator rule; `single` stays the default."""
+
+    def with_item(self, item):
+        by_id = {mid: _assessment(mid) for mid in self.course.ids}
+        by_id["M01"]["quiz"].append(dict(item, why="w"))
+        self.course.write_assessments(by_id)
+        return self.course.problems()
+
+    def test_good_items_of_every_type_are_clean(self):
+        good = [
+            {"type": "multi", "q": "Q", "options": ["a", "b", "c"], "answer": [0, 2]},
+            {"type": "tf", "q": "Q", "answer": False, "feedback": ["x", "y"]},
+            {"type": "numeric", "q": "Q", "answer": 12.5, "tolerance": 0.5, "unit": "%"},
+            {"type": "order", "q": "Q", "options": ["first", "second", "third"]},
+            {"type": "match", "q": "Q", "pairs": [["a", "1"], ["b", "2"]]},
+            {"type": "cloze", "q": "The ___ is", "answer": ["x", "y"]},
+            {"type": "short", "q": "Q", "model": "A good answer."},
+            {"q": "Q", "options": ["a", "b"], "answer": 1, "feedback": ["no", "yes"], "hints": ["h"]},
+        ]
+        for item in good:
+            self.assertEqual(self.with_item(item), [], item)
+
+    def test_bad_items_are_named(self):
+        bad = [
+            ({"type": "bogus", "q": "Q"}, "unknown type"),
+            ({"type": "multi", "q": "Q", "options": ["a", "b"], "answer": []}, "non-empty list"),
+            ({"type": "multi", "q": "Q", "options": ["a", "b"], "answer": [5]}, "non-empty list"),
+            ({"type": "tf", "q": "Q", "answer": "true"}, "true or false"),
+            ({"type": "numeric", "q": "Q", "answer": "12"}, "number"),
+            ({"type": "order", "q": "Q", "options": ["only"]}, "at least 2"),
+            ({"type": "match", "q": "Q", "pairs": [["a"]]}, "pairs"),
+            ({"type": "cloze", "q": "no blank here", "answer": "x"}, "___"),
+            ({"type": "short", "q": "Q"}, "model"),
+            ({"q": "Q", "options": ["a", "b"], "answer": 0, "feedback": ["only one"]}, "one entry per option"),
+            ({"q": "Q", "options": ["a", "b"], "answer": 0, "hints": "not a list"}, "hints"),
+            ({"q": "", "options": ["a", "b"], "answer": 0}, "question text"),
+        ]
+        for item, needle in bad:
+            problems = self.with_item(item)
+            self.assertTrue(any(needle in p for p in problems), (item, problems))
+
+    def test_roleplay_is_optional_but_checked_when_present(self):
+        by_id = {mid: _assessment(mid) for mid in self.course.ids}
+        by_id["M01"]["roleplay"] = {"persona": "You are", "situation": "s", "goal": "g", "rubric": ["r"]}
+        self.course.write_assessments(by_id)
+        self.assertEqual(self.course.problems(), [])
+        by_id["M01"]["roleplay"] = {"persona": "You are", "rubric": []}
+        self.course.write_assessments(by_id)
+        problems = self.course.problems()
+        self.assertTrue(any("situation" in p for p in problems), problems)
+        self.assertTrue(any("rubric" in p for p in problems), problems)
+
+    def test_roleplay_reaches_the_page(self):
+        by_id = {mid: _assessment(mid) for mid in self.course.ids}
+        by_id["M01"]["roleplay"] = {"persona": "You are", "situation": "s", "goal": "g", "rubric": ["r"]}
+        self.course.write_assessments(by_id)
+        cfg, result = self.course.build(os.path.join(self.tmp, "out"))
+        with open(result.web_path, encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn('"roleplay"', html)
+        self.assertIn('"rubric"', html)
+
+
+class TestRequires(TempCourseTest):
+    def _set_head(self, mid, line):
+        path = os.path.join(self.course.root, "modules/01-foundations/%s-lesson.md" % mid)
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        text = text.replace("**Time:** 45 minutes (20 read · 25 practice)",
+                            "**Time:** 45 minutes (20 read · 25 practice)\n" + line)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def test_requires_line_is_parsed_and_self_reference_dropped(self):
+        self._set_head("M02", "**Requires:** M01, M02 and M01 again")
+        mods = loader.load_modules(config.load(self.course.root))
+        self.assertEqual(mods[1].requires, ["M01"])
+        self.assertEqual(mods[0].requires, [])
+        self.assertIn("requires", mods[1].public())
+
+    def test_unknown_prerequisite_is_a_problem(self):
+        self._set_head("M02", "**Requires:** M77")
+        problems = self.course.problems()
+        self.assertTrue(any("M77" in p for p in problems), problems)
+
+
+class TestFillableWorksheets(unittest.TestCase):
+    def test_blanks_cells_checks_and_answer_blocks_become_inputs(self):
+        import re
+        from coursekit.markdown_render import to_html
+        md = ("# Sheet\n\nName: ______\n\n| Field | Value |\n|---|---|\n| Owner | |\n| Date | filled |\n\n"
+              "- [ ] first\n- [ ] second\n\n```answer\nWrite here\n```\n\n```\nkeep ____ these\n```\n")
+        html, n = library.fillable(to_html(md))
+        self.assertEqual(n, 5)
+        self.assertEqual(html.count('class="wsin"'), 2)
+        self.assertEqual(html.count('class="wscb"'), 2)
+        self.assertEqual(html.count('class="wsta"'), 1)
+        self.assertIn("keep ____ these", html)          # fenced code is left alone
+        self.assertEqual(sorted(int(x) for x in re.findall(r'data-f="(\d+)"', html)), [0, 1, 2, 3, 4])
+
+    def test_use_with_line_links_the_worksheet_to_modules(self):
+        tmp = tempfile.mkdtemp(prefix="coursekit-ws-")
+        try:
+            with open(os.path.join(tmp, "plan.md"), "w", encoding="utf-8") as fh:
+                fh.write("# Plan\n\n**Use with:** M03 — Something, and M07\n\nA sentence.\n\nGoal: ____\n")
+            out = library._templates(tmp)
+            self.assertEqual(out[0]["uses"], ["M03", "M07"])
+            self.assertEqual(out[0]["fields"], 1)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestRender(TempCourseTest):
     def setUp(self):
         super().setUp()

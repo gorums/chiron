@@ -1,12 +1,13 @@
 /* ---------- keys ---------- */
 document.addEventListener("keydown", e => {
   const tag = (e.target.tagName || "").toLowerCase();
-  const typing = tag === "input" || tag === "textarea";
+  const typing = tag === "input" || tag === "textarea" || tag === "select";
   if (e.key === "Escape") { closeModal(); closePanel(); clearSel(); $("#sidebar").classList.remove("open"); return; }
   if (typing) return;
   if (e.key === "/") { e.preventDefault(); openPalette(); return; }
   if (e.key === "?") { openHelp(); return; }
   if (e.key === "t") { cycleTheme(); return; }
+  if (e.key === "s") { toggleSidebar(); return; }
   if (e.key === "a" && route.v === "m") { toggleRail(); return; }
   if (e.key === "i" && route.v === "m") { const el = document.getElementById("railin"); if (el) { el.focus(); e.preventDefault(); } return; }
   if ($("#modalhost").innerHTML) return;
@@ -14,20 +15,27 @@ document.addEventListener("keydown", e => {
     if (e.key === " ") { e.preventDefault(); if (!session.flipped) flip(); return; }
     if (session.flipped && ["1", "2", "3", "4"].includes(e.key)) { rate(+e.key - 1); return; }
   }
+  // a quiz is on screen: the module's Retrieve step or a checkpoint
+  const quizLive = QZ && !QZ.qs.finished && ((route.v === "m" && route.step === 2) || (route.v === "check" && route.id === "run"));
+  if (quizLive) {
+    const st = QZ.qs.a[QZ.qs.i], it = QZ.items[QZ.qs.i].it, t = it.type || "single";
+    if (!st || !st.committed) {
+      if (t === "single" || t === "tf") {
+        const n = t === "tf" ? 2 : it.options.length;
+        const i = "abcdefgh".indexOf(e.key.toLowerCase());
+        if (i >= 0 && i < n) { qPick(i); return; }
+        if (/^[1-8]$/.test(e.key) && +e.key - 1 < n) { qPick(+e.key - 1); return; }
+      }
+      if (e.key === "Enter") { qCommit(); return; }
+    } else if (!st.answered && ["1", "2", "3"].includes(e.key)) { qAnswer(+e.key); return; }
+    else if (st.answered && st.ok != null && e.key === "Enter") { qNext(); return; }
+    else if (st.answered && st.ok == null && ["1", "2", "3"].includes(e.key) && !shortGrading) { qSelf(+e.key); return; }
+  }
   if (route.v === "m") {
-    const m = byId(route.id), p = P(route.id);
-    if (route.step === 2 && p.quiz && !p.quiz.finished) {
-      const st = p.quiz.a[p.quiz.i];
-      if (!st || st.pick == null) {
-        const i = "abcd".indexOf(e.key.toLowerCase());
-        if (i >= 0 || ["1", "2", "3", "4"].includes(e.key)) { pick(route.id, i >= 0 ? i : +e.key - 1); return; }
-      } else if (!st.answered && ["1", "2", "3"].includes(e.key)) { answer(route.id, +e.key); return; }
-      else if (st.answered && e.key === "Enter") { nextQ(route.id); return; }
-    }
     const i = mIndex(route.id);
     if (e.key === "j" && MODS[i + 1]) go("#/m/" + MODS[i + 1].id);
     if (e.key === "k" && MODS[i - 1]) go("#/m/" + MODS[i - 1].id);
-  } else {
+  } else if (route.v !== "check") {
     if (e.key === "j" || e.key === "k") go("#/m/" + MODS[0].id);
   }
 });

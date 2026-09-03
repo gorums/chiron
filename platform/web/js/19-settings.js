@@ -21,7 +21,7 @@ function viewSettings() {
       : "Paste your Anthropic API key below and press Connect."}</p>
     ${on ? "" : `<div style="max-width:520px;margin:0 auto">
       <button class="btn primary" id="connectbtn" style="font-size:15px;padding:11px 22px" onclick="useBridge()">Connect with Claude Code</button>
-      <p class="sub" style="font-size:12.5px;margin:10px 0 0">Included in your Pro/Max plan — no API charges. Start <code>bridge\\start-bridge.bat</code> first.</p>
+      <p class="sub" style="font-size:12.5px;margin:10px 0 0">Included in your Pro/Max plan — no API charges. Start <code>tools\\bridge\\start-bridge.bat</code> first.</p>
       <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px"><span style="flex:1;height:1px;background:var(--line)"></span><span style="font-size:11.5px;color:var(--muted)">or pay per question</span><span style="flex:1;height:1px;background:var(--line)"></span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="password" id="mainkey" placeholder="sk-ant-… (billed separately)" style="flex:1;min-width:230px" value="${esc(b.key || "")}">
@@ -68,7 +68,7 @@ function viewSettings() {
 
   <details class="card" style="margin-bottom:20px"><summary style="cursor:pointer;font-size:13px;color:var(--muted)">Alternative — use the local bridge instead (no API key, uses Claude Code)</summary>
     <div style="margin-top:14px">
-      <p style="color:var(--text-2);margin:0 0 12px">If you have <b>Claude Code</b> installed and would rather not use an API key at all, the folder <code>bridge\\</code> holds a small Python program that routes questions through it. Start <code>start-bridge.bat</code>, then press the button below. Everything works the same afterwards; the difference is only where the answers come from.</p>
+      <p style="color:var(--text-2);margin:0 0 12px">If you have <b>Claude Code</b> installed and would rather not use an API key at all, the folder <code>tools\\bridge\\</code> holds a small Python program that routes questions through it. Start <code>start-bridge.bat</code> there, then press the button below. Everything works the same afterwards; the difference is only where the answers come from.</p>
       <div class="setrow"><span class="lab">Bridge address</span><input type="text" id="seturl" value="${esc(b.url)}"></div>
       <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
         <button class="btn" onclick="useBridge()">Use the bridge</button>
@@ -76,6 +76,15 @@ function viewSettings() {
       </div>
     </div>
   </details>
+
+  <div class="card" style="margin-bottom:20px">
+    <p class="eyebrow">Reading</p>
+    <p class="sub" style="margin-bottom:6px">Kept in this browser only.</p>
+    <div class="setrow"><span class="lab">Text size</span><div class="chips" style="margin:0">${[["s", "Smaller"], ["m", "Normal"], ["l", "Larger"], ["xl", "Largest"]].map(([v, l]) => `<button class="chip ${(UI().size || "m") === v ? "on" : ""}" onclick="setReading('size','${v}')">${l}</button>`).join("")}</div></div>
+    <div class="setrow"><span class="lab">Line width<small>Narrow is easier to read; wide fits more.</small></span><div class="chips" style="margin:0">${[["narrow", "Narrow"], ["normal", "Normal"], ["wide", "Wide"]].map(([v, l]) => `<button class="chip ${(UI().width || "normal") === v ? "on" : ""}" onclick="setReading('width','${v}')">${l}</button>`).join("")}</div></div>
+    <div class="setrow"><span class="lab">Font<small>A serif body suits long reading for some eyes.</small></span><div class="chips" style="margin:0">${[["sans", "Sans"], ["serif", "Serif"]].map(([v, l]) => `<button class="chip ${(UI().font || "sans") === v ? "on" : ""}" onclick="setReading('font','${v}')">${l}</button>`).join("")}</div></div>
+    <div class="setrow" style="border-bottom:0"><span class="lab">Motion</span><label style="display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer"><input type="checkbox" ${UI().nomotion ? "checked" : ""} onchange="setReading('nomotion',this.checked)"> Reduce animation</label></div>
+  </div>
 
   <div class="card">
     <p class="eyebrow">Why the key sits in the browser</p>
@@ -143,7 +152,7 @@ async function useBridge() {
   if (!up) {
     BR().route = "direct"; save(); renderSidebar(); viewSettings();
     const l = log(); if (l) l.innerHTML = `<div class="hint" style="background:var(--bad-soft);color:var(--bad)"><span class="i">✕</span>
-      <div>The bridge is not running. Double-click <b>start-bridge.bat</b> in your <b>bridge</b> folder, leave that window open, then press this again.</div></div>`;
+      <div>The bridge is not running. Double-click <b>start-bridge.bat</b> in <b>tools\\bridge</b>, leave that window open, then press this again.</div></div>`;
     return;
   }
   try {
@@ -176,4 +185,16 @@ function saveSettings() {
   const u = document.getElementById("seturl");
   if (u) BR().url = u.value.trim().replace(/\/$/, "");
   save(); toast("Saved");
+}
+
+/* ---- reading preferences: device-local, applied as classes on <body> ---- */
+function UI() { if (!S.ui) S.ui = {}; return S.ui; }
+function setReading(k, v) { UI()[k] = v; save(); applyReading(); if (route.v === "settings") viewSettings(); }
+function applyReading() {
+  const u = UI(), b = document.body;
+  ["sz-s", "sz-l", "sz-xl", "w-narrow", "w-wide", "font-serif", "nomotion"].forEach(c => b.classList.remove(c));
+  if (u.size && u.size !== "m") b.classList.add("sz-" + u.size);
+  if (u.width && u.width !== "normal") b.classList.add("w-" + u.width);
+  if (u.font === "serif") b.classList.add("font-serif");
+  if (u.nomotion) b.classList.add("nomotion");
 }

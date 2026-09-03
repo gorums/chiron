@@ -118,4 +118,3 @@ h2.big{font-family:var(--serif);font-size:27px;line-height:1.2;margin:0 0 6px;fo
 .hint{font-size:12.5px;color:var(--muted);display:flex;gap:7px;align-items:flex-start;padding:11px 14px;background:var(--surface-2);border-radius:10px;line-height:1.5}
 .hint .i{flex:none;font-weight:700;color:var(--accent)}
 .readbar{position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:60;transition:width .12s}
-#menubtn{display:none}

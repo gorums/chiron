@@ -27,11 +27,13 @@ function viewModule() {
   const idx = mIndex(m.id);
   const prev = MODS[idx - 1], next = MODS[idx + 1];
   if (curSec >= m.sections.length) curSec = 0;
+  const ms = mastery(m), pre = prereqs(m);
 
   let h = `<div class="wrap"><div class="readhead">
-    <div class="crumb">${esc(partName(m.part))} · Module ${m.num} of ${MODS.length} · <span id="clock">${fmtClock(p.time || 0)}</span> spent of ${m.minutes}m planned</div>
+    <div class="crumb">${esc(partName(m.part))} · Module ${m.num} of ${MODS.length} · <span id="clock">${fmtClock(p.time || 0)}</span> spent of ${m.minutes}m planned · <span class="mlvl l${ms.lvl}" title="Mastery">${ms.name}${ms.dropped ? " (slipped)" : ""}</span></div>
     <h2>${esc(m.title)}</h2>
     <p class="sub">${esc(m.meta)}</p>
+    ${pre.length ? `<div class="prereqs">Builds on ${pre.map(x => `<button class="chip ${x.ms.lvl < 2 ? "weak" : ""}" onclick="go('#/m/${x.m.id}')" title="${x.ms.name}">${x.m.id} · ${esc(x.m.short)}${x.ms.lvl < 2 ? " · " + x.ms.name.toLowerCase() : ""}</button>`).join("")}${weakPrereqs(m).length ? `<span class="sub" style="font-size:12px;color:var(--warm)">— a weak prerequisite is the usual reason a module feels harder than it is.</span>` : ""}</div>` : ""}
     <div class="steps">`;
   STEPS.forEach((s, i) => {
     const did = stepDone(m, i);
@@ -42,7 +44,7 @@ function viewModule() {
   h += `<div class="footnav">
     ${prev ? `<button class="btn" onclick="go('#/m/${prev.id}')">← ${prev.id}</button>` : `<button class="btn" onclick="go('#/home')">← Dashboard</button>`}
     <button class="btn ${isDone(m) ? "" : "primary"}" onclick="toggleDone('${m.id}')">${isDone(m) ? "✓ Completed — undo" : "Mark module complete"}</button>
-    ${next ? `<button class="btn" onclick="go('#/m/${next.id}')">${next.id} →</button>` : `<button class="btn" onclick="go('#/stats')">Stats →</button>`}
+    ${next ? `<button class="btn" onclick="go('#/m/${next.id}')">${next.id} →</button>` : `<button class="btn" onclick="go('#/record')">Course record →</button>`}
   </div>`;
   // Served by Studio: the course can grow from right here. A missing topic becomes a new
   // module; a section that stops short becomes a rewrite with direction.
@@ -69,11 +71,15 @@ function stepDone(m, i) {
   if (i === 1) return secDone(m) === secTotal(m);
   if (i === 2) return !!(p.quiz && p.quiz.finished);
   if (i === 3) return Object.values(p.elab).some(v => (v || "").trim());
-  return !!(p.transfer && p.transfer.score != null);
+  return !!(p.transfer && (p.transfer.score != null || p.transfer.fb));
 }
 function toggleDone(id) {
   const p = P(id); p.done = !p.done; p.doneAt = p.done ? Date.now() : null;
-  if (p.done) { const n = seedCards(id); markDay(); toast(n ? n + " flashcards added to your review deck" : "Module marked complete"); }
+  if (p.done) {
+    const n = seedCards(id); markDay();
+    const froze = earnFreeze();
+    toast((n ? n + " flashcards added to your review deck" : "Module marked complete") + (froze ? " · +1 streak freeze" : ""));
+  }
   save(); render();
 }
 function renderStep(m, step) {
@@ -94,14 +100,15 @@ function renderStep(m, step) {
       <div style="flex:1"><div style="font-size:12.5px;color:var(--muted);margin-bottom:5px">Reading progress · ${secDone(m)} of ${secTotal(m)} sections</div>
       <div class="bar"><i style="width:${Math.round(secDone(m) / secTotal(m) * 100)}%"></i></div></div>
       <button class="btn sm" onclick="allSecs('${m.id}',${secDone(m) === secTotal(m) ? "false" : "true"})">${secDone(m) === secTotal(m) ? "Uncheck all" : "Check all"}</button></div>
-    <div class="hint" style="margin-bottom:18px"><span class="i">Tip</span> <b>Select any sentence</b> with your mouse and a bar appears — highlight it, attach a note, or turn it into a question for Claude. Or use the <b>?</b> beside any section heading. Everything you mark collects under <em>Marks &amp; questions</em>.</div>`;
+    <div class="hint" style="margin-bottom:18px"><span class="i">Tip</span><span><b>Select any sentence</b> and a bar appears — highlight it, attach a note, or ask Claude about that exact passage. The <b>?</b> beside a heading asks about the whole section; <b>⚑</b> bookmarks it. Everything you mark collects under <em>Marks &amp; questions</em>.</span></div>`;
     m.sections.forEach((sec, i) => {
-      const on = !!p.secs[i];
+      const on = !!p.secs[i], bk = !!S.bookmarks[m.id + ":" + i];
       s += `<div class="sec ${on ? "done" : ""}" id="sec${i}">
         <div class="sechead">
           <button class="check ${on ? "on" : ""}" onclick="tickSec('${m.id}',${i})" title="Mark section read">
             <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 6.2 4.4 9 10.5 2.8"/></svg></button>
           <h3>${esc(sec.h)}</h3>
+          <button class="askbtn ${bk ? "has on" : ""}" title="${bk ? "Remove bookmark" : "Bookmark this section"}" onclick="toggleBookmark('${m.id}',${i})">⚑</button>
           <button class="askbtn ${marksOf(m.id).some(k => k.sec === i) ? "has" : ""}" title="Ask Claude about this section" onclick="askSection('${m.id}',${i})">?</button>
         </div>
         <div class="prose">${sec.html}</div>
@@ -116,19 +123,27 @@ function renderStep(m, step) {
     s += `</div><div><div class="toc" id="toc">${m.sections.map((sec, i) => `<a href="#sec${i}" onclick="jump(event,${i})">${esc(sec.h)}</a>`).join("")}</div></div></div>`;
     b.innerHTML = s;
     setupToc(); applyMarks(m.id); attachParaButtons(m.id);
+    resumeScroll(m);
   } else if (step === 2) {
     renderQuiz(m);
   } else if (step === 3) {
     let s = `<div class="card"><p class="eyebrow">Step 4 · Elaborate</p>
-      <p class="hint" style="margin-bottom:18px"><span class="i">Why</span> Explaining an idea in your own words, connected to something you already know, is what converts a fact you recognise into a tool you can use. Write badly and quickly — nobody reads this but you.</p>`;
+      <p class="hint" style="margin-bottom:18px"><span class="i">Why</span> Explaining an idea in your own words, connected to something you already know, is what converts a fact you recognise into a tool you can use. Write badly and quickly — then let Claude tell you what you left out.</p>`;
     m.assess.elaborate.forEach((q, i) => {
-      s += `<div style="margin-bottom:18px"><h3 style="font-size:16px;font-weight:650;margin:0 0 9px">${esc(q)}</h3>
-      <textarea data-el="${i}" rows="3" placeholder="${S.biz ? esc(S.biz) + "…" : "Your business…"}">${esc(p.elab[i] || "")}</textarea></div>`;
+      const fb = p.elabFb[i];
+      s += `<div style="margin-bottom:22px"><h3 style="font-size:16px;font-weight:650;margin:0 0 9px">${esc(q)}</h3>
+      <textarea data-el="${i}" rows="3" placeholder="${S.biz ? esc(S.biz) + "…" : "Your business…"}">${esc(p.elab[i] || "")}</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+        ${connMode() !== "none" ? `<button class="btn sm" id="elabck${i}" onclick="checkElab('${m.id}',${i})">Check my answer</button>` : `<span class="sub" style="font-size:12px">Connect Claude in Settings to have this checked.</span>`}
+        ${fb ? `<span class="sub" style="font-size:12px">Checked ${new Date(fb.at).toLocaleDateString()}</span>` : ""}
+      </div>
+      <div id="elabfb${i}">${fb ? `<div class="fb ${fb.verdict || ""}"><b>What Claude saw</b>${mdLite(fb.text)}</div>` : ""}</div></div>`;
     });
     s += `<div style="display:flex;gap:9px"><button class="btn primary" onclick="saveElab('${m.id}')">Save and continue →</button></div></div>`;
     b.innerHTML = s;
   } else {
-    const t = m.assess.transfer, st = p.transfer || {};
+    const t = m.assess.transfer, st = p.transfer || {}, rp = m.assess.roleplay;
+    const sheets = DATA.library.templates.filter(x => (x.uses || []).includes(m.id));
     let s = `<div class="card"><p class="eyebrow">Step 5 · Apply</p>
       <p class="hint" style="margin-bottom:16px"><span class="i">Why</span> The gap between knowing and doing closes only under transfer: a new situation you have not seen, with the framework not named for you. Write your answer before you open the model answer, or the exercise is worthless.</p>
       <div style="background:var(--surface-2);border-radius:11px;padding:16px;margin-bottom:16px;font-size:15.5px;line-height:1.65">${esc(t.scenario)}</div>
@@ -136,16 +151,34 @@ function renderStep(m, step) {
       <textarea id="trin" rows="6" placeholder="Your answer. Reason it through — the reasoning is what is being trained.">${esc(st.answer || "")}</textarea>
       <div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
         <button class="btn" onclick="saveTransfer('${m.id}',null)">Save draft</button>
+        ${connMode() !== "none" ? `<button class="btn" id="trck" onclick="checkTransfer('${m.id}')">Have Claude grade it</button>` : ""}
         <button class="btn primary" onclick="revealModel('${m.id}')">Compare with model answer</button>
       </div>
+      <div id="trfb">${st.fb ? `<div class="fb ${st.fb.verdict || ""}"><b>Claude's read${st.fb.verdict ? " · " + st.fb.verdict : ""}</b>${mdLite(st.fb.text)}</div>` : ""}</div>
       <div id="modelbox" class="${st.revealed ? "" : "hidden"}">
         <div class="why" style="margin-top:18px"><b style="color:var(--text);display:block;margin-bottom:6px">Model answer</b>${esc(t.model)}</div>
         <div class="conf"><span style="font-size:13px;color:var(--muted)">How did yours compare?</span>
           ${[["Missed it", 1], ["Partly there", 2], ["Got it", 3]].map(([l, v]) =>
             `<button class="btn sm ${st.score === v ? "primary" : ""}" onclick="saveTransfer('${m.id}',${v})">${l}</button>`).join("")}
         </div>
-        ${st.score ? `<p class="sub" style="margin-top:14px">Scored. ${st.score === 3 ? `Now try to explain it to someone who is not a ${CFG.practitioner} — that is the real test.` : "Re-read the sections this draws on, then come back in a few days and retry from memory."}</p>` : ""}
+        ${st.score ? `<p class="sub" style="margin-top:14px">Scored. ${st.score === 3 ? `Now try to explain it to someone who is not a ${esc(CFG.practitioner)} — that is the real test.` : "Re-read the sections this draws on, then come back in a few days and retry from memory."}</p>` : ""}
       </div></div>`;
+    if (rp) {
+      const done = st.rp;
+      s += `<div class="card" style="margin-top:16px;border-color:var(--accent)"><p class="eyebrow" style="color:var(--accent-ink)">Practise it live</p>
+        <p style="margin:0 0 10px;color:var(--text-2);font-size:15px">${esc(rp.situation)}</p>
+        <p style="margin:0 0 12px"><b>Your goal:</b> ${esc(rp.goal)}</p>
+        <p class="sub" style="margin-bottom:12px">Claude plays the other side and stays in character. When you are done, ask for feedback: you are judged on ${rp.rubric.map(r => "<i>" + esc(r) + "</i>").join(", ")}.</p>
+        <div style="display:flex;gap:9px;flex-wrap:wrap">
+          ${connMode() !== "none" ? `<button class="btn primary" onclick="startRoleplay('${m.id}')">${done ? "Play it again" : "Start the conversation"} →</button>` : `<button class="btn" onclick="go('#/settings')">Connect Claude to practise live</button>`}
+        </div>
+        ${done ? `<div class="fb ${done.verdict || ""}" style="margin-top:14px"><b>Feedback from your last run · ${new Date(done.at).toLocaleDateString()}</b>${mdLite(done.text)}</div>` : ""}</div>`;
+    }
+    if (sheets.length) {
+      s += `<div class="card" style="margin-top:16px"><p class="eyebrow">Worksheets for this module</p>
+        <p class="sub" style="margin-bottom:10px">The exercise produces something. Fill it in here; it stays with your progress.</p>
+        ${sheets.map(x => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="go('#/library/t-${x.slug}')">${esc(x.title)}${sheetFilled(x.slug) ? ` · ${sheetFilled(x.slug)}/${x.fields}` : ""} →</button>`).join("")}</div>`;
+    }
     if (!isDone(m)) s += `<div class="card" style="margin-top:16px;text-align:center"><p class="sub" style="margin-bottom:12px">Finished all five steps?</p><button class="btn primary" onclick="toggleDone('${m.id}')">Mark ${m.id} complete and unlock its flashcards</button></div>`;
     b.innerHTML = s;
   }
@@ -165,6 +198,19 @@ function setupToc() {
     });
   }, { rootMargin: "-80px 0px -70% 0px" });
   secs.forEach(s => io.observe(s));
+}
+/* pick up where the page was left: the last section seen, if past the first */
+let resumeGuard = "";
+function resumeScroll(m) {
+  const pos = S.pos[m.id] || 0;
+  if (pos <= 0 || resumeGuard === m.id) return;
+  resumeGuard = m.id;
+  setTimeout(() => { const el = document.getElementById("sec" + pos); if (el && route.v === "m" && route.id === m.id) { el.scrollIntoView({ block: "start" }); toast("Resumed at “" + m.sections[pos].h + "”"); } }, 60);
+}
+function toggleBookmark(mid, i) {
+  const k = mid + ":" + i;
+  if (S.bookmarks[k]) { delete S.bookmarks[k]; toast("Bookmark removed"); } else { S.bookmarks[k] = Date.now(); toast("Bookmarked"); }
+  save(); renderStep(byId(mid), 1); renderSidebar();
 }
 function savePredict(id) { P(id).predict = $("#predin").value; save(); go("#/m/" + id + "/1"); }
 function saveNote(id) { S.notes[id] = $("#noteIn").value; save(); toast("Notes saved"); go("#/m/" + id + "/2"); }

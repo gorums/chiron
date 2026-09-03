@@ -14,12 +14,17 @@ function buildIndex() {
   DATA.library.models.forEach((m, i) => idx.push({ t: m.title, c: "Mental model", h: "#/library/models" }));
   DATA.library.templates.forEach(t => idx.push({ t: t.title, c: "Worksheet", h: "#/library/t-" + t.slug }));
   idx.push({ t: "Review due cards", c: "Spaced repetition", h: "#/review" });
+  idx.push({ t: "Fix mistakes", c: "Questions you missed, as cards", h: "#/review/mistakes" });
+  idx.push({ t: "Checkpoints", c: "Mixed quizzes across finished modules", h: "#/check" });
   idx.push({ t: "Progress & stats", c: "Your numbers", h: "#/stats" });
-  idx.push({ t: "Backup & restore", c: "Export your progress", h: "#/home" });
+  idx.push({ t: "Course record", c: "What you can show for the hours", h: "#/record" });
+  idx.push({ t: "Study plan", c: "Hours per week, target date", h: "#/home" });
+  idx.push({ t: "Marks & questions", c: "Highlights, notes, bookmarks, chats", h: "#/marks" });
+  idx.push({ t: "Settings", c: "Claude, reading preferences", h: "#/settings" });
+  idx.push({ t: "Backup & restore", c: "Export your progress", act: openData });
 }
 function openPalette() {
   if (!idx) buildIndex();
-  showModal(`<div style="display:none"></div>`);
   $("#modalhost").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()">
     <div class="palette"><input id="pq" type="text" placeholder="Search modules, sections, terms…" autocomplete="off">
     <div class="results" id="pr"></div></div></div>`;
@@ -28,10 +33,15 @@ function openPalette() {
   q.addEventListener("keydown", e => {
     if (e.key === "ArrowDown") { e.preventDefault(); pi = Math.min(pres.length - 1, pi + 1); paintRes(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); pi = Math.max(0, pi - 1); paintRes(); }
-    else if (e.key === "Enter") { e.preventDefault(); if (pres[pi]) { closeModal(); go(pres[pi].h); } }
+    else if (e.key === "Enter") { e.preventDefault(); if (pres[pi]) pickRes(pi); }
   });
   runSearch("");
   setTimeout(() => q.focus(), 30);
+}
+function pickRes(i) {
+  const r = pres[i]; if (!r) return;
+  closeModal();
+  if (r.act) r.act(); else go(r.h);
 }
 function runSearch(v) {
   const s = v.trim().toLowerCase();
@@ -49,13 +59,13 @@ function runSearch(v) {
 }
 function paintRes() {
   $("#pr").innerHTML = pres.length ? pres.map((r, i) =>
-    `<button class="res ${i === pi ? "on" : ""}" onclick="closeModal();go('${r.h}')"><div class="t">${esc(r.t)}</div><div class="c">${esc(r.c || "")}</div></button>`).join("")
+    `<button class="res ${i === pi ? "on" : ""}" onclick="pickRes(${i})"><div class="t">${esc(r.t)}</div><div class="c">${esc(r.c || "")}</div></button>`).join("")
     : `<div style="padding:22px;text-align:center;color:var(--muted);font-size:13.5px">Nothing found</div>`;
 }
 function openHelp() {
   showModal(`<h3 style="font-family:var(--serif);font-size:22px;margin:0 0 14px;font-weight:600">Keyboard shortcuts</h3>
   <div style="display:grid;gap:9px;font-size:14px">
-    ${[["select", "Select text to highlight it or ask about it"], ["a", "Show / hide the chat rail"], ["i", "Jump to the chat box"], ["/", "Search everything"], ["j / k", "Next / previous module"], ["1–4", "Answer a quiz question, or grade a card"], ["space", "Flip a flashcard"], ["Enter", "Continue"], ["⌘/Ctrl+↵", "Save the open note panel"], ["t", "Cycle theme"], ["?", "This panel"], ["Esc", "Close"]]
+    ${[["select", "Select text to highlight it or ask about it"], ["a", "Show / hide the chat rail"], ["s", "Show / hide the sidebar"], ["i", "Jump to the chat box"], ["/", "Search everything"], ["j / k", "Next / previous module"], ["a–h / 1–8", "Pick an option in a quiz"], ["1–3", "Rate confidence, then continue"], ["1–4", "Grade a flashcard"], ["space", "Flip a flashcard"], ["Enter", "Lock in an answer / continue"], ["⌘/Ctrl+↵", "Send a chat message"], ["t", "Cycle theme"], ["?", "This panel"], ["Esc", "Close"]]
       .map(([k, d]) => `<div style="display:flex;gap:12px"><kbd style="min-width:52px;text-align:center">${k}</kbd><span style="color:var(--text-2)">${d}</span></div>`).join("")}
   </div>
   <div class="hint" style="margin-top:18px"><span class="i">Note</span> Progress is stored in this browser. Use Backup &amp; restore in the sidebar to move it or keep a copy.</div>`);

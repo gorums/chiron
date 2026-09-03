@@ -37,7 +37,7 @@ PLAN_SCHEMA = """{
   ],
   "modules": [
     { "id": "M01", "part": "p1", "title": str, "short": str, "minutes": number,
-      "summary": str, "sections": [str] }
+      "summary": str, "sections": [str], "requires": ["M01"] }
   ],
   "milestones": [ { "after": number, "text": str } ]
 }"""
@@ -78,6 +78,9 @@ Rules:
 - "milestones" is the honest-read line on the stats page: 4-6 entries keyed on how many
   modules are complete, including one with "after": 0 and one for the full module count.
   Same voice as the course. Say plainly what the reader has and has not earned.
+- "requires" lists the 0-3 EARLIER modules this one genuinely builds on - the ones a reader
+  must have understood, not merely read before. The page warns when a prerequisite is weak.
+  Leave it empty for a module that stands alone.
 {("- Additional direction from the person requesting the course: " + notes) if notes else ""}
 
 Return ONLY a JSON object of this shape, no prose and no code fence:
@@ -98,6 +101,8 @@ The full curriculum, so you can build on earlier modules and leave later ones al
 
 def module(cfg: Dict[str, Any], modules: List[Dict[str, Any]], spec: Dict[str, Any]) -> str:
     sections = "\n".join("## " + s for s in spec["sections"])
+    requires = [r for r in (spec.get("requires") or []) if r != spec["id"]]
+    requires_line = ("**Requires:** " + ", ".join(requires) + "\n") if requires else ""
     return f"""Write module {spec['id']} of this course, in full.
 
 {_course_context(cfg, modules)}
@@ -107,6 +112,7 @@ The module to write:
   title:    {spec['title']}
   minutes:  {spec['minutes']}
   intent:   {spec.get('summary', '')}
+  builds on: {", ".join(requires) if requires else "nothing in particular"}
 
 {VOICE}
 
@@ -115,7 +121,7 @@ Output format - a single markdown document, exactly this shape:
 # {spec['id']} — {spec['title']}
 
 **Time:** {spec['minutes']} minutes (read · exercise · recall)
-
+{requires_line}
 ---
 
 {sections}
@@ -123,6 +129,7 @@ Output format - a single markdown document, exactly this shape:
 Hard requirements:
 - The first line is exactly `# {spec['id']} — {spec['title']}` with an em dash.
 - The `**Time:**` line must be present and start with the number {spec['minutes']}.
+{"- Keep the `**Requires:**` line exactly as shown, directly under the time line." if requires else ""}
 - Use exactly the `##` headings listed above, in that order, spelled identically. Do not add,
   remove, rename or reorder them. Every one must have real content under it - an empty
   heading is dropped by the build and breaks the course.
@@ -179,7 +186,8 @@ MODULE_SPEC_SCHEMA = """{
   "short": str,        // sidebar label, 3-5 words
   "minutes": number,   // 30-120
   "summary": str,      // two sentences on what it teaches and why it sits here
-  "sections": [str]    // the seven standard section headings, verbatim, in order
+  "sections": [str],   // the seven standard section headings, verbatim, in order
+  "requires": [str]    // ids of the 0-3 existing modules it builds on
 }"""
 
 
@@ -209,10 +217,21 @@ Return ONLY a JSON object of this shape, no prose and no code fence:
 ASSESS_SCHEMA = """{
   "id": "M01",
   "predict": str,
-  "quiz": [ { "q": str, "options": [str, str, str, str], "answer": int, "why": str } ],
+  "quiz": [
+    { "type": "single", "q": str, "options": [str, str, str, str], "answer": int,
+      "feedback": [str, str, str, str], "hints": [str], "why": str },
+    { "type": "multi",   "q": str, "options": [str, ...], "answer": [int, ...], "why": str },
+    { "type": "tf",      "q": str, "answer": bool, "feedback": [str, str], "why": str },
+    { "type": "numeric", "q": str, "answer": number, "tolerance": number, "unit": str, "why": str },
+    { "type": "order",   "q": str, "options": [str, ...], "why": str },
+    { "type": "match",   "q": str, "pairs": [[str, str], ...], "why": str },
+    { "type": "cloze",   "q": "text with a ___ blank", "answer": [str, ...], "why": str },
+    { "type": "short",   "q": str, "model": str, "why": str }
+  ],
   "cards": [ { "front": str, "back": str } ],
   "elaborate": [str, str],
-  "transfer": { "scenario": str, "prompt": str, "model": str }
+  "transfer": { "scenario": str, "prompt": str, "model": str },
+  "roleplay": { "persona": str, "situation": str, "goal": str, "rubric": [str, str, str] }
 }"""
 
 
@@ -232,11 +251,25 @@ committing to a guess so the correction lands, not being right.
 
 "quiz" - exactly 6 questions. Test whether the reader can USE the idea, not whether they
 saw the sentence. The weak form is "Which of these is the definition of X?"; the strong form
-gives a situation and asks what follows from it. Each has exactly 4 options, all plausible -
-a question with three obvious throwaways teaches nothing. "answer" is the ZERO-BASED index
-of the correct option; vary which position is correct across the six. "why" is required and
-is where the teaching happens: say why the right answer is right AND why the most tempting
+gives a situation and asks what follows from it. "why" is required on every question and is
+where the teaching happens: say why the right answer is right AND why the most tempting
 wrong one is tempting.
+
+Question types - use the one the material calls for, at least 3 different types across
+the six:
+- "single": 4 plausible options, "answer" is the ZERO-BASED index of the right one. Vary the
+  position. Add "feedback": one short line per option saying why THAT option is right or
+  wrong - the reader who picked the tempting wrong answer should get a different sentence
+  from the one who guessed. Add "hints": 1-2 nudges that narrow it without giving it away.
+- "multi": several options apply; "answer" is the list of correct indexes.
+- "tf": a statement; "answer" is true or false; "feedback" has two entries.
+- "numeric": the reader computes a figure from the module's arithmetic; "answer" is the
+  number, "tolerance" the absolute slack, "unit" a short label like "%" or "EUR".
+- "order": "options" listed in the CORRECT order; the page shuffles them.
+- "match": "pairs" of [term, its match]; the page shuffles the right-hand side.
+- "cloze": a sentence with ONE blank written as ___; "answer" lists every acceptable fill.
+- "short": a one-or-two-sentence free answer; "model" is what a good answer contains.
+Every type may carry "hints".
 
 "cards" - exactly 6 flashcards for spaced repetition. "front" is a question or prompt,
 "back" is the answer. Test recall of the load-bearing ideas, not trivia.
@@ -247,6 +280,14 @@ least one applied to the real thing they chose in module 01.
 "transfer" - a situation the module never discussed, with enough concrete detail (numbers,
 constraints, a stated wrong instinct) to reason about. "prompt" says what to produce.
 "model" is the answer they see after committing to theirs.
+
+"roleplay" - a live conversation that practises this module, played by the tutor in the
+page. "persona" is who the tutor plays, written as an instruction to the tutor ("You are the
+owner of a 12-room hotel who thinks ads are a waste of money..."), with a stated wrong
+belief or pressure so the reader has to work. "situation" is the setup the reader sees.
+"goal" is what the reader must achieve in the conversation. "rubric" lists 3-4 things a
+good performance shows. Omit "roleplay" only if this module has no conversation worth
+practising.
 
 Return ONLY a JSON object of this shape, no prose and no code fence:
 {ASSESS_SCHEMA}"""

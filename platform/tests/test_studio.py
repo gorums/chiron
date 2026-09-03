@@ -115,6 +115,50 @@ class TestSuggestionCoercion(unittest.TestCase):
             self.ok(generator._fix_suggestions(raw, self.HEADINGS))
 
 
+class TestQuizItemCoercion(unittest.TestCase):
+    """Every type comes out in a shape the validator accepts, or is dropped."""
+
+    def ok(self, item):
+        from coursekit import validate as ck_validate
+        out = generator._fix_quiz_item(item)
+        self.assertIsNotNone(out, item)
+        self.assertEqual(ck_validate.quiz_item_problems(out, "q"), [], out)
+        return out
+
+    def test_every_type_repairs_to_something_valid(self):
+        self.assertEqual(self.ok({"q": "a", "options": ["x", "y"], "answer": "7", "why": "w"})["answer"], 1)
+        self.assertEqual(self.ok({"type": "multi", "q": "b", "options": ["x", "y", "z"], "answer": [2, "0", 9], "why": "w"})["answer"], [0, 2])
+        self.assertIs(self.ok({"type": "tf", "q": "c", "answer": "True", "why": "w"})["answer"], True)
+        out = self.ok({"type": "numeric", "q": "d", "answer": "12.5", "tolerance": -1, "unit": "%", "why": "w"})
+        self.assertEqual((out["answer"], out["tolerance"], out["unit"]), (12.5, 1, "%"))
+        self.assertEqual(self.ok({"type": "order", "q": "e", "options": ["1", "2", "3"], "why": "w"})["options"], ["1", "2", "3"])
+        self.assertEqual(self.ok({"type": "match", "q": "f", "pairs": [["a", "b"], {"left": "c", "right": "d"}], "why": "w"})["pairs"], [["a", "b"], ["c", "d"]])
+        out = self.ok({"type": "cloze", "q": "the [blank] is", "answer": "x", "why": "w"})
+        self.assertEqual((out["q"], out["answer"]), ("the ___ is", ["x"]))
+        self.assertEqual(self.ok({"type": "short", "q": "g", "answer": "m", "why": "w"})["model"], "m")
+
+    def test_unknown_type_falls_back_to_single_and_hopeless_items_are_dropped(self):
+        self.assertEqual(self.ok({"type": "bogus", "q": "h", "options": ["1", "2"], "answer": 1, "why": "w"})["type"], "single")
+        self.assertIsNone(generator._fix_quiz_item({"type": "numeric", "q": "d", "answer": "lots", "why": "w"}))
+        self.assertIsNone(generator._fix_quiz_item({"type": "cloze", "q": "no blank", "answer": "x", "why": "w"}))
+        self.assertIsNone(generator._fix_quiz_item({"type": "match", "q": "f", "pairs": [["a", "b"]], "why": "w"}))
+        self.assertIsNone(generator._fix_quiz_item({"q": "h", "options": ["only"], "answer": 0, "why": "w"}))
+
+    def test_feedback_only_kept_when_it_lines_up(self):
+        keep = self.ok({"q": "a", "options": ["x", "y"], "answer": 0, "feedback": ["no", "yes"], "hints": ["h", "", "i"], "why": "w"})
+        self.assertEqual((keep["feedback"], keep["hints"]), (["no", "yes"], ["h", "i"]))
+        drop = self.ok({"q": "a", "options": ["x", "y"], "answer": 0, "feedback": ["only one"], "why": "w"})
+        self.assertNotIn("feedback", drop)
+
+    def test_roleplay_is_kept_when_whole_and_dropped_when_not(self):
+        base = {"predict": "p", "quiz": [{"q": "a", "options": ["x", "y"], "answer": 0, "why": "w"}],
+                "cards": [{"front": "f", "back": "b"}], "elaborate": [], "transfer": {}}
+        whole = generator._fix_assessment(dict(base, roleplay={"persona": "You are", "situation": "s", "goal": "g", "rubric": "one"}), "M01")
+        self.assertEqual(whole["roleplay"]["rubric"], ["one"])
+        partial = generator._fix_assessment(dict(base, roleplay={"persona": "You are"}), "M01")
+        self.assertNotIn("roleplay", partial)
+
+
 class TestAssessmentCoercion(unittest.TestCase):
     def base(self, **over):
         row = {
@@ -193,6 +237,14 @@ class TestPlanNormalisation(unittest.TestCase):
         self.assertEqual(out["practitioner"], "baker")
         self.assertTrue(out["tutorPersona"].endswith("."))
         self.assertEqual(len(out["modules"][0]["sections"]), 7)
+
+    def test_requires_only_points_backwards_at_real_modules(self):
+        plan = {"parts": [{"id": "p1", "name": "P", "dir": "d"}],
+                "modules": [{"id": "M01", "part": "p1", "title": "A", "requires": ["M2"]},
+                            {"id": "M02", "part": "p1", "title": "B", "requires": ["M1", "m01", "M09", "M02"]},
+                            {"id": "M03", "part": "p1", "title": "C"}]}
+        out = generator.normalise_plan(plan, "x", 3, {})
+        self.assertEqual([m["requires"] for m in out["modules"]], [[], ["M01"], []])
 
     def test_module_ids_are_renumbered_sequentially(self):
         modules = [{"id": "M05", "part": "p1", "title": "A"},

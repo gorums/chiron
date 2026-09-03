@@ -138,6 +138,16 @@ def normalise_plan(plan: Dict[str, Any], theme: str, hours: float,
             "Why this matters", "Core concepts", "How it works in practice",
             "2026 reality check", "Common mistakes", "Exercise", "If you remember one thing",
         ]
+    # Prerequisites may only point backwards, at modules that exist. Models write "M3".
+    ids = [m["id"] for m in modules]
+    for i, mod in enumerate(modules):
+        wanted = []
+        for r in (mod.get("requires") or []):
+            found = re.match(r"^M(\d+)$", str(r).strip().upper())
+            rid = "M%02d" % int(found.group(1)) if found else ""
+            if rid in ids[:i] and rid not in wanted:
+                wanted.append(rid)
+        mod["requires"] = wanted[:3]
 
     plan["parts"] = parts
     plan["modules"] = modules
@@ -199,6 +209,11 @@ def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
     if "**Time:**" not in body.split("\n## ")[0]:
         head, sep, rest = body.partition("\n")
         body = head + "\n\n**Time:** %d minutes\n" % mod["minutes"] + sep + rest
+    requires = [r for r in (mod.get("requires") or []) if r != mod["id"]]
+    if requires and "**Requires:**" not in body.split("\n## ")[0]:
+        head, sep, rest = body.partition("\n## ")
+        head = head.rstrip() + "\n\n**Requires:** " + ", ".join(requires) + "\n"
+        body = head + sep + rest
 
     path = path or _module_path(root, plan, mod)
     _write(path, body)
@@ -210,6 +225,121 @@ def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
     return body
 
 
+def _strs(value: Any, cap: int = 12) -> List[str]:
+    if isinstance(value, str):
+        value = [value]
+    return [str(v).strip() for v in (value if isinstance(value, list) else []) if str(v).strip()][:cap]
+
+
+def _num(value: Any):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fix_quiz_item(q: Any) -> Dict[str, Any] | None:
+    """One quiz item into a shape `validate.quiz_item_problems` accepts, or None to drop it.
+
+    Prose is kept as written; only structure is repaired. A type that cannot be repaired is
+    dropped rather than shipped broken, and a whole quiz of drops fails the run loudly.
+    """
+    if not isinstance(q, dict):
+        return None
+    kind = str(q.get("type") or "single").strip().lower()
+    if kind not in ck_validate.QUIZ_TYPES:
+        kind = "single"
+    out: Dict[str, Any] = {
+        "type": kind,
+        "q": str(q.get("q") or "").strip() or "Which statement follows from this module?",
+        "why": str(q.get("why") or "").strip() or "See the module section this draws on.",
+    }
+    options = _strs(q.get("options"), 8)
+    answer = q.get("answer")
+
+    if kind == "single":
+        if len(options) < 2:
+            return None
+        idx = int(_num(answer) or 0) if _num(answer) is not None else 0
+        out["options"] = options
+        out["answer"] = max(0, min(idx, len(options) - 1))
+    elif kind == "multi":
+        if len(options) < 2:
+            return None
+        picks = answer if isinstance(answer, list) else [answer]
+        idxs = sorted({int(_num(a)) for a in picks if _num(a) is not None and 0 <= int(_num(a)) < len(options)})
+        if not idxs:
+            return None
+        out["options"] = options
+        out["answer"] = idxs
+    elif kind == "tf":
+        if isinstance(answer, bool):
+            out["answer"] = answer
+        elif isinstance(answer, str) and answer.strip().lower() in ("true", "false"):
+            out["answer"] = answer.strip().lower() == "true"
+        else:
+            return None
+    elif kind == "numeric":
+        value = _num(answer)
+        if value is None:
+            return None
+        out["answer"] = int(value) if value == int(value) else value
+        tol = _num(q.get("tolerance"))
+        out["tolerance"] = abs(tol) if tol is not None else 0
+        if q.get("unit"):
+            out["unit"] = str(q["unit"]).strip()[:12]
+    elif kind == "order":
+        if len(options) < 2:
+            return None
+        out["options"] = options
+    elif kind == "match":
+        pairs = []
+        for pair in (q.get("pairs") if isinstance(q.get("pairs"), list) else []):
+            if isinstance(pair, dict):
+                pair = [pair.get("left") or pair.get("term"), pair.get("right") or pair.get("match")]
+            if isinstance(pair, list) and len(pair) == 2 and all(str(x).strip() for x in pair):
+                pairs.append([str(pair[0]).strip(), str(pair[1]).strip()])
+        if len(pairs) < 2:
+            return None
+        out["pairs"] = pairs[:6]
+    elif kind == "cloze":
+        text = out["q"]
+        if "___" not in text:
+            if "____" in text or "[blank]" in text.lower():
+                text = re.sub(r"_{2,}|\[blank\]", "___", text, flags=re.I)
+            else:
+                return None
+        out["q"] = text
+        fills = _strs(answer, 8)
+        if not fills:
+            return None
+        out["answer"] = fills
+    elif kind == "short":
+        model = str(q.get("model") or q.get("answer") or "").strip()
+        if not model:
+            return None
+        out["model"] = model
+
+    feedback = _strs(q.get("feedback"), 8)
+    expected = 2 if kind == "tf" else len(out.get("options", []))
+    if kind in ck_validate.OPTION_TYPES and feedback and len(feedback) == expected:
+        out["feedback"] = feedback
+    hints = _strs(q.get("hints"), 3)
+    if hints:
+        out["hints"] = hints
+    return out
+
+
+def _fix_roleplay(raw: Any) -> Dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    out = {k: str(raw.get(k) or "").strip() for k in ck_validate.ROLEPLAY_KEYS}
+    if not all(out.values()):
+        return None
+    out["rubric"] = _strs(raw.get("rubric"), 5) or ["Reached the goal without giving ground on the essentials."]
+    return out
+
+
 def _fix_assessment(raw: Any, mid: str) -> Dict[str, Any]:
     """Coerce a model's assessment into something the validator will accept, or fail loudly."""
     if not isinstance(raw, dict):
@@ -217,27 +347,13 @@ def _fix_assessment(raw: Any, mid: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {"id": mid}
     out["predict"] = str(raw.get("predict") or "Before reading: what do you expect this to say?")
 
-    quiz = []
-    for q in (raw.get("quiz") or [])[:QUIZ_ITEMS]:
-        options = [str(o) for o in (q.get("options") or []) if str(o).strip()]
-        if len(options) < 2:
-            continue
-        try:
-            answer = int(q.get("answer"))
-        except (TypeError, ValueError):
-            answer = 0
-        quiz.append({
-            "q": str(q.get("q") or "").strip() or "Which statement follows from this module?",
-            "options": options,
-            "answer": max(0, min(answer, len(options) - 1)),
-            "why": str(q.get("why") or "").strip() or "See the module section this draws on.",
-        })
+    quiz = [item for item in (_fix_quiz_item(q) for q in (raw.get("quiz") or [])[:QUIZ_ITEMS]) if item]
     if not quiz:
         raise GenerationError("%s assessment produced no usable quiz questions." % mid)
     out["quiz"] = quiz
 
     cards = [{"front": str(c.get("front") or "").strip(), "back": str(c.get("back") or "").strip()}
-             for c in (raw.get("cards") or [])[:CARD_ITEMS]]
+             for c in (raw.get("cards") or [])[:CARD_ITEMS] if isinstance(c, dict)]
     cards = [c for c in cards if c["front"] and c["back"]]
     if not cards:
         raise GenerationError("%s assessment produced no usable flashcards." % mid)
@@ -252,6 +368,9 @@ def _fix_assessment(raw: Any, mid: str) -> Dict[str, Any]:
         "prompt": str(transfer.get("prompt") or "Apply this module to the situation above.").strip(),
         "model": str(transfer.get("model") or "").strip(),
     }
+    roleplay = _fix_roleplay(raw.get("roleplay"))
+    if roleplay:
+        out["roleplay"] = roleplay
     return out
 
 
@@ -569,6 +688,7 @@ def plan_from_course(cfg, modules) -> Dict[str, Any]:
             "id": m.id, "part": m.part, "title": m.title, "short": m.short,
             "minutes": m.minutes, "summary": "",
             "sections": [s.heading for s in m.sections],
+            "requires": list(getattr(m, "requires", []) or []),
         } for m in modules],
     }
 
@@ -584,7 +704,8 @@ def next_module_id(modules) -> str:
     return "M%02d" % (highest + 1)
 
 
-def _fix_spec(raw: Any, mid: str, part_id: str, topic: str, minutes: int) -> Dict[str, Any]:
+def _fix_spec(raw: Any, mid: str, part_id: str, topic: str, minutes: int,
+              known_ids=()) -> Dict[str, Any]:
     """Coerce a designed module spec into the shape the writer needs."""
     raw = raw if isinstance(raw, dict) else {}
     spec = {
@@ -600,6 +721,9 @@ def _fix_spec(raw: Any, mid: str, part_id: str, topic: str, minutes: int) -> Dic
         spec["minutes"] = minutes
     sections = [str(x).strip() for x in (raw.get("sections") or []) if str(x).strip()]
     spec["sections"] = sections or list(DEFAULT_SECTIONS)
+    known = set(known_ids)
+    spec["requires"] = [str(r).strip() for r in (raw.get("requires") or [])
+                        if str(r).strip() in known and str(r).strip() != mid][:3]
     return spec
 
 
@@ -684,7 +808,7 @@ def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
     spec = _fix_spec(
         claude_cli.ask_json(prompts.module_spec(plan, plan["modules"], topic, part["name"],
                                                 minutes, notes), model=model, timeout=420),
-        mid, part["id"], topic, minutes,
+        mid, part["id"], topic, minutes, known_ids=[m["id"] for m in plan["modules"]],
     )
     plan["modules"].append(spec)
     job.emit("spec", id=mid, title=spec["title"], part=part["id"], minutes=spec["minutes"])

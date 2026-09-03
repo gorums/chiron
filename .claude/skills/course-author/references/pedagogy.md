@@ -64,6 +64,23 @@ subject is quietly two to five years stale, and the reader has no way to tell. S
 changed, say roughly when, and say what advice it invalidates. This section is the main
 thing that dates the course — which is the point.
 
+## Practice that produces, not recognises
+
+A four-option question tests recognition; the page can test production. Spend the six
+questions accordingly: a `numeric` for the module's arithmetic, a `cloze` for the term the
+reader must be able to say, an `order` where sequence carries meaning, a `short` for the one
+idea that only a sentence can hold. Write per-option `feedback` on the `single` questions
+whose distractors are real beliefs — the reader who picked the tempting wrong answer
+deserves a different sentence from the one who guessed.
+
+Give every module a `roleplay` if it has a conversation in it: a pitch, a pushback, a
+client who is wrong. The tutor plays the other side and grades the transcript against your
+rubric. Nothing else in the course tests whether the reader can *do* it under pressure.
+
+Weeks later, the page asks the module's questions again, mixed with every other module's,
+and drops a module's mastery when it misses. Write questions that survive that: ones that
+cannot be answered by remembering which module you are in.
+
 ## Exercises that work
 
 - **Bounded.** "Twenty minutes" not "spend some time".

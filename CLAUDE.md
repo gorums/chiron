@@ -85,8 +85,8 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      31 tests — engine
-python platform/tests/test_studio.py     74 tests — Studio
+python platform/tests/test_build.py      39 tests — engine
+python platform/tests/test_studio.py     79 tests — Studio
 ```
 
 Requires Python 3 and the `markdown` package (`pip install markdown`). Nothing else.
@@ -174,9 +174,9 @@ nothing else.
 | `errors` | `CourseError` and its three subclasses |
 | `config` | `course.json` → `CourseConfig`; builds the `CFG` the page receives |
 | `markdown_render` | markdown → HTML; HTML → plain text for search and chat context |
-| `loader` | module markdown → `Module`/`Section` objects |
+| `loader` | module markdown → `Module`/`Section` objects; reads the optional `**Requires:**` line |
 | `assessments` | quizzes, flashcards, suggested questions; merges the per-part files |
-| `library` | glossary, mental models, worksheets, plan pages — all optional |
+| `library` | glossary, mental models, worksheets, plan pages — all optional. `fillable` turns a worksheet's blanks into numbered inputs |
 | `validate` | every cross-file check, collected into one report |
 | `bundler` | concatenates `web/css/*.css` and `web/js/*.js` |
 | `renderer` | injects `CFG` + `DATA` into `shell.html`; writes both outputs |
@@ -191,7 +191,30 @@ bundles — but the source is still one file per concern under `platform/web/js/
 
 **Load order is the numeric filename prefix**, and it matters: files declare functions and
 are otherwise order-independent, but `21-boot.js` runs the app and must stay last. Insert a
-new file by picking a free number, not by renaming everything after it.
+new file by picking a free number, or a letter suffix on the neighbour it belongs beside
+(`09b-checkpoint.js` sorts after `09-review.js`), not by renaming everything after it.
+
+### What the reader can do
+
+The page runs one learning cycle per module — Predict → Read → Retrieve → Elaborate → Apply —
+and everything else exists to make the practice half of that honest:
+
+| | Where |
+|---|---|
+| Eight question types (`single`, `multi`, `tf`, `numeric`, `order`, `match`, `cloze`, `short`), per-option feedback, a hints ladder, confidence rating on every answer | `08-quiz.js` — one engine, driven by the `QZ` object, shared by module quizzes and checkpoints |
+| Mistake queue: a missed or hinted question becomes a card due tomorrow, retired after four clean recalls | `02-helpers.js` (`addMistake`, `grade`), `09-review.js` (`#/review/mistakes`) |
+| Checkpoints: mixed quizzes across a finished part, and a course challenge across everything | `09b-checkpoint.js`, results in `S.cpHist`, per-module hits in `S.chk` |
+| Mastery per module — Read → Practised → Proficient → Mastered — that a checkpoint miss can lower | `02-helpers.js` (`mastery`), coloured dots everywhere |
+| Study plan (hours per week or a target date), the "today" list, streak freezes, a study-day heatmap, browser notifications when served by Studio | `10b-plan.js`, `10-stats.js`, `01-state.js` (`markDay`) |
+| The tutor as grader: Elaborate and Apply answers, `short` quiz answers, filled worksheets and role-play transcripts all get a `VERDICT:` line and a Covered / Missing / Wrong / Ask-yourself reply | `17b-grader.js` |
+| Role-play: the tutor plays `assess.roleplay.persona` in the rail and stays in character until "Finish & get feedback" | `17b-grader.js`, `17-rail.js` (`c.kind === "rp"`) |
+| Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Claude | `11b-worksheets.js`; the inputs are made at build time by `library.fillable` |
+| Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `07-module.js`, `06-home.js` |
+| Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `07-module.js`, `15-marks-core.js`, `18-notes.js`, `19-settings.js`, `10b-plan.js` (`viewRecord`), `css/04-practice.css` |
+
+Everything above lives in `localStorage` with the rest of the reader's state, so it syncs
+to Studio and travels through Backup / restore. Reading preferences and the notification
+opt-in sit under `S.ui` and stay on the device.
 
 There is no module system and no build step for the JS. Everything is top-level in one
 scope. Adding a global means adding it to that shared scope — check the name is free.
@@ -210,8 +233,13 @@ Always point a user at the `-local.html` copy.
 `build.py check` reports all of these in one pass, before anything is written:
 
 - Every module has an assessment entry, keyed by module id.
-- Every quiz `answer` is a valid zero-based index into its `options`, and has a `why`.
+- Every quiz item has the shape its `type` demands (`validate.QUIZ_TYPES`; `single` when
+  absent), a `why`, and — if present — one `feedback` line per option and `hints` as a
+  list. `validate.quiz_item_problems` is the single definition, and Studio's
+  `_fix_quiz_item` coerces towards it.
 - Every flashcard has both `front` and `back`.
+- A `roleplay`, when present, has `persona`, `situation`, `goal` and a non-empty `rubric`.
+- Every id in a module's `**Requires:**` line is a module in the course.
 - **A module's suggestion list has exactly one entry per `##` section.** They are matched by
   position. This is the most common authoring failure.
 - No duplicate module ids; no assessment or suggestion entry that matches no module.

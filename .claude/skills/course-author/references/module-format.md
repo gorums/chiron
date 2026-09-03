@@ -9,6 +9,7 @@ and the module either fails to load or silently renders short.
 # M07 — Websites and Conversion
 
 **Time:** 90 minutes (40 read · 40 exercise · 10 recall)
+**Requires:** M03, M05
 **Part 2 of 7 · Digital core**
 
 ---
@@ -43,12 +44,18 @@ files.
 module's planned minutes, which drives the progress bar and the time budget on the stats
 page. `**Time:** 90 minutes (40 read · 40 exercise · 10 recall)` reads as 90.
 
-**`## ` headings define sections.** Each one becomes a scroll target, a completion checkbox,
-a unit of chat context, and one row in the suggestions file. This is the count that has to
-match. `###` headings are ordinary content inside a section.
+**`**Requires:**` line — optional, within the first 8 lines.** The 0–3 *earlier* modules this
+one genuinely builds on — the ones a reader must have understood, not merely read before.
+Every id named must exist in the course; the build rejects an unknown one. The page shows
+them under the module title and warns when one of them is still weak; the map draws the
+dependency. Nothing is ever locked. Leave the line out for a module that stands alone.
 
-**Content before the first `## `** is ignored by the renderer. Put the `**Time:**` and part
-lines there and nothing you need read.
+**`## ` headings define sections.** Each one becomes a scroll target, a completion checkbox,
+a bookmarkable unit, a unit of chat context, and one row in the suggestions file. This is
+the count that has to match. `###` headings are ordinary content inside a section.
+
+**Content before the first `## `** is ignored by the renderer. Put the `**Time:**`,
+`**Requires:**` and part lines there and nothing you need read.
 
 **A `## ` section with no body is dropped** — including from the count. If you leave a
 heading empty, the suggestion file will not line up.
@@ -79,10 +86,30 @@ all available. Blockquotes are the right tool for a definition worth memorising:
 | How it works in practice | The Tuesday-afternoon version. Tools, sequence, what it looks like on a real screen. |
 | \<Year\> reality check | What changed recently that older guides get wrong. Date the claim. |
 | Common mistakes | 3–6 traps. For each: what it looks like, why it is tempting, what to do instead. |
-| Exercise | Applied to the reader's one chosen subject. Concrete deliverable, bounded time. |
+| Exercise | Applied to the reader's one chosen subject. Concrete deliverable, bounded time. Name the worksheet in `templates/` it fills. |
 | If you remember one thing | One paragraph. The sentence that survives if everything else fades. |
 
 ## Length
 
 A 60-minute module runs roughly 1,200–2,000 words. Under 800 and there is not enough to
 spend an hour on; over 3,000 and it should have been two modules.
+
+## Worksheets (`templates/*.md`)
+
+A worksheet is filled in *on the page*: the reader's answers are saved with their progress,
+can be copied out as text, and can be handed to Claude for review. The build turns the
+blanks an author writes naturally into inputs:
+
+| You write | The reader gets |
+|---|---|
+| a run of four or more underscores, `______` | a text field |
+| an empty table cell, `\| \|` | a text field in that cell |
+| a checklist item, `- [ ] …` | a checkbox |
+| a fenced block tagged `answer` | a multi-line text area (the block's content is discarded) |
+
+Fenced code blocks without the `answer` tag are left alone, so a filled-in example inside a
+fence stays an example. A `**Use with:** M14 — …` line near the top links the worksheet to
+those modules: their Apply step offers it, and Claude's review reads those modules for
+context. Field numbering follows document order, so inserting a blank in the middle
+renumbers the ones after it and orphans what readers typed there — add blanks at the end
+of a worksheet people are already using.

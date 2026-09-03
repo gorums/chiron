@@ -77,6 +77,11 @@ a{color:var(--accent-ink);text-underline-offset:3px}
 .dot.part{border-color:var(--accent);background:linear-gradient(90deg,var(--accent) 50%,transparent 50%)}
 .dot.done{background:var(--accent);border-color:var(--accent)}
 
+/* sidebar can be hidden on a wide screen too; the ☰ button brings it back */
+body.side-off #app{grid-template-columns:1fr}
+body.side-off #sidebar{display:none}
+#menubtn{display:inline-flex}
+
 /* ---------- controls ---------- */
 .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-size:13.5px;font-weight:500;transition:.13s}
 .btn:hover{border-color:var(--accent);color:var(--accent-ink)}

@@ -1,13 +1,4 @@
-/* ============================ marks & questions ============================ */
-const PRESETS = [
-  ["Explain it simply", "Explain this to me in simpler terms, as if I have never worked in " + CFG.subject + "."],
-  ["Give me an example", "Give me two concrete real-world examples of this, from different industries."],
-  ["Apply it to my business", "How would this apply specifically to my business? What would I actually do first?"],
-  ["Why is that true?", "Why is this true? What is the underlying mechanism, and when does it stop being true?"],
-  ["Show me the numbers", "Show me this worked through with real numbers so I can see the arithmetic."],
-  ["What's the counter-argument?", "What is the strongest argument against this? Who disagrees and why?"],
-  ["How do I practise this?", "Give me a small exercise I can do this week to actually practise this."]
-];
+/* ============================ talking to Claude ============================ */
 /* ---- talking to Claude ----
    Two routes, in order of preference:
      direct  — this page calls api.anthropic.com itself. Nothing to install, nothing to run.
@@ -100,7 +91,6 @@ async function checkBridge(quiet) {
     bridgeChecking = false; save(); renderSidebar();
     if (route.v === "settings") viewSettings();
     if (route.v === "home") viewHome();
-    const p0 = document.getElementById("panel"); if (p0 && currentPanelId) drawThread();
     if (route.v === "m" && railOpen()) renderRail();
     return true;
   }
@@ -109,7 +99,6 @@ async function checkBridge(quiet) {
     bridgeChecking = false; save(); renderSidebar();
     if (route.v === "settings") viewSettings();
     if (route.v === "home") viewHome();
-    const p0 = document.getElementById("panel"); if (p0 && currentPanelId) drawThread();
     if (route.v === "m" && railOpen()) renderRail();
     return true;
   }
@@ -133,8 +122,6 @@ async function checkBridge(quiet) {
   renderSidebar();
   if (route.v === "settings") viewSettings();
   if (route.v === "home") viewHome();
-  const p = document.getElementById("panel");
-  if (p && currentPanelId) drawThread();
   if (route.v === "m" && railOpen()) renderRail();
   return bridgeOk;
 }
