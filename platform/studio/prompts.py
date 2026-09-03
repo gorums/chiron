@@ -197,6 +197,74 @@ MODULE_SPEC_SCHEMA = """{
 }"""
 
 
+def patch_module(cfg: Dict[str, Any], modules: List[Dict[str, Any]], spec: Dict[str, Any],
+                 body: str, notes: str) -> str:
+    """The rewrite that changes only what was asked.
+
+    A full rewrite regenerates every sentence, so each pass fixes the last review's findings
+    and creates new ones. A patch hands the model the module as it is and forbids touching
+    anything the notes do not name, which is what a review's brief actually calls for.
+    """
+    return f"""Edit module {spec['id']}, "{spec['title']}", of this course. Change only what the notes
+below ask for, and keep everything else word for word.
+
+{_course_context(cfg, modules)}
+
+{VOICE}
+
+The notes - what must change:
+{(notes or '').strip() or '(nothing specific: fix only clear errors, typos and muddled sentences)'}
+
+Rules:
+- Return the whole module as markdown with the notes applied and nothing else altered. A
+  sentence the notes do not concern must come back identical: same words, same punctuation,
+  same order. Do not tighten, restyle or "improve" passages the notes do not mention.
+- Keep the title line, the `**Time:**` line, any `**Requires:**` line and every `##` heading
+  exactly as they are, in the same order. Adding, removing or renaming a `##` heading breaks
+  the reader's progress and the quiz mapping.
+- Where a note asks for a source you do not have, hedge the claim honestly rather than
+  inventing a citation.
+- A note about the quiz, the flashcards or the prompts is handled separately; ignore it here.
+
+The module as it stands:
+\"\"\"
+{body[:30000]}
+\"\"\"
+
+Return only the edited markdown document. No preamble, no commentary, no code fence."""
+
+
+def patch_assessment(cfg: Dict[str, Any], spec: Dict[str, Any], assess: Dict[str, Any],
+                     notes: str, body: str) -> str:
+    """The study-data half of a patch: the same object back, with only the flagged items new."""
+    import json
+    return f"""Edit the study data for module {spec['id']}, "{spec['title']}", of the course
+"{cfg.get('title', '')}". Change only what the notes below require.
+
+The notes:
+{(notes or '').strip() or '(nothing specific)'}
+
+Rules:
+- Return the complete JSON object in the same shape, with only the items the notes concern
+  changed. Every other quiz item, card, elaborate prompt and transfer scenario must come
+  back identical.
+- A replaced quiz item tests the idea, not the module's wording, and its key must be
+  answerable from the module text below. Keep the item's type unless the note asks otherwise.
+- If the notes say nothing about the quiz, the cards or the prompts, return the object
+  unchanged.
+
+The module text, for reference:
+\"\"\"
+{body[:20000]}
+\"\"\"
+
+The study data as it stands:
+{json.dumps(assess, ensure_ascii=False, indent=1)}
+
+Return ONLY the JSON object, no prose and no code fence. Its shape:
+{ASSESS_SCHEMA}"""
+
+
 def module_spec(cfg: Dict[str, Any], modules: List[Dict[str, Any]], topic: str,
                 part_name: str, minutes: int, notes: str = "") -> str:
     """Design one new module that fits an existing course - used when a course is extended."""
@@ -518,8 +586,18 @@ Judge it against this standard, which is what every module in this course is wri
 
 Be exact and brief. Every finding names WHERE (a section heading or a quoted phrase), WHAT is
 wrong, and the FIX. Do not list what is fine. An empty list is a valid answer for a category
-with nothing wrong. "solid" means a careful reader would find nothing to complain about;
-"rewrite" means the fixes amount to writing it again.
+with nothing wrong.
+
+The verdict says whether the module can be published, not whether it is perfect:
+- "solid": publishable as it stands. Minor findings - a typo, a hedge worth adding, one more
+  example, a claim that could carry a source - still go in the lists, but they do not lower
+  the verdict. A well-made module lands here even with a few of them.
+- "needs work": at least one finding would mislead the reader or break the practice: a false
+  or dated claim, a number stated with invented precision, a quiz key that is wrong or not
+  answerable from the text, a required section missing or empty, an exercise that produces
+  nothing.
+- "rewrite": the purpose or the structure fails, and the fixes amount to writing it again.
+Do not lower the verdict for polish, and do not invent findings to justify one.
 
 The module text:
 \"\"\"

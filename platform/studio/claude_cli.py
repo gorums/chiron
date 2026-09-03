@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 from coursekit.settings import SETTINGS
 
+from . import jobs
 from .log import log
 
 # Long enough for a full module; short enough that a wedged call cannot stall a job forever.
@@ -59,6 +60,19 @@ class ClaudeFailed(RuntimeError):
     """The CLI ran but did not produce usable output."""
 
 
+def _tell(kind: str, **fields) -> None:
+    """Report to the job on this thread, if there is one. The tutor route has none."""
+    job = jobs.current()
+    if job is not None:
+        job.emit(kind, **fields)
+
+
+def _say(message: str) -> None:
+    job = jobs.current()
+    if job is not None:
+        job.log(message)
+
+
 def find_cli() -> Optional[str]:
     for name in ("claude", "claude.cmd", "claude.exe"):
         found = shutil.which(name)
@@ -78,8 +92,13 @@ def _argv(cli: str, args) -> list:
     return [cli] + list(args)
 
 
-def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
-    """Send one prompt, return the reply text. Raises rather than returning something empty."""
+def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT, what: str = "") -> str:
+    """Send one prompt, return the reply text. Raises rather than returning something empty.
+
+    `what` names the thing being asked for ("the text of M03") so the job's event log, and
+    the screen watching it, can say what Claude is doing while a call runs for minutes.
+    Every attempt emits a `call` event at its start and its end.
+    """
     cli = find_cli()
     if not cli:
         raise ClaudeUnavailable(
@@ -94,9 +113,10 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
     attempts.append(base)                       # last resort: whatever the CLI defaults to
 
     last = ""
-    for args in attempts:
+    for n, args in enumerate(attempts):
         label = args[args.index("--model") + 1] if "--model" in args else "(cli default)"
         started = time.time()
+        _tell("call", phase="start", what=what, model=label, chars=len(prompt), timeout=timeout)
         try:
             proc = subprocess.run(
                 _argv(cli, args),
@@ -110,10 +130,14 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
             )
         except subprocess.TimeoutExpired:
             log.error("claude %s: no answer within %ds (prompt %d chars)", label, timeout, len(prompt))
+            _tell("call", phase="end", what=what, model=label, ok=False,
+                  seconds=round(time.time() - started, 1), error="no answer within %ds" % timeout)
             raise ClaudeFailed("Claude Code did not answer within %ds." % timeout)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user as a job failure
             last = str(exc)[:300]
             log.error("claude %s: could not start: %s", label, last)
+            _tell("call", phase="end", what=what, model=label, ok=False,
+                  seconds=round(time.time() - started, 1), error=last)
             continue
 
         out = (proc.stdout or "").strip()
@@ -123,10 +147,18 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT) -> str:
             log.info("claude %s: ok in %.1fs, prompt %d chars, reply %d chars%s",
                      label, took, len(prompt), len(out),
                      (" (stderr: %s)" % err[:160]) if err else "")
+            _tell("call", phase="end", what=what, model=label, ok=True,
+                  seconds=round(took, 1), reply=len(out))
             return out
         last = err[:300] or "exit code %s with no output" % proc.returncode
         log.warning("claude %s: failed in %.1fs, exit %s, prompt %d chars: %s",
                     label, took, proc.returncode, len(prompt), err[:600] or "no output")
+        _tell("call", phase="end", what=what, model=label, ok=False,
+              seconds=round(took, 1), error=last)
+        if n + 1 < len(attempts):
+            nxt = attempts[n + 1]
+            _say("Claude Code refused %s; trying %s instead." % (
+                label, nxt[nxt.index("--model") + 1] if "--model" in nxt else "the CLI default model"))
 
     log.error("claude: every attempt failed: %s", last or "no output")
     raise ClaudeFailed("Claude Code failed: " + (last or "no output"))
@@ -197,7 +229,7 @@ def _slice_json(text: str) -> str:
 
 
 def ask_json(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT,
-             attempts: int = JSON_ATTEMPTS) -> Any:
+             attempts: int = JSON_ATTEMPTS, what: str = "") -> Any:
     """Ask for JSON and insist on getting it.
 
     A retry re-sends the original prompt with the parse error appended, which recovers a
@@ -205,11 +237,14 @@ def ask_json(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT,
     """
     current, last_error = prompt, ""
     for attempt in range(attempts):
-        reply = ask(current, model=model, timeout=timeout)
+        reply = ask(current, model=model, timeout=timeout, what=what)
         try:
             return json.loads(_slice_json(reply))
         except (json.JSONDecodeError, ValueError) as exc:
             last_error = str(exc)
+            if attempt + 1 < attempts:
+                _say("The reply%s was not valid JSON (%s); asking again, attempt %d of %d."
+                     % ((" for " + what) if what else "", last_error[:120], attempt + 2, attempts))
             current = (
                 prompt
                 + "\n\nYour previous reply could not be parsed as JSON (%s). "

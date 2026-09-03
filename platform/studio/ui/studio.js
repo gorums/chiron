@@ -63,6 +63,44 @@ function ago(ts) {
 
 function fmtH(mins) { const h = mins / 60; return (h % 1 === 0 ? h : h.toFixed(1)) + "h"; }
 
+/* "42s", "1m 05s", "1h 12m" — for how long something has been running. */
+function fmtDur(seconds) {
+  const s = Math.max(0, Math.round(seconds || 0));
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m " + String(s % 60).padStart(2, "0") + "s";
+  return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
+}
+
+/* A spinner with a ticking clock, for the synchronous operations (Check, Build, an
+   import) that used to show a static "Building…". Returns a stop() that also reports how
+   long it took; `lock` names a container whose buttons are disabled meanwhile. */
+function busy(out, label, lock) {
+  const start = Date.now();
+  const buttons = lock ? Array.from(document.querySelectorAll(lock + " button, " + lock + " .btn")) : [];
+  buttons.forEach(b => { b.disabled = true; b.classList.add("disabled"); });
+  const paint = () => {
+    if (out) out.innerHTML = `<p class="sub busy" style="margin:12px 0 0"><span class="spin"></span><span>${esc(label)}</span><span class="mono">${fmtDur((Date.now() - start) / 1000)}</span></p>`;
+  };
+  paint();
+  const timer = setInterval(paint, 1000);
+  const stop = () => {
+    clearInterval(timer);
+    buttons.forEach(b => { b.disabled = false; b.classList.remove("disabled"); });
+  };
+  stop.took = () => { const s = (Date.now() - start) / 1000; return s < 1 ? "under a second" : fmtDur(s); };
+  return stop;
+}
+
+/* One line for a job in the listing: what it is doing right now, not just its kind. */
+function jobLabel(j) {
+  if (!j) return "";
+  const p = j.progress || {};
+  const where = p.total ? ` ${p.done}/${p.total}` : "";
+  if (j.status === "waiting") return "waiting for your approval";
+  return (p.label || (j.kind === "generate" ? "designing the curriculum" : j.kind)) + where;
+}
+
 function courseUrl(c, hash) {
   return `/course/${encodeURIComponent(c.id)}/${encodeURIComponent(c.localFile)}${hash || "#/home"}`;
 }
@@ -73,8 +111,46 @@ async function refresh() {
   const pill = $("#claudestate");
   pill.textContent = STATE.claude.available ? "Claude Code connected" : "Claude Code not found";
   pill.className = "pill " + (STATE.claude.available ? "on" : "off");
+  paintLiveJobs();
   return STATE;
 }
+
+/* ---------- what is running, visible from every screen ---------- */
+
+/* The header pill, and every card or button that names a live job, are updated in place:
+   a poll must not repaint a screen the person may be typing on. */
+function paintLiveJobs() {
+  const live = (STATE.jobs || []).filter(j => !FINISHED.includes(j.status));
+  const pill = $("#jobstate");
+  if (pill) {
+    if (live.length) {
+      const j = live[0];
+      const m = j.meta || {};
+      const who = m.course || m.theme || "";
+      pill.textContent = jobLabel(j) + (live.length > 1 ? ` (+${live.length - 1} more)` : "");
+      pill.title = (who ? who + " · " : "") + jobLabel(j) + " — click to watch";
+      pill.href = "#/job/" + j.id;
+      pill.classList.remove("hidden");
+    } else {
+      pill.classList.add("hidden");
+    }
+  }
+  document.querySelectorAll("[data-jobof]").forEach(el => {
+    const j = live.find(x => (x.meta || {}).course === el.dataset.jobof);
+    if (j) el.textContent = jobLabel(j) + (el.classList.contains("btn") ? " — view" : "");
+  });
+}
+
+let hadLive = false;
+setInterval(async () => {
+  if (route.name === "job") return;                 // that screen streams its own job
+  const live = (STATE.jobs || []).some(j => !FINISHED.includes(j.status));
+  if (!live && !hadLive) return;
+  try { await refresh(); } catch (e) { return; }
+  const still = (STATE.jobs || []).some(j => !FINISHED.includes(j.status));
+  if (hadLive && !still) { courseCache = {}; render(); }   // buttons come back, cards update
+  hadLive = still;
+}, 4000);
 
 /* ---------- reader profiles ---------- */
 
@@ -150,9 +226,10 @@ function courseCard(c) {
   const pct = Math.round((p.pct || 0) * 100);
   const status = c.error
     ? `<span class="pill off">broken</span>`
-    : c.job && !FINISHED.includes(c.job.status)
-      ? `<span class="pill">${esc(c.job.kind)} · ${esc(c.job.status)}</span>`
+    : c.job && !FINISHED.includes(c.job.status) ? ""     // shown on its own line below
       : c.built ? "" : `<span class="pill">not built</span>`;
+  const liveLine = c.job && !FINISHED.includes(c.job.status)
+    ? `<p class="liveline"><a class="pill live" data-jobof="${esc(c.id)}" href="#/job/${esc(c.job.id)}">${esc(jobLabel(c.job))}</a></p>` : "";
   const underway = p.done || p.started;
   const primary = c.built
     ? (underway ? `<a class="btn sm" href="${courseUrl(c, "#/m/" + (p.next || ""))}">Continue ${esc(p.next || "")}</a>`
@@ -160,7 +237,7 @@ function courseCard(c) {
     : `<button class="btn sm" onclick="buildFromCard('${c.id}')" ${c.error ? "disabled" : ""}>Build</button>`;
   return `<div class="coursecard">
     <div class="head"><h3><a href="#/course/${encodeURIComponent(c.id)}" style="text-decoration:none;color:inherit">${esc(c.title)}</a></h3>${status}</div>
-    <p class="tagline">${esc(c.tagline || "")}</p>
+    <p class="tagline">${esc(c.tagline || "")}</p>${liveLine}
     ${underway ? `<div class="bar-track" style="margin:0 0 8px"><div class="bar-fill" style="width:${pct}%"></div></div>` : ""}
     <p class="facts">${esc(progressLine(c) || `${c.modules} module${c.modules === 1 ? "" : "s"} · ${esc(c.hours)}h`)}${c.error ? " · " + esc(c.error) : ""}</p>
     <div class="actions">
@@ -259,15 +336,16 @@ function importReport(course) {
 function importZipFile(f) {
   const out = $("#importout");
   if (!/\.zip$/i.test(f.name)) { toast("That is not a .zip file"); return; }
-  out.innerHTML = `<p class="sub" style="margin:10px 0 0;font-size:13px">Uploading ${esc(f.name)}…</p>`;
+  const stop = busy(out, `Uploading ${f.name}, then checking and building it…`);
   const reader = new FileReader();
   reader.onload = async () => {
     try {
       const course = await api("/api/import", { name: f.name, data: reader.result });
+      stop();
       toast("Imported " + course.id);
       await refresh(); render();
       const o = $("#importout"); if (o) o.innerHTML = importReport(course);
-    } catch (err) { const o = $("#importout"); if (o) o.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
+    } catch (err) { stop(); const o = $("#importout"); if (o) o.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
   };
   reader.readAsDataURL(f);
 }
@@ -319,16 +397,17 @@ function searchHit(h, c) {
 
 async function buildFromCard(id) {
   const out = $("#out-" + id);
-  out.innerHTML = `<p class="sub" style="margin:8px 0 0;font-size:13px">Building…</p>`;
+  const stop = busy(out, "Checking, then rendering the page…");
   try {
     const data = await api(`/api/courses/${encodeURIComponent(id)}/build`, {});
+    stop();
     if (!data.built) {
       out.innerHTML = `<div class="problems"><b>Not built — ${data.problems.length} problem${data.problems.length === 1 ? "" : "s"}</b><ul>${data.problems.slice(0, 6).map(p => `<li>${esc(p)}</li>`).join("")}</ul><a href="#/course/${encodeURIComponent(id)}">Open the course page to fix them</a></div>`;
       return;
     }
-    toast("Built " + id);
+    toast("Built " + id + " in " + stop.took());
     await refresh(); render();
-  } catch (err) { out.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
+  } catch (err) { stop(); out.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
 }
 
 /* ---------- new course ---------- */
@@ -429,12 +508,12 @@ function paintCourse(c) {
           <div class="stat"><b>${esc(fmtH((c.hours || 0) * 60))}</b><span>planned</span></div>
         </div>
       </div>
-      <div class="actions" style="flex-direction:column;align-items:stretch;min-width:180px">
+      <div class="actions" id="courseops" style="flex-direction:column;align-items:stretch;min-width:180px">
         ${c.built
           ? `<a class="btn" href="${courseUrl(c, p.done || p.started ? "#/m/" + (p.next || "") : "#/home")}">${p.done || p.started ? "Continue at " + esc(p.next || "") : "Start the course"}</a>
              <a class="btn ghost" href="${courseUrl(c)}">Open the course</a>`
           : `<span class="pill" style="text-align:center">not built yet</span>`}
-        ${live ? `<a class="btn ghost" href="#/job/${c.job.id}">${esc(c.job.kind)} running — view</a>`
+        ${live ? `<a class="btn ghost" data-jobof="${esc(c.id)}" href="#/job/${c.job.id}">${esc(jobLabel(c.job))} — view</a>`
                : `${c.resumable ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${c.id}')">Resume the run</button>` : ""}
                   <button class="btn ghost" onclick="checkCourse('${c.id}')">Check</button>
                   <button class="btn ghost" onclick="buildCourse('${c.id}')">${c.built ? "Rebuild" : "Build"}</button>
@@ -479,26 +558,45 @@ function paintModules(c) {
       const open = c.built ? `<a class="btn sm ghost" href="${courseUrl(c, "#/m/" + m.id)}">Read</a>` : "";
       const rewriting = route.query.rewrite === m.id;
       const rv = reviews[m.id];
-      const verdict = rv ? `<button class="verdict ${rv.verdict === "solid" ? "solid" : rv.verdict === "rewrite" ? "rewrite" : "needs"}" title="Reviewed ${new Date(rv.at).toLocaleDateString()} — click for the findings" onclick="toggleEl('rv-${m.id}')">${esc(rv.verdict)}</button>` : "";
+      // The owner's "this is good" outranks the review's verdict. A stale one, from before
+      // the module's last rewrite or edit, is about text that is no longer there: shown
+      // greyed with a note, never as current.
+      const good = !!(rv && rv.accepted);
+      const shown = good ? "good" : (rv || {}).verdict;
+      const verdict = !rv ? "" : rv.stale
+        ? `<button class="verdict stale" title="${good ? "Marked good" : "Reviewed"} ${new Date(good ? rv.accepted : rv.at).toLocaleString()}, but the module changed on ${new Date(rv.moduleChangedAt).toLocaleString()} — judge it again" onclick="toggleEl('rv-${m.id}')">${esc(shown)} · before edit</button>`
+        : good
+        ? `<button class="verdict solid" title="You marked this good on ${new Date(rv.accepted).toLocaleString()}${rv.ownerOnly ? "" : " — the review's findings are kept underneath"}" onclick="toggleEl('rv-${m.id}')">good ✓</button>`
+        : `<button class="verdict ${rv.verdict === "solid" ? "solid" : rv.verdict === "rewrite" ? "rewrite" : "needs"}" title="Reviewed ${new Date(rv.at).toLocaleDateString()} — click for the findings" onclick="toggleEl('rv-${m.id}')">${esc(rv.verdict)}</button>`;
+      const isGood = good && !rv.stale;
       return `<div class="modrow" id="mod-${m.id}">
         <span class="order"><button title="Move up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">▲</button><button title="Move down" aria-label="Move ${esc(m.id)} down" ${i === mods.length - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">▼</button></span>
         <span class="mid">${esc(m.id)}</span>
         <span class="title"><span class="dot ${dot}" title="${esc(state)}" style="margin-right:6px"></span>${esc(m.title)} ${verdict}<small>${m.minutes} min · ${m.sections} sections${state ? " · " + esc(state) : ""}</small></span>
-        <span class="state">${manyParts ? `<select class="partsel" title="Move to another part" aria-label="Part of ${esc(m.id)}" onchange="moveModule('${c.id}','${m.id}',this.value,-1)">${(c.parts || []).map(p => `<option value="${esc(p.id)}" ${p.id === part.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>` : ""}</span>
-        <span class="actions">${open}
-          <a class="btn sm ghost" href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(m.path)}">Edit</a>
-          <button class="btn sm ghost" onclick="reviewModule('${c.id}','${m.id}')" ${STATE.claude.available ? "" : "disabled"} title="Have Claude read this module critically">${rv ? "Review again" : "Review"}</button>
-          <button class="btn sm ghost" onclick="toggleRewrite('${m.id}')">Rewrite…</button>
-          <button class="btn sm ghost rm" title="Remove this module" aria-label="Remove ${esc(m.id)}" onclick="toggleRemove('${m.id}')">×</button></span>
+        <span class="rowtools">${open}
+          <button class="btn sm ghost kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" title="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">⋯</button>
+          <div class="menu hidden" id="menu-${m.id}" role="menu">
+            <a role="menuitem" href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(m.path)}">Edit the text<small>the markdown, by hand</small></a>
+            <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${STATE.claude.available ? "" : "disabled"}>${rv && !rv.ownerOnly ? "Review again" : "Review with Claude"}<small>a verdict, gaps, errors, quiz issues</small></button>
+            <button role="menuitem" onclick="closeMenus();acceptModule('${c.id}','${m.id}',${isGood ? "false" : "true"})">${isGood ? "Withdraw “good”" : "Mark as good"}<small>${isGood ? "back to the review's verdict" : "your verdict outranks the review"}</small></button>
+            <button role="menuitem" onclick="closeMenus();toggleRewrite('${m.id}')">Patch or rewrite…<small>with notes, by Claude</small></button>
+            ${manyParts ? `<div class="sep"></div><label class="label" for="part-${m.id}">Move to part</label><select id="part-${m.id}" onchange="moveModule('${c.id}','${m.id}',this.value,-1)">${(c.parts || []).map(p => `<option value="${esc(p.id)}" ${p.id === part.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>` : ""}
+            <div class="sep"></div>
+            <button role="menuitem" class="danger" onclick="closeMenus();toggleRemove('${m.id}')">Remove…<small>moves the file to the trash</small></button>
+          </div></span>
       </div>
       ${rv ? reviewBox(c, m, rv) : ""}
       <div class="inlineform ${rewriting ? "" : "hidden"}" id="rw-${m.id}">
         <label for="rwn-${m.id}">What should change in ${esc(m.id)}?</label>
         <textarea id="rwn-${m.id}" rows="3" placeholder="Go much deeper on the worked example in Core concepts; the current version stops before the arithmetic. Keep the exercise.">${esc(route.query.rewrite === m.id && route.query.q ? route.query.q : "")}</textarea>
+        <div class="rwmodes">
+          <label class="radio"><input type="radio" name="rwmode-${m.id}" value="patch" ${route.query.rewrite === m.id && route.query.q ? "checked" : ""}> <b>Patch</b> <span class="sub" style="margin:0">— change only what the notes say. Every other sentence, the cards and the untouched quiz items stay as they are. Right for a review's findings.</span></label>
+          <label class="radio"><input type="radio" name="rwmode-${m.id}" value="rewrite" ${route.query.rewrite === m.id && route.query.q ? "" : "checked"}> <b>Rewrite</b> <span class="sub" style="margin:0">— write the module again from its design, with the notes as direction. New text, new quiz, new cards.</span></label>
+        </div>
         <div class="actions" style="margin-top:10px">
-          <button class="btn sm" onclick="rewriteModule('${c.id}','${m.id}')">Rewrite ${esc(m.id)}</button>
+          <button class="btn sm" onclick="rewriteModule('${c.id}','${m.id}')">Apply to ${esc(m.id)}</button>
           <button class="btn sm ghost" onclick="toggleRewrite('${m.id}')">Cancel</button>
-          <span class="sub" style="font-size:12px;margin:0 0 0 6px">Keeps the id and position. Your progress for it stays; section ticks may shift.</span>
+          <span class="sub" style="font-size:12px;margin:0 0 0 6px">Keeps the id and position. Your progress for it stays; after a rewrite, section ticks may shift.</span>
         </div>
       </div>
       <div class="inlineform hidden" id="rm-${m.id}" style="border-color:var(--bad);background:var(--bad-soft)">
@@ -526,14 +624,17 @@ function paintModules(c) {
 function reviewBox(c, m, rv) {
   const list = (rows, first) => rows.length ? `<ul style="margin:0;padding-left:18px">${rows.map(r => `<li>${r[first] ? `<b>${esc(r[first])}</b> — ` : ""}${esc(r.issue)}${r.fix ? ` <i>Fix: ${esc(r.fix)}</i>` : ""}</li>`).join("")}</ul>` : `<p class="sub" style="margin:0;font-size:13px">Nothing.</p>`;
   return `<div class="reviewbox hidden" id="rv-${m.id}">
-    <p style="margin:0 0 8px;font-size:14px">${esc(rv.summary)}</p>
+    ${rv.stale ? `<div class="note" style="margin:0 0 10px">This ${rv.accepted ? "verdict" : "review"} is from <b>${new Date(rv.accepted || rv.at).toLocaleString()}</b>; the module was rewritten or edited on <b>${new Date(rv.moduleChangedAt).toLocaleString()}</b>, so it describes the old text. <a href="#" onclick="reviewModule('${c.id}','${m.id}');return false">Review again</a> for a verdict on what is there now, or mark it good if you have read it.</div>` : ""}
+    ${rv.accepted && !rv.stale ? `<p class="sub ok-text" style="margin:0 0 8px;font-size:13px">You marked this module good on ${new Date(rv.accepted).toLocaleString()}.${rv.ownerOnly ? " Claude has not reviewed it." : " The review's findings below are kept for reference."}</p>` : ""}
+    ${rv.ownerOnly ? "" : `<p style="margin:0 0 8px;font-size:14px">${esc(rv.summary)}</p>
     <h4>Gaps</h4>${list(rv.gaps || [], "where")}
     <h4>Errors</h4>${list(rv.errors || [], "where")}
-    <h4>Quiz</h4>${list(rv.quiz || [], "item")}
+    <h4>Quiz</h4>${list(rv.quiz || [], "item")}`}
     <div class="actions" style="margin-top:12px">
-      ${rv.rewriteBrief ? `<a class="btn sm" href="#/course/${encodeURIComponent(c.id)}?tab=modules&rewrite=${encodeURIComponent(m.id)}&q=${encodeURIComponent(rv.rewriteBrief)}">Rewrite with these notes</a>` : ""}
+      ${rv.rewriteBrief && !(rv.accepted && !rv.stale) ? `<a class="btn sm" href="#/course/${encodeURIComponent(c.id)}?tab=modules&rewrite=${encodeURIComponent(m.id)}&q=${encodeURIComponent(rv.rewriteBrief)}">Patch with these notes</a>` : ""}
+      ${rv.accepted && !rv.stale ? "" : `<button class="btn sm ghost" onclick="acceptModule('${c.id}','${m.id}',true)" title="Your verdict: it is good as it is">This is good</button>`}
       <button class="btn sm ghost" onclick="toggleEl('rv-${m.id}')">Close</button>
-      <span class="sub" style="font-size:12px;margin-left:6px">Reviewed ${new Date(rv.at).toLocaleString()}${rv.model ? " · " + esc(rv.model) : ""}</span>
+      <span class="sub" style="font-size:12px;margin-left:6px">${rv.ownerOnly ? "" : `Reviewed ${new Date(rv.at).toLocaleString()}${rv.model ? " · " + esc(rv.model) : ""}`}</span>
     </div></div>`;
 }
 
@@ -550,12 +651,44 @@ async function moveModule(id, mid, part, index) {
   } catch (err) { toast(err.message); }
 }
 
+async function acceptModule(id, mid, accepted) {
+  try {
+    await api(`/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/accept`, { accepted });
+    toast(accepted ? `${mid} marked good` : `${mid}: verdict withdrawn`);
+    delete courseCache[id];
+    await viewCourse();
+  } catch (err) { toast(err.message); }
+}
+
 async function reviewModule(id, mid) {
   try {
     const { job: j } = await api(`/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/review`, {});
     location.hash = "#/job/" + j.id;
   } catch (err) { toast(err.message); }
 }
+
+/* The row menu: one primary action stays on the row (Read), everything else lives here.
+   One menu open at a time; a click anywhere else, or Escape, closes it. */
+function toggleMenu(ev, mid) {
+  ev.stopPropagation();
+  const menu = document.getElementById("menu-" + mid);
+  if (!menu) return;
+  const wasOpen = !menu.classList.contains("hidden");
+  closeMenus();
+  if (!wasOpen) {
+    menu.classList.remove("hidden");
+    ev.currentTarget.setAttribute("aria-expanded", "true");
+    const first = menu.querySelector("[role=menuitem]:not([disabled])");
+    if (first) first.focus();
+  }
+}
+
+function closeMenus() {
+  document.querySelectorAll(".menu").forEach(m => m.classList.add("hidden"));
+  document.querySelectorAll(".kebab[aria-expanded=true]").forEach(b => b.setAttribute("aria-expanded", "false"));
+}
+document.addEventListener("click", e => { if (!e.target.closest(".menu")) closeMenus(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenus(); });
 
 function toggleRewrite(mid) {
   const el = document.getElementById("rw-" + mid);
@@ -751,8 +884,9 @@ async function deleteCourse(id) {
 
 async function rewriteModule(id, mid) {
   const notes = (document.getElementById("rwn-" + mid) || {}).value || "";
+  const mode = (document.querySelector(`input[name="rwmode-${mid}"]:checked`) || {}).value || "rewrite";
   try {
-    const { job: j } = await api(`/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/rewrite`, { notes: notes.trim() });
+    const { job: j } = await api(`/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/rewrite`, { notes: notes.trim(), mode });
     location.hash = "#/job/" + j.id;
   } catch (err) { toast(err.message); }
 }
@@ -835,20 +969,22 @@ async function resumeCourse(id) {
 
 async function checkCourse(id) {
   const out = $("#courseout");
-  out.innerHTML = `<p class="sub" style="margin:12px 0 0">Checking…</p>`;
+  const stop = busy(out, "Checking every module, quiz and suggestion file…", "#courseops");
   try {
     const { problems } = await api(`/api/courses/${encodeURIComponent(id)}/check`, {});
+    stop();
     out.innerHTML = problems.length
       ? `<div class="problems"><b>${problems.length} problem${problems.length === 1 ? "" : "s"}</b><ul>${problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`
-      : `<p class="sub ok-text" style="margin:12px 0 0">Consistent — ready to build.</p>`;
-  } catch (err) { out.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
+      : `<p class="sub ok-text" style="margin:12px 0 0">Consistent — ready to build. Checked in ${stop.took()}.</p>`;
+  } catch (err) { stop(); out.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
 }
 
 async function buildCourse(id) {
   const out = $("#courseout");
-  out.innerHTML = `<p class="sub" style="margin:12px 0 0">Building…</p>`;
+  const stop = busy(out, "Checking every file, then rendering the page…", "#courseops");
   try {
     const data = await api(`/api/courses/${encodeURIComponent(id)}/build`, {});
+    stop();
     if (!data.built) {
       out.innerHTML = `<div class="problems"><b>Not built — fix these first</b><ul>${data.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
       return;
@@ -858,8 +994,8 @@ async function buildCourse(id) {
     await refresh();
     await viewCourse();
     const o = $("#courseout");
-    if (o) o.innerHTML = `<p class="sub ok-text" style="margin:12px 0 0">Built: ${r.modules} modules · ${r.sections} sections · ${r.quiz} quiz items · ${r.cards} cards · ${r.kb} KB</p>`;
-  } catch (err) { out.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
+    if (o) o.innerHTML = `<p class="sub ok-text" style="margin:12px 0 0">Built in ${stop.took()}: ${r.modules} modules · ${r.sections} sections · ${r.quiz} quiz items · ${r.cards} cards · ${r.kb} KB</p>`;
+  } catch (err) { stop(); out.innerHTML = `<div class="problems">${esc(err.message)}</div>`; }
 }
 
 /* ---------- Studio settings & logs ---------- */
@@ -998,14 +1134,15 @@ async function saveFile(id, check) {
     toast("Saved " + path.slice(path.lastIndexOf("/") + 1));
     if (!check) { out.innerHTML = ""; return; }
     if (check === "build") {
-      out.innerHTML = `<p class="sub" style="margin:12px 0 0">Checking and building…</p>`;
-      const data = await api(`/api/courses/${encodeURIComponent(id)}/build`, {});
+      const stop = busy(out, "Checking every file, then rendering the page…", ".editbar");
+      const data = await api(`/api/courses/${encodeURIComponent(id)}/build`, {}).finally(stop);
       out.innerHTML = data.built
-        ? `<p class="sub ok-text" style="margin:12px 0 0">Built: ${data.result.modules} modules · ${data.result.sections} sections · ${data.result.kb} KB. <a href="#/course/${encodeURIComponent(id)}">Back to the course</a>.</p>`
+        ? `<p class="sub ok-text" style="margin:12px 0 0">Built in ${stop.took()}: ${data.result.modules} modules · ${data.result.sections} sections · ${data.result.kb} KB. <a href="#/course/${encodeURIComponent(id)}">Back to the course</a>.</p>`
         : `<div class="problems"><b>Saved, but not built — ${data.problems.length} problem${data.problems.length === 1 ? "" : "s"}</b><ul>${data.problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
       return;
     }
-    const { problems } = await api(`/api/courses/${encodeURIComponent(id)}/check`, {});
+    const stop = busy(out, "Checking every module, quiz and suggestion file…", ".editbar");
+    const { problems } = await api(`/api/courses/${encodeURIComponent(id)}/check`, {}).finally(stop);
     out.innerHTML = problems.length
       ? `<div class="problems"><b>${problems.length} problem${problems.length === 1 ? "" : "s"}</b><ul>${problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>`
       : `<p class="sub ok-text" style="margin:12px 0 0">Consistent — <a href="#/course/${encodeURIComponent(id)}">build it from the course page</a>.</p>`;
@@ -1018,12 +1155,17 @@ function viewJob() {
   const jobId = route.id;
   if (job && job.id === jobId) { paintJob(true); return; }
   job = { id: jobId, events: [], plan: null, awaiting: null, meta: {},
-          progress: { done: 0, total: 0, label: "" }, status: "running", result: null };
+          progress: { done: 0, total: 0, label: "" }, status: "running", result: null,
+          startedAt: 0, stepAt: 0, stepTimes: [], call: null };
   const known = (STATE.jobs || []).find(j => j.id === jobId);
   if (known) { job.meta = known.meta || {}; job.kind = known.kind; }
   paintJob(true);
   connect(jobId, 0);
+  clearInterval(jobTimer);
+  jobTimer = setInterval(tickJob, 1000);
 }
+
+let jobTimer = null;
 
 function connect(jobId, from) {
   if (stream) stream.close();
@@ -1045,8 +1187,15 @@ function connect(jobId, from) {
 
 function absorb(event) {
   job.events.push(event);
-  if (event.kind === "started") job.kind = event.job;
-  if (event.kind === "progress") job.progress = { done: event.done, total: event.total, label: event.label };
+  if (event.kind === "started") { job.kind = event.job; job.startedAt = event.at; }
+  if (event.kind === "progress") {
+    // Each step's duration feeds the estimate of what is left; the timestamps come with
+    // the events, so a replay after a reload measures the same thing.
+    if (job.stepAt && job.progress.total) job.stepTimes.push(event.at - job.stepAt);
+    job.stepAt = event.at;
+    job.progress = { done: event.done, total: event.total, label: event.label };
+  }
+  if (event.kind === "call") job.call = event.phase === "start" ? event : null;
   if (event.kind === "plan") job.plan = event.plan;
   if (event.kind === "await") { job.awaiting = event; job.status = "waiting"; }
   if (event.kind === "resumed") { job.awaiting = null; job.status = "running"; }
@@ -1063,9 +1212,14 @@ function absorb(event) {
 
 function stepLine(e) {
   if (e.kind === "log") return { text: e.message };
+  if (e.kind === "progress") return { text: `Step ${e.done} of ${e.total} — ${e.label}`, cls: "head" };
+  if (e.kind === "call" && e.phase === "start") return { text: `Asking Claude for ${e.what || "a reply"} — ${e.model}, ${(e.chars || 0).toLocaleString()} chars sent`, cls: "dim" };
+  if (e.kind === "call") return e.ok
+    ? { text: `Claude answered in ${fmtDur(e.seconds)} — ${(e.reply || 0).toLocaleString()} chars`, cls: "ok" }
+    : { text: `Claude did not answer after ${fmtDur(e.seconds)} — ${e.error || "no output"}`, cls: "bad" };
   if (e.kind === "spec") return { text: `${e.id} designed — "${e.title}", ${e.minutes} minutes`, cls: "ok" };
-  if (e.kind === "module") return { text: `${e.id} written — ${e.sections} sections, ${e.words} words`, cls: "ok" };
-  if (e.kind === "studydata") return { text: `${e.id} study data — ${e.quiz} quiz, ${e.cards} cards, ${e.sections} question sets`, cls: "ok" };
+  if (e.kind === "module") return { text: e.patched ? `${e.id} patched — ${e.changedLines} line${e.changedLines === 1 ? "" : "s"} changed, ${e.sections} sections, ${e.words} words` : `${e.id} written — ${e.sections} sections, ${e.words} words`, cls: "ok" };
+  if (e.kind === "studydata") return { text: `${e.id} study data${e.patched ? " patched" : ""} — ${e.quiz} quiz, ${e.cards} cards, ${e.sections} question sets`, cls: "ok" };
   if (e.kind === "worksheet") return { text: `Worksheet: ${e.name}`, cls: "ok" };
   if (e.kind === "review") return { text: `${e.id} reviewed — ${e.verdict}; ${e.gaps} gap${e.gaps === 1 ? "" : "s"}, ${e.errors} error${e.errors === 1 ? "" : "s"}, ${e.quiz} quiz issue${e.quiz === 1 ? "" : "s"}`, cls: e.verdict === "solid" ? "ok" : "" };
   if (e.kind === "plan") return { text: `Curriculum proposed — ${e.plan.modules.length} modules` };
@@ -1079,7 +1233,7 @@ function stepLine(e) {
 function jobTitle() {
   const m = job.meta || {};
   if (job.kind === "extend") return `Adding a module to ${m.course || ""}`;
-  if (job.kind === "rewrite") return `Rewriting ${m.module || ""} in ${m.course || ""}`;
+  if (job.kind === "rewrite") return `${m.mode === "patch" ? "Patching" : "Rewriting"} ${m.module || ""} in ${m.course || ""}`;
   if (job.kind === "review") return `Reviewing ${m.module || ""} in ${m.course || ""}`;
   return m.theme ? `Writing ${m.theme}` : "Working";
 }
@@ -1114,15 +1268,72 @@ function paintJob(full) {
       <div class="actions">${job.kind === "generate" && courseId ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(courseId)}')">Resume the run</button>` : ""}${back}</div></div>`;
   else head = `<div class="card">
       <p class="eyebrow">${esc(job.status)} · ${esc(jobTitle())}</p>
-      <h3>${esc(p.label || "Working…")}</h3>
+      <h3>${esc(p.label || (job.kind === "generate" ? "Designing the curriculum" : "Working…"))}</h3>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-      <p class="sub" style="margin:0;font-size:13px">${p.total ? `step ${p.done} of ${p.total}` : "starting"}</p>
-      <div class="actions" style="margin-top:12px"><button class="btn danger sm" onclick="cancelJob()">Stop</button></div>
+      <div class="jobfacts" id="jobfacts"></div>
+      <p class="now" id="jobnow"></p>
+      <div class="actions" style="margin-top:12px"><button class="btn danger sm" onclick="cancelJob()">Stop</button>
+        <a class="btn ghost sm" href="#/settings">Full log</a></div>
     </div>`;
 
   $("#jobwrap").innerHTML = head + `<div class="card"><p class="eyebrow">Activity</p><div class="steps" id="steps">${log}</div></div>`;
   const box = $("#steps");
   if (box) box.scrollTop = box.scrollHeight;
+  tickJob();
+}
+
+/* The clocks on the job screen, once a second. Only the small elements are rewritten, so
+   the activity log keeps its scroll position and nothing flickers. */
+function tickJob() {
+  if (!job) return;
+  const finished = FINISHED.includes(job.status);
+  const p = job.progress || {};
+  if (finished || route.name !== "job") {
+    document.title = "Course Studio";
+    if (finished) clearInterval(jobTimer);
+    return;
+  }
+  const now = Date.now() / 1000;
+  document.title = (p.total ? `${p.done}/${p.total} · ` : "") + (p.label || jobTitle()) + " — Course Studio";
+
+  const facts = $("#jobfacts");
+  if (facts) {
+    const bits = [];
+    bits.push(p.total ? `<span>step <b>${p.done} of ${p.total}</b></span>` : `<span><b>starting</b></span>`);
+    if (job.stepAt) bits.push(`<span>this step <b>${fmtDur(now - job.stepAt)}</b></span>`);
+    if (job.startedAt) bits.push(`<span>running for <b>${fmtDur(now - job.startedAt)}</b></span>`);
+    const left = estimateLeft(now);
+    if (left) bits.push(`<span>roughly <b>${left}</b> left</span>`);
+    facts.innerHTML = bits.join("");
+  }
+
+  const nowEl = $("#jobnow");
+  if (nowEl) {
+    if (job.status === "waiting") {
+      nowEl.innerHTML = `<span class="pulse"></span>Waiting for you — nothing runs until the curriculum is approved.`;
+    } else if (job.call) {
+      const secs = now - job.call.at;
+      const cap = job.call.timeout ? ` · up to ${fmtDur(job.call.timeout)} allowed` : "";
+      nowEl.innerHTML = `<span class="pulse"></span>Claude is writing ${esc(job.call.what || "a reply")}<span class="mono">${fmtDur(secs)}${cap}</span>`;
+    } else {
+      nowEl.innerHTML = `<span class="pulse"></span>Studio is working between calls — saving files, checking them, building.`;
+    }
+  }
+}
+
+/* A rough remaining time from the steps finished so far. Steps differ (a module takes
+   minutes, its quiz less), so the mean over what has completed is the honest guess; it is
+   not shown until two steps have finished. */
+function estimateLeft(now) {
+  const p = job.progress || {};
+  const times = job.stepTimes || [];
+  if (!p.total || times.length < 2) return "";
+  const avg = times.reduce((a, b) => a + b, 0) / times.length;
+  const thisStep = job.stepAt ? now - job.stepAt : 0;
+  const remaining = (p.total - p.done) * avg + Math.max(0, avg - thisStep);
+  if (remaining < 60) return "a minute";
+  const mins = Math.round(remaining / 60);
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
 }
 
 function doneHTML(back) {
@@ -1137,21 +1348,24 @@ function doneHTML(back) {
       <p style="margin:6px 0 0;color:var(--text-2)">${esc(r.summary || "")}</p>
       <p class="sub" style="margin:8px 0 0;font-size:13px">${n} finding${n === 1 ? "" : "s"}. The full list is on the course page, under the module.</p>
       <div class="actions" style="margin-top:14px">
-        ${r.rewriteBrief && r.verdict !== "solid" ? `<a class="btn" href="#/course/${encodeURIComponent(id)}?tab=modules&rewrite=${encodeURIComponent(r.module || "")}&q=${encodeURIComponent(r.rewriteBrief)}">Rewrite with these notes</a>` : ""}
-        ${back}</div></div>`;
+        ${r.rewriteBrief && r.verdict !== "solid" ? `<a class="btn" href="#/course/${encodeURIComponent(id)}?tab=modules&rewrite=${encodeURIComponent(r.module || "")}&q=${encodeURIComponent(r.rewriteBrief)}">Patch with these notes</a>` : ""}
+        ${r.module ? `<button class="btn ghost" onclick="acceptModule('${esc(id)}','${esc(r.module)}',true).then(()=>{location.hash='#/course/${encodeURIComponent(id)}'})" title="Your verdict outranks the review until the module changes">This is good</button>` : ""}
+        ${back}</div>
+      ${r.verdict !== "solid" ? `<p class="sub" style="margin:12px 0 0;font-size:13px">A patch changes only what the findings name and keeps every other sentence. If you have read the module and disagree with the findings, mark it good instead: your verdict is what the course page shows.</p>` : ""}</div>`;
   }
   const target = r.module ? "#/m/" + r.module : "#/home";
   const open = c && c.built
     ? `<a class="btn" href="${courseUrl(c, target)}">${r.module ? "Read " + esc(r.module) : "Open the course"}</a>`
     : "";
   const what = job.kind === "extend" ? `${esc(r.module || "A module")} was added to ${esc(id)}`
-    : job.kind === "rewrite" ? `${esc(r.module || "The module")} was rewritten`
+    : job.kind === "rewrite" ? `${esc(r.module || "The module")} was ${r.mode === "patch" ? "patched" : "rewritten"}`
     : `${esc(id)} is built`;
   return `<div class="card">
     <p class="eyebrow" style="color:var(--ok)">Finished</p>
     <h3>${what}</h3>
     <p class="sub" style="margin:4px 0 0">${r.modules} modules · ${r.sections} sections · ${r.quiz} quiz items · ${r.cards} flashcards · ${r.glossary} glossary terms · ${r.kb} KB</p>
-    <div class="actions" style="margin-top:14px">${open}${back}</div>
+    <div class="actions" style="margin-top:14px">${open}${(job.kind === "rewrite" || job.kind === "extend") && r.module && STATE.claude.available ? `<button class="btn ghost" onclick="reviewModule('${esc(id)}','${esc(r.module)}')">Review ${esc(r.module)} now</button>` : ""}${back}</div>
+    ${job.kind === "rewrite" ? `<p class="sub" style="margin:10px 0 0;font-size:13px">An earlier review of ${esc(r.module || "this module")} judged the old text, so the course page now shows it as "before edit". A new review reads what was just written.</p>` : ""}
     <p class="sub" style="margin:14px 0 0;font-size:13px">Opened from here, the course keeps its progress on the platform and asks its questions through Studio — no key, no bridge, no disk copy needed.</p>
   </div>`;
 }
@@ -1249,6 +1463,7 @@ function parseRoute() {
 function render() {
   route = parseRoute();
   if (route.name !== "job" && stream) { stream.close(); stream = null; }
+  if (route.name !== "job") { clearInterval(jobTimer); document.title = "Course Studio"; }
   if (route.name !== "settings") clearInterval(logTimer);
   document.querySelectorAll(".topnav a").forEach(a => a.classList.toggle("active",
     (route.name === "library" && a.id === "nav-library") || (route.name === "new" && a.id === "nav-new")

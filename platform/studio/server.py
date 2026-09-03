@@ -36,6 +36,7 @@ and spawns processes, so that binding is a security boundary, not a default.
     POST /api/courses/<id>/modules/<mid>/remove    take one module out (file to state/trash/)
     POST /api/courses/<id>/modules/<mid>/move      reorder, or move to another part  {part, index}
     POST /api/courses/<id>/modules/<mid>/review    have Claude read it critically  -> {job}
+    POST /api/courses/<id>/modules/<mid>/accept    the owner's own verdict  {accepted: bool}
     POST /api/generate                      start a generation job  -> {job}
     POST /api/jobs/<id>/answer              supply the approved curriculum
     POST /api/jobs/<id>/cancel              stop a job
@@ -165,8 +166,10 @@ def course_detail(course_id: str) -> Dict[str, Any]:
     info["audience"] = cfg.audience
     info["practitioner"] = cfg.practitioner
     info["moduleList"] = []
+    sources: Dict[str, str] = {}
     try:
         for m in ck_loader.load_modules(cfg):
+            sources[m.id] = m.source
             info["moduleList"].append({
                 "id": m.id, "num": m.num, "part": m.part, "title": m.title, "short": m.short,
                 "minutes": m.minutes, "sections": len(m.sections),
@@ -181,7 +184,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
     info["questions"] = open_questions(state_obj, info["moduleList"])
     info["settings"] = manage.settings(root)
     info["order"] = cfg.order
-    info["reviews"] = generator.load_reviews(STATE_ROOT, course_id)
+    info["reviews"] = generator.load_reviews(STATE_ROOT, course_id, sources)
     info["profile"] = PREFS.profile
     return info
 
@@ -669,6 +672,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._move_module(bits[3], bits[5])
                 if len(bits) == 7 and bits[4] == "modules" and bits[6] == "review":
                     return self._review(bits[3], bits[5])
+                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "accept":
+                    return self._accept(bits[3], bits[5])
             return self._fail("Not found", 404)
         except CourseError as exc:
             log.warning("POST %s: %s", path, exc)
@@ -766,7 +771,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail("That course already has a job running.")
         brief["model"] = self._model(brief)
         log.info("rewrite: course=%s module=%s model=%s", course_id, mid, brief["model"])
-        job = REGISTRY.add(jobs.Job("rewrite", {"course": course_id, "module": mid}))
+        job = REGISTRY.add(jobs.Job("rewrite", {"course": course_id, "module": mid,
+                                                 "mode": "patch" if brief.get("mode") == "patch" else "rewrite"}))
         job.start(lambda j: generator.rewrite(j, COURSES_DIR, DIST_DIR, course_id, mid, brief))
         self._json({"job": job.summary()})
 
@@ -811,6 +817,23 @@ class Handler(BaseHTTPRequestHandler):
         moved = manage.move_module(root, mid, str(body.get("part") or ""), index)
         log.info("move %s/%s -> part %s index %s", course_id, mid, moved["part"], index)
         self._json(dict(moved, ok=True, problems=generator.check_course(root)))
+
+    def _accept(self, course_id: str, mid: str) -> None:
+        """"This is good": the owner's verdict, which the review pill then shows."""
+        root = self._course_root(course_id)
+        if not root:
+            return
+        if not SAFE_MID.match(mid):
+            return self._fail("Bad module id.")
+        accepted = bool(self._body().get("accepted", True))
+        cfg = ck_config.load(root)
+        sources = {m.id: m.source for m in ck_loader.load_modules(cfg)}
+        if mid not in sources:
+            return self._fail("No module '%s' in this course." % mid, 404)
+        generator.accept_module(STATE_ROOT, course_id, mid, accepted)
+        log.info("accept: course=%s module=%s accepted=%s", course_id, mid, accepted)
+        self._json({"ok": True, "accepted": accepted,
+                    "review": generator.load_reviews(STATE_ROOT, course_id, sources).get(mid)})
 
     def _review(self, course_id: str, mid: str) -> None:
         if not self._course_root(course_id):

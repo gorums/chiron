@@ -30,6 +30,15 @@ PENDING, RUNNING, WAITING, DONE, FAILED, CANCELLED = (
 _ids = itertools.count(1)
 _BOOT = format(int(time.time()), "x")     # ids must not collide with jobs stored by an earlier run
 
+# The job running on the current thread, so code that has no Job in hand (claude_cli, which
+# is also called by the tutor route with no job at all) can still report what it is doing.
+_current = threading.local()
+
+
+def current() -> Optional["Job"]:
+    """The Job whose thread this is, or None on a request thread."""
+    return getattr(_current, "job", None)
+
 
 class Cancelled(Exception):
     """Raised inside a job's thread when the user cancels it."""
@@ -55,6 +64,7 @@ def _log_event(job: "Job", event: Dict[str, Any]) -> None:
     elif kind in ("module", "studydata", "spec", "worksheet", "built"):
         brief = {k: v for k, v in event.items() if k not in ("kind", "at", "i", "path")}
         log.info("%s: %s %s", head, kind, brief)
+    # "call" events are not logged here: claude_cli already writes one line per CLI call.
 
 
 class Job:
@@ -69,6 +79,9 @@ class Job:
         self.result: Any = None
         self.events: List[Dict[str, Any]] = []
         self.created = time.time()
+        self.started: Optional[float] = None
+        self.step: Optional[Dict[str, Any]] = None    # the last progress event
+        self.call: Optional[Dict[str, Any]] = None    # the Claude call in flight, if any
 
         self._lock = threading.Lock()
         self._cancel = threading.Event()
@@ -86,6 +99,14 @@ class Job:
             event = dict(fields)
             event.update(kind=kind, at=time.time(), i=len(self.events))
             self.events.append(event)
+            # What the listing shows without replaying the log: where the job is, and
+            # whether it is inside a Claude call right now.
+            if kind == "progress":
+                self.step = event
+            elif kind == "call":
+                self.call = event if event.get("phase") == "start" else None
+            elif kind == "started":
+                self.started = event["at"]
         _log_event(self, event)
 
     def log(self, message: str) -> None:
@@ -134,6 +155,7 @@ class Job:
         def run():
             # Everything, including the opening event, sits inside the try: an exception
             # escaping this function kills the thread with the job stuck at "running".
+            _current.job = self
             try:
                 self.status = RUNNING
                 self.emit("started", job=self.kind)
@@ -148,7 +170,9 @@ class Job:
                 self.error = str(exc)
                 self.emit("failed", error=str(exc), trace=traceback.format_exc()[-1500:])
             finally:
+                self.call = None
                 self.emit("end", status=self.status)
+                _current.job = None
                 if self.on_end:
                     try:
                         self.on_end(self)
@@ -172,7 +196,10 @@ class Job:
             "meta": self.meta,
             "events": len(self.events),
             "created": self.created,
+            "started": self.started,
             "ended": self.events[-1]["at"] if self.finished and self.events else None,
+            "progress": self.step,
+            "call": self.call,
         }
 
     def record(self) -> Dict[str, Any]:
@@ -206,9 +233,12 @@ class StoredJob:
         pass
 
     def summary(self) -> Dict[str, Any]:
+        started = next((e["at"] for e in self.events if e.get("kind") == "started"), None)
         return {"id": self.id, "kind": self.kind, "status": self.status, "error": self.error,
                 "meta": self.meta, "events": len(self.events), "created": self.created,
-                "ended": self.events[-1]["at"] if self.events else None}
+                "started": started,
+                "ended": self.events[-1]["at"] if self.events else None,
+                "progress": None, "call": None}
 
 
 class Registry:

@@ -353,6 +353,30 @@ class TestJobs(unittest.TestCase):
         self._settle(job)
         self.assertIsNone(reg.active_for("abc"))
 
+    def test_the_running_job_is_visible_from_its_own_thread_only(self):
+        seen = []
+        job = jobs.Job("t").start(lambda j: seen.append(jobs.current() is j))
+        self._settle(job)
+        self.assertEqual(seen, [True])
+        self.assertIsNone(jobs.current())
+
+    def test_summary_carries_the_current_step_and_the_call_in_flight(self):
+        """The listing shows where a job is without replaying its log."""
+        def work(j):
+            j.progress(2, 5, "Writing M02")
+            j.emit("call", phase="start", what="the text of M02")
+            j.await_input("hold", {})
+        job = jobs.Job("t").start(work)
+        self._wait(lambda: job.status == jobs.WAITING)
+        s = job.summary()
+        self.assertEqual((s["progress"]["done"], s["progress"]["label"]), (2, "Writing M02"))
+        self.assertEqual(s["call"]["what"], "the text of M02")
+        self.assertIsNotNone(s["started"])
+        json.dumps(s)                      # it travels in /api/state
+        job.provide(None)
+        self._settle(job)
+        self.assertIsNone(job.summary()["call"])
+
     # helpers
     def _wait(self, cond, timeout=5):
         end = time.time() + timeout
@@ -362,6 +386,74 @@ class TestJobs(unittest.TestCase):
 
     def _settle(self, job, timeout=10):
         self._wait(lambda: job.finished, timeout)
+
+
+class TestCallEvents(unittest.TestCase):
+    """claude_cli reports every CLI call to the job on its thread, so the screen watching
+    the job can say what Claude is doing while a call runs for minutes."""
+
+    def _run(self, fn):
+        job = jobs.Job("t").start(fn)
+        end = time.time() + 10
+        while time.time() < end and not job.finished:
+            time.sleep(0.01)
+        self.assertTrue(job.finished)
+        return job
+
+    def _with_cli(self, run, fn):
+        original = (claude_cli.find_cli, claude_cli.subprocess.run)
+        claude_cli.find_cli, claude_cli.subprocess.run = (lambda: "claude"), run
+        try:
+            return self._run(fn)
+        finally:
+            claude_cli.find_cli, claude_cli.subprocess.run = original
+
+    def test_call_start_and_end_are_emitted_with_what_and_model(self):
+        import subprocess
+        ok = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, stdout="hello", stderr="")
+        job = self._with_cli(ok, lambda j: claude_cli.ask("hi", what="the text of M01"))
+        self.assertEqual(job.result, "hello")
+        calls = [e for e in job.events if e["kind"] == "call"]
+        self.assertEqual([c["phase"] for c in calls], ["start", "end"])
+        self.assertEqual(calls[0]["what"], "the text of M01")
+        self.assertEqual(calls[0]["chars"], 2)
+        self.assertIn("model", calls[0])
+        self.assertTrue(calls[1]["ok"])
+        self.assertEqual(calls[1]["reply"], 5)
+        self.assertIsNone(job.summary()["call"])       # nothing in flight once it is over
+
+    def test_a_refused_model_is_reported_and_the_next_one_tried(self):
+        import subprocess
+        seen = []
+        def run(argv, **kw):
+            seen.append(argv)
+            if len(seen) == 1:
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unrecognized_model")
+            return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        self.assertEqual(job.result, "ok")
+        ends = [e for e in job.events if e["kind"] == "call" and e["phase"] == "end"]
+        self.assertEqual([e["ok"] for e in ends], [False, True])
+        self.assertIn("unrecognized_model", ends[0]["error"])
+        self.assertTrue(any("trying" in e.get("message", "") for e in job.events if e["kind"] == "log"))
+
+    def test_a_json_retry_is_narrated(self):
+        replies = iter(["not json at all", '{"a": 1}'])
+        original = claude_cli.ask
+        claude_cli.ask = lambda prompt, **kw: next(replies)
+        try:
+            job = self._run(lambda j: claude_cli.ask_json("q", what="the curriculum"))
+        finally:
+            claude_cli.ask = original
+        self.assertEqual(job.result, {"a": 1})
+        messages = [e["message"] for e in job.events if e["kind"] == "log"]
+        self.assertTrue(any("not valid JSON" in m and "the curriculum" in m for m in messages))
+
+    def test_reporting_without_a_job_is_a_no_op(self):
+        """The tutor route calls ask() on a request thread, where there is no job."""
+        self.assertIsNone(jobs.current())
+        claude_cli._tell("call", phase="start")
+        claude_cli._say("nothing listens")
 
 
 class TestPrompts(unittest.TestCase):
@@ -722,6 +814,56 @@ class TestCourseEditing(unittest.TestCase):
 
     # ---- manage: settings, remove, trash ----
 
+    def test_patch_changes_only_what_the_notes_say(self):
+        """Patch mode: the text comes back with the notes applied and nothing else touched;
+        the quiz is patched in place and the suggested questions are kept when the section
+        headings did not move."""
+        from coursekit import assessments as ck_assess
+        from coursekit import config as ck_config
+        from coursekit import loader as ck_loader
+        root = os.path.join(self.tmp, "fixture")
+        cfg = ck_config.load(root)
+        m3 = next(m for m in ck_loader.load_modules(cfg) if m.id == "M03")
+        with open(m3.source, encoding="utf-8") as fh:
+            before = fh.read()
+        assess_before = ck_assess.load_assessments(cfg)["M03"]
+        sugg_before = ck_assess.load_suggestions(cfg)["M03"]
+        after = before.rstrip("\n") + "\n\nOne more sentence the notes asked for.\n"
+        seen = []
+
+        def fake_ask(prompt, **kw):
+            seen.append(prompt)
+            if "Edit the study data for module M03" in prompt:
+                self.assertIn("the notes asked for", prompt, "the quiz patch sees the new text")
+                return json.dumps(assess_before)
+            if "Edit module M03" in prompt:
+                self.assertIn("keep everything else word for word", prompt)
+                self.assertIn("add one sentence", prompt)
+                return after
+            raise AssertionError("unexpected call: " + prompt[:80])
+
+        original = claude_cli.ask
+        claude_cli.ask = fake_ask
+        try:
+            job = jobs.Job("rewrite")
+            result = generator.rewrite(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture", "M03",
+                                       {"notes": "add one sentence", "mode": "patch"})
+        finally:
+            claude_cli.ask = original
+
+        self.assertEqual(result["mode"], "patch")
+        self.assertEqual(len(seen), 2, "text and quiz only; the suggestions were kept")
+        with open(m3.source, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), after)
+        cfg = ck_config.load(root)
+        self.assertEqual(ck_assess.load_suggestions(cfg)["M03"], sugg_before)
+        self.assertEqual([q["q"] for q in ck_assess.load_assessments(cfg)["M03"]["quiz"]],
+                         [q["q"] for q in assess_before["quiz"]])
+        mod = next(e for e in job.events if e["kind"] == "module")
+        self.assertTrue(mod["patched"])
+        self.assertGreaterEqual(mod["changedLines"], 1)
+        self.assertTrue(any("kept" in e.get("message", "") for e in job.events if e["kind"] == "log"))
+
     def test_settings_round_trip_and_id_lock(self):
         from studio import manage
         before = manage.settings(self.fixture.root)
@@ -1061,7 +1203,8 @@ class TestPhase3(unittest.TestCase):
         plan = generator.plan_from_course(cfg, mods)
         spec = plan["modules"][2]
         text = prompts.review(plan, plan["modules"], spec, "# M03 — Lesson 3\n\n## Why", {"quiz": [{"type": "tf", "q": "Is it?"}]})
-        for needle in ("M03", "Lesson 3", "[tf] Is it?", '"verdict"', "rewriteBrief", "Do not list what is fine"):
+        for needle in ("M03", "Lesson 3", "[tf] Is it?", '"verdict"', "rewriteBrief", "Do not list what is fine",
+                       "publishable as it stands", "do not lower"):
             self.assertIn(needle, text)
 
         fixed = generator._fix_review({
@@ -1085,6 +1228,77 @@ class TestPhase3(unittest.TestCase):
             json.dump(dict(fixed, module="M03", at=1), fh)
         self.assertEqual(list(generator.load_reviews(state_root, "fixture")), ["M03"])
         self.assertEqual(generator.load_reviews(state_root, "nothing"), {})
+
+
+class TestStaleReviews(unittest.TestCase):
+    """A review describes the module as it was; once the module changes it must say so."""
+
+    def test_review_older_than_the_module_is_marked_stale(self):
+        import tempfile
+        import shutil
+        tmp = tempfile.mkdtemp()
+        try:
+            module = os.path.join(tmp, "M01.md")
+            with open(module, "w", encoding="utf-8") as fh:
+                fh.write("# M01 - x\n\n## A\n\ntext\n")
+            directory = generator.reviews_dir(tmp, "c")
+            os.makedirs(directory)
+            written = os.path.getmtime(module) * 1000
+            with open(os.path.join(directory, "M01.json"), "w", encoding="utf-8") as fh:
+                json.dump({"verdict": "needs work", "at": int(written - 60_000)}, fh)
+            with open(os.path.join(directory, "M02.json"), "w", encoding="utf-8") as fh:
+                json.dump({"verdict": "solid", "at": int(written + 60_000)}, fh)
+            reviews = generator.load_reviews(tmp, "c", {"M01": module, "M02": module})
+            self.assertTrue(reviews["M01"].get("stale"))
+            self.assertEqual(reviews["M01"]["moduleChangedAt"], int(written))
+            self.assertNotIn("stale", reviews["M02"])
+            # Without sources nothing can be judged, and nothing is claimed.
+            self.assertNotIn("stale", generator.load_reviews(tmp, "c")["M01"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_the_owner_can_mark_a_module_good_and_take_it_back(self):
+        import tempfile
+        import shutil
+        tmp = tempfile.mkdtemp()
+        try:
+            module = os.path.join(tmp, "M01.md")
+            with open(module, "w", encoding="utf-8") as fh:
+                fh.write("# M01 - x")
+            path = os.path.join(generator.reviews_dir(tmp, "c"), "M01.json")
+
+            # Without a review: a record of its own, gone again when withdrawn.
+            generator.accept_module(tmp, "c", "M01", True)
+            rv = generator.load_reviews(tmp, "c", {"M01": module})["M01"]
+            self.assertTrue(rv["accepted"] and rv["ownerOnly"])
+            self.assertEqual(rv["verdict"], "solid")
+            self.assertNotIn("stale", rv)
+            generator.accept_module(tmp, "c", "M01", False)
+            self.assertFalse(os.path.exists(path))
+
+            # Over a review: the findings stay, the mark comes and goes.
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({"verdict": "needs work", "gaps": [{"issue": "x"}], "at": 1}, fh)
+            generator.accept_module(tmp, "c", "M01", True)
+            rv = generator.load_reviews(tmp, "c", {"M01": module})["M01"]
+            self.assertEqual(rv["verdict"], "needs work", "the review is kept; the UI shows the mark")
+            self.assertTrue(rv["accepted"])
+            self.assertNotIn("ownerOnly", rv)
+            self.assertNotIn("stale", rv, "the mark is newer than the file, so not stale")
+
+            # The module changes after the mark: the mark is stale like a review would be.
+            future = time.time() + 120
+            os.utime(module, (future, future))
+            rv = generator.load_reviews(tmp, "c", {"M01": module})["M01"]
+            self.assertTrue(rv.get("stale"))
+
+            generator.accept_module(tmp, "c", "M01", False)
+            rv = generator.load_reviews(tmp, "c")["M01"]
+            self.assertNotIn("accepted", rv)
+            self.assertEqual(rv["gaps"], [{"issue": "x"}])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

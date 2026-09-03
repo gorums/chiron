@@ -130,8 +130,8 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      48 tests — engine (one boots the page under node, skipped without it)
-python platform/tests/test_studio.py     80 tests — Studio
+python platform/tests/test_build.py      49 tests — engine (one boots the page under node, skipped without it)
+python platform/tests/test_studio.py     97 tests — Studio
 ```
 
 Requires Python 3 and the `markdown` package (`pip install markdown`). Nothing else.
@@ -348,6 +348,19 @@ courses made before that), skips the approval gate, keeps every module and study
 already on disk, and writes only what is missing. `POST /api/courses/<id>/resume`; the
 course page and the failed-job screen offer the button when `can_resume()` says so.
 
+**What a job is doing is visible while it runs.** `jobs.current()` returns the job on the
+calling thread, so `claude_cli.ask` needs no job in hand: it emits a `call` event when a
+CLI call starts (`what`, `model`, prompt size, timeout) and when it ends (seconds, reply
+size, or the error), narrates a model fallback and a JSON retry as `log` events, and every
+generator call site passes `what=` ("the text of M03", "the quiz and flashcards for M03").
+`Job.summary()` carries the last `progress` event and the `call` in flight, so `/api/state`
+can say where a job is without replaying it: the header pill (`#jobstate`), the library
+cards and the course page show that line and poll every few seconds while anything runs.
+The job screen ticks once a second - step, time on this step, total, a rough estimate from
+the steps already finished, and what Claude is writing right now - and the tab title
+carries the step. Check, Build and an import are synchronous and show a spinner with a
+clock (`busy()` in `studio.js`) with the buttons disabled meanwhile.
+
 **Log first, then look.** `log.log` is the `studio` logger. Every Claude call logs model,
 duration, prompt/reply size and stderr on failure; every job event logs a line; every
 unhandled route error logs a traceback. Read it at **Settings & logs** (`#/settings`) or in
@@ -374,7 +387,7 @@ Three routes, all on the Studio course page (`#/course/<id>`):
 | | |
 |---|---|
 | `POST /api/courses/<id>/extend` | one new module on a topic. `generator.extend` asks for a design that fits the existing curriculum (`prompts.module_spec`), writes it under the next free id — ids are never reused because progress is keyed by them — appends it to the chosen part, writes its study data to `data/*/<mid>.json`, adds the short title, rebuilds. |
-| `POST /api/courses/<id>/modules/<mid>/rewrite` | same id, same file, same position; the notes become `prompts.direction`. `_store_module_data` replaces the entry in whichever file already holds it, so the validator never sees two claims on one id. |
+| `POST /api/courses/<id>/modules/<mid>/rewrite` | same id, same file, same position; the notes become `prompts.direction`. With `mode: "patch"` (`generator._patch`) the module as it is goes to `prompts.patch_module` and comes back with only the notes applied, the quiz is patched in place through `prompts.patch_assessment`, and the suggested questions are kept unless a `##` heading changed - a full rewrite regenerates every sentence, so each pass fixes the last review's findings and creates new ones. The Studio form defaults to patch when opened from a review. `_store_module_data` replaces the entry in whichever file already holds it, so the validator never sees two claims on one id. |
 | `GET/PUT /api/courses/<id>/files?path=` | raw editing of any `.md`/`.json` inside the course. `resolve_course_file` confines the path; JSON is parsed before it is written. |
 
 Both jobs stream events like a generation run and end with a build. A rewrite keeps the
@@ -388,7 +401,8 @@ Without a model (`studio/manage.py`):
 | `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
 | `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title and its `order` entry go; the reply carries the check result. |
 | `POST /api/courses/<id>/modules/<mid>/move` | `{part, index}`: reorder within a part or move to another; writes `order`, moves the file, never touches study data. |
-| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. |
+| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
+| `POST /api/courses/<id>/modules/<mid>/accept` | `{accepted: bool}`: the owner's own verdict, "this is good". `generator.accept_module` stores it in the same review file (`accepted`, and `ownerOnly` when there was no review), the row shows "good" over whatever Claude said, and it goes stale like a review when the module changes. |
 | `POST /api/courses/<id>/delete` | needs `{confirm: <id>}`; moves `courses/<id>` and `dist/<id>` to `state/trash/<id>-<stamp>/` and forgets the progress copy. |
 
 The reader's open questions (`state.marks` with status `open`/`answered`) come back in the

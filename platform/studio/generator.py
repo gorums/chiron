@@ -103,6 +103,7 @@ def make_plan(job: Job, brief: Dict[str, Any], model: str = "") -> Dict[str, Any
         ),
         model=model,
         timeout=_timeout("plan"),
+        what="the curriculum",
     )
     return normalise_plan(plan, theme, hours, brief)
 
@@ -209,8 +210,21 @@ def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
     if mod["id"] == "M01":
         prompt += prompts.module_first(plan)
     prompt += prompts.direction(notes)
-    body = claude_cli.strip_fence(claude_cli.ask(prompt, model=model, timeout=_timeout("module")))
+    body = _repair_head(claude_cli.strip_fence(claude_cli.ask(
+        prompt, model=model, timeout=_timeout("module"), what="the text of %s" % mod["id"])), mod)
 
+    path = path or _module_path(root, plan, mod)
+    _write(path, body)
+    found = headings_of(body)
+    if not found:
+        raise GenerationError("%s came back with no usable sections." % mod["id"])
+    job.emit("module", id=mod["id"], title=mod["title"], sections=len(found),
+             words=len(body.split()), path=os.path.relpath(path, root))
+    return body
+
+
+def _repair_head(body: str, mod: Dict[str, Any]) -> str:
+    """Make the head of a module what the build expects, whatever the model returned."""
     # The build keys everything off the title line; repair it rather than failing the run.
     expected = "# %s — %s" % (mod["id"], mod["title"])
     lines = body.split("\n")
@@ -227,14 +241,6 @@ def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
         head, sep, rest = body.partition("\n## ")
         head = head.rstrip() + "\n\n**Requires:** " + ", ".join(requires) + "\n"
         body = head + sep + rest
-
-    path = path or _module_path(root, plan, mod)
-    _write(path, body)
-    found = headings_of(body)
-    if not found:
-        raise GenerationError("%s came back with no usable sections." % mod["id"])
-    job.emit("module", id=mod["id"], title=mod["title"], sections=len(found),
-             words=len(body.split()), path=os.path.relpath(path, root))
     return body
 
 
@@ -409,12 +415,14 @@ def write_study_data(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, A
                      body: str, model: str = "") -> Dict[str, Any]:
     headings = headings_of(body)
     assess = _fix_assessment(
-        claude_cli.ask_json(prompts.assessment(plan, mod, body), model=model, timeout=_timeout("studyData")),
+        claude_cli.ask_json(prompts.assessment(plan, mod, body), model=model, timeout=_timeout("studyData"),
+                            what="the quiz and flashcards for %s" % mod["id"]),
         mod["id"],
     )
     sugg = _fix_suggestions(
         claude_cli.ask_json(prompts.suggestions(plan, mod["id"], headings, body),
-                            model=model, timeout=_timeout("studyData")),
+                            model=model, timeout=_timeout("studyData"),
+                            what="the suggested questions for %s" % mod["id"]),
         headings,
     )
     job.emit("studydata", id=mod["id"], quiz=len(assess["quiz"]),
@@ -609,11 +617,14 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
         _write(path, claude_cli.strip_fence(make()))
 
     shelf("Glossary", "reference/glossary.md",
-          lambda: claude_cli.ask(prompts.glossary(plan, modules, corpus), model=model, timeout=_timeout("reference")))
+          lambda: claude_cli.ask(prompts.glossary(plan, modules, corpus), model=model,
+                                 timeout=_timeout("reference"), what="the glossary"))
     shelf("Mental models", "reference/mental-models.md",
-          lambda: claude_cli.ask(prompts.mental_models(plan, corpus), model=model, timeout=_timeout("reference")))
+          lambda: claude_cli.ask(prompts.mental_models(plan, corpus), model=model,
+                                 timeout=_timeout("reference"), what="the mental models"))
     shelf("Resources", "reference/resources.md",
-          lambda: claude_cli.ask(prompts.resources(plan), model=model, timeout=_timeout("resources")))
+          lambda: claude_cli.ask(prompts.resources(plan), model=model,
+                                 timeout=_timeout("resources"), what="the resources list"))
 
     job.check_cancelled()
     step += 1
@@ -624,7 +635,8 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
         if resume and _real_file(path):
             continue
         _write(path, claude_cli.strip_fence(claude_cli.ask(
-            prompts.plan_docs(plan, modules, kind), model=model, timeout=_timeout("planDocs"))))
+            prompts.plan_docs(plan, modules, kind), model=model, timeout=_timeout("planDocs"),
+            what="plan/" + filename)))
 
     job.check_cancelled()
     step += 1
@@ -639,6 +651,7 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
     job.check_cancelled()
     step += 1
     job.progress(step, total, "Validating and building")
+    job.log("Checking every module, quiz and suggestion file, then rendering the page.")
     result = build_course(root, dist_dir)
     job.emit("built", **result)
     return dict(result, course=course_id, root=root)
@@ -649,7 +662,8 @@ def _write_worksheets(job: Job, root: str, plan: Dict[str, Any],
     """Worksheets are optional: a failure here must not lose a finished course."""
     try:
         wanted = claude_cli.ask_json(prompts.worksheet_plan(plan, modules),
-                                     model=model, timeout=_timeout("worksheetPlan"))
+                                     model=model, timeout=_timeout("worksheetPlan"),
+                                     what="the worksheet list")
     except Exception as exc:  # noqa: BLE001
         job.log("Could not plan worksheets (%s); continuing without them." % exc)
         return
@@ -663,7 +677,7 @@ def _write_worksheets(job: Job, root: str, plan: Dict[str, Any],
         try:
             text = claude_cli.strip_fence(claude_cli.ask(
                 prompts.worksheet(plan, spec["name"], spec.get("purpose", "")),
-                model=model, timeout=_timeout("worksheet")))
+                model=model, timeout=_timeout("worksheet"), what="the worksheet '%s'" % spec["name"]))
         except Exception as exc:  # noqa: BLE001
             job.log("Worksheet '%s' failed (%s); skipping." % (slug, exc))
             continue
@@ -820,7 +834,8 @@ def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
     job.progress(1, total, "Designing %s · %s" % (mid, topic))
     spec = _fix_spec(
         claude_cli.ask_json(prompts.module_spec(plan, plan["modules"], topic, part["name"],
-                                                minutes, notes), model=model, timeout=_timeout("moduleSpec")),
+                                                minutes, notes), model=model, timeout=_timeout("moduleSpec"),
+                            what="the design of %s" % mid),
         mid, part["id"], topic, minutes, known_ids=[m["id"] for m in plan["modules"]],
     )
     plan["modules"].append(spec)
@@ -838,6 +853,7 @@ def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
 
     job.check_cancelled()
     job.progress(4, total, "Validating and building")
+    job.log("Checking every module, quiz and suggestion file, then rendering the page.")
     result = build_course(root, dist_dir)
     job.progress(5, total, "Done")
     job.emit("built", **result)
@@ -864,6 +880,9 @@ def rewrite(job: Job, courses_dir: str, dist_dir: str, course_id: str, mid: str,
     job.meta["course"] = course_id
 
     spec = next(m for m in plan["modules"] if m["id"] == mid)
+    if brief.get("mode") == "patch":
+        job.meta["mode"] = "patch"
+        return _patch(job, root, dist_dir, cfg, course_id, current, plan, spec, model, notes)
     spec["summary"] = "A rewrite of the existing module." + (
         " The person asked for: " + notes if notes else "")
     total = 4
@@ -878,10 +897,72 @@ def rewrite(job: Job, courses_dir: str, dist_dir: str, course_id: str, mid: str,
 
     job.check_cancelled()
     job.progress(3, total, "Validating and building")
+    job.log("Checking every module, quiz and suggestion file, then rendering the page.")
     result = build_course(root, dist_dir)
     job.progress(4, total, "Done")
     job.emit("built", **result)
-    return dict(result, course=course_id, root=root, module=mid)
+    return dict(result, course=course_id, root=root, module=mid, mode="rewrite")
+
+
+def _patch(job: Job, root: str, dist_dir: str, cfg, course_id: str, current, plan: Dict[str, Any],
+           spec: Dict[str, Any], model: str, notes: str) -> Dict[str, Any]:
+    """Change only what the notes name, in the text and in the study data.
+
+    A full rewrite regenerates every sentence, so each pass fixes the last review's findings
+    and creates new ones; the module never converges. A patch sends the module as it is and
+    asks for it back with the notes applied. The suggested questions are kept unless the
+    section headings changed, because they are matched to sections by position.
+    """
+    mid = spec["id"]
+    with open(current.source, encoding="utf-8") as fh:
+        before = fh.read()
+    total = 4
+
+    job.progress(1, total, "Patching %s · %s" % (mid, current.title))
+    body = _repair_head(claude_cli.strip_fence(claude_cli.ask(
+        prompts.patch_module(plan, plan["modules"], spec, before, notes), model=model,
+        timeout=_timeout("module"), what="the edited text of %s" % mid)), spec)
+    old_headings, new_headings = headings_of(before), headings_of(body)
+    if not new_headings:
+        raise GenerationError("%s came back with no usable sections." % mid)
+    _write(current.source, body)
+    a, b = before.split("\n"), body.split("\n")
+    changed = sum(1 for x, y in zip(a, b) if x != y) + abs(len(a) - len(b))
+    job.emit("module", id=mid, title=current.title, sections=len(new_headings),
+             words=len(body.split()), path=os.path.relpath(current.source, root),
+             patched=True, changedLines=changed)
+
+    job.check_cancelled()
+    job.progress(2, total, "Patching the quiz for %s" % mid)
+    assess = ck_assess.load_assessments(cfg).get(mid)
+    sugg = ck_assess.load_suggestions(cfg).get(mid)
+    if isinstance(assess, dict) and assess.get("quiz"):
+        assess = _fix_assessment(claude_cli.ask_json(
+            prompts.patch_assessment(plan, spec, assess, notes, body), model=model,
+            timeout=_timeout("studyData"), what="the edited quiz for %s" % mid), mid)
+    else:
+        job.log("%s had no study data to patch; writing it fresh." % mid)
+        assess = _fix_assessment(claude_cli.ask_json(
+            prompts.assessment(plan, spec, body), model=model, timeout=_timeout("studyData"),
+            what="the quiz and flashcards for %s" % mid), mid)
+    if new_headings != old_headings or not isinstance(sugg, list) or len(sugg) != len(new_headings):
+        job.log("The section headings changed, so the suggested questions are written again.")
+        sugg = _fix_suggestions(claude_cli.ask_json(
+            prompts.suggestions(plan, mid, new_headings, body), model=model,
+            timeout=_timeout("studyData"), what="the suggested questions for %s" % mid), new_headings)
+    else:
+        job.log("Section headings unchanged: the suggested questions are kept as they were.")
+    _store_module_data(root, cfg, mid, assess, sugg)
+    job.emit("studydata", id=mid, quiz=len(assess["quiz"]), cards=len(assess["cards"]),
+             sections=len(sugg), patched=True)
+
+    job.check_cancelled()
+    job.progress(3, total, "Validating and building")
+    job.log("Checking every module, quiz and suggestion file, then rendering the page.")
+    result = build_course(root, dist_dir)
+    job.progress(4, total, "Done")
+    job.emit("built", **result)
+    return dict(result, course=course_id, root=root, module=mid, mode="patch")
 
 
 REVIEW_VERDICTS = ("solid", "needs work", "rewrite")
@@ -918,8 +999,14 @@ def reviews_dir(state_root: str, course_id: str) -> str:
     return os.path.join(state_root, "reviews", course_id)
 
 
-def load_reviews(state_root: str, course_id: str) -> Dict[str, Any]:
-    """Every stored review for a course, keyed by module id."""
+def load_reviews(state_root: str, course_id: str,
+                 sources: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Every stored review for a course, keyed by module id.
+
+    A review is an opinion about the module *as it was*. With `sources` (module id ->
+    file path) a review older than the module file is marked `stale`: the module was
+    rewritten or edited since, so the verdict no longer describes what is on disk.
+    """
     directory = reviews_dir(state_root, course_id)
     out: Dict[str, Any] = {}
     if not os.path.isdir(directory):
@@ -930,7 +1017,59 @@ def load_reviews(state_root: str, course_id: str) -> Dict[str, Any]:
                 out[name[:-5]] = _read_json(os.path.join(directory, name))
             except (OSError, ValueError):
                 continue
+    for mid, review in out.items():
+        path = (sources or {}).get(mid)
+        if not path or not isinstance(review, dict):
+            continue
+        try:
+            changed = os.path.getmtime(path) * 1000
+        except OSError:
+            continue
+        # The owner's own "this is good" counts as a verdict on the text of that moment too.
+        judged = max(float(review.get("at") or 0), float(review.get("accepted") or 0))
+        if changed > judged:
+            review["stale"] = True
+            review["moduleChangedAt"] = int(changed)
     return out
+
+
+def accept_module(state_root: str, course_id: str, mid: str, accepted: bool = True) -> Dict[str, Any]:
+    """The course owner's own verdict: this module is good as it is.
+
+    It lives in the same file as Claude's review, so the row shows one thing. With a review
+    present the findings are kept underneath for reference; without one the record says so
+    (`ownerOnly`), and withdrawing the mark removes the file again.
+    """
+    directory = reviews_dir(state_root, course_id)
+    path = os.path.join(directory, "%s.json" % mid)
+    record: Dict[str, Any] = {}
+    if os.path.isfile(path):
+        try:
+            loaded = _read_json(path)
+            record = loaded if isinstance(loaded, dict) else {}
+        except (OSError, ValueError):
+            record = {}
+    now = int(time.time() * 1000)
+    if accepted:
+        if not record:
+            record = {"module": mid, "verdict": "solid",
+                      "summary": "Marked good by the course owner, without a review.",
+                      "gaps": [], "errors": [], "quiz": [], "rewriteBrief": "",
+                      "at": now, "ownerOnly": True}
+        record["accepted"] = now
+        os.makedirs(directory, exist_ok=True)
+        _write_json(path, record)
+        return record
+    if record.get("ownerOnly"):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        return {}
+    if "accepted" in record:
+        del record["accepted"]
+        _write_json(path, record)
+    return record
 
 
 def review(job: Job, courses_dir: str, state_root: str, course_id: str, mid: str,
@@ -959,7 +1098,7 @@ def review(job: Job, courses_dir: str, state_root: str, course_id: str, mid: str
         body = fh.read()
     result = _fix_review(claude_cli.ask_json(
         prompts.review(plan, plan["modules"], spec, body, assess), model=model,
-        timeout=_timeout("review")))
+        timeout=_timeout("review"), what="a review of %s" % mid))
     result.update(module=mid, title=current.title, at=int(time.time() * 1000), model=model or "")
     directory = reviews_dir(state_root, course_id)
     os.makedirs(directory, exist_ok=True)
