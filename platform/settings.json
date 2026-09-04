@@ -121,7 +121,8 @@
       "railHeightMin": 220,
       "railHeightDefault": 380,
       "sideWidth": 290,
-      "readMin": 640
+      "readMin": 640,
+      "readLine": 0.3
     }
   }
 }

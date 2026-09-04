@@ -237,6 +237,7 @@ function renderStep(m, step) {
 }
 function jump(e, i) {
   e.preventDefault();
+  lockSectionFollowing();
   document.getElementById("sec" + i).scrollIntoView({ behavior: "smooth", block: "start" });
 }
 /* From the chat: take the reader to the part of the module a question was asked about.
@@ -248,6 +249,7 @@ function jumpToPassage(mid, sec, markId) {
     resumeGuard = mid;
     go(`#/m/${mid}/1`);
   }
+  lockSectionFollowing();
   setTimeout(
     () => {
       const mk = markId ? document.querySelector(`mark.hl[data-k="${markId}"]`) : null;
@@ -260,23 +262,52 @@ function jumpToPassage(mid, sec, markId) {
     here ? 0 : 80
   );
 }
+/* Which section is being read. The reading band runs from under the sticky topbar to a
+   fixed fraction of the viewport (`page.ui.readLine`). The current section keeps its place
+   for as long as any of it is inside that band - so a short section stays current while
+   the reader is on it - and when it has left, the section under the band's lower edge takes
+   over. Recomputed on every scroll, so exactly one section is current however short it is
+   (an intersection observer reported two when a short section and its neighbour both
+   touched the band). While a jump is in progress (`rail.sectionLockUntil`) the sections the
+   smooth scroll passes through are ignored, and the lock lasts as long as the scrolling. */
+let sectionScrollHandler = null;
 function setupToc() {
   const links = [...document.querySelectorAll("#toc a")];
   const secs = [...document.querySelectorAll(".sec")];
-  if (!("IntersectionObserver" in window)) return;
-  const io = new IntersectionObserver(
-    ents => {
-      ents.forEach(en => {
-        if (en.isIntersecting) {
-          const i = secs.indexOf(en.target);
-          links.forEach((l, j) => l.classList.toggle("on", j === i));
-          if (i >= 0) setCurSec(i);
-        }
-      });
-    },
-    { rootMargin: "-80px 0px -70% 0px" }
-  );
-  secs.forEach(s => io.observe(s));
+  if (sectionScrollHandler) window.removeEventListener("scroll", sectionScrollHandler);
+  if (!secs.length) return;
+  let queued = false;
+  // A timer, not requestAnimationFrame: frames stop while a tab is hidden or the
+  // renderer is paused, and a throttle that waits for one would then never run again.
+  sectionScrollHandler = () => {
+    if (queued) return;
+    queued = true;
+    setTimeout(() => {
+      queued = false;
+      if (route.view !== "m") return;
+      if (Date.now() < rail.sectionLockUntil) {
+        rail.sectionLockUntil = Date.now() + SCROLL_SETTLE_MS;
+        return;
+      }
+      const i = sectionInView(secs, rail.section);
+      links.forEach((l, j) => l.classList.toggle("on", j === i));
+      setCurSec(i);
+    }, SCROLL_THROTTLE_MS);
+  };
+  window.addEventListener("scroll", sectionScrollHandler, { passive: true });
+  sectionScrollHandler();
+}
+function sectionInView(secs, current) {
+  const bar = document.querySelector(".topbar");
+  const bandTop = bar ? bar.getBoundingClientRect().bottom : 0;
+  const bandBottom = window.innerHeight * LAYOUT.readLine;
+  const held = secs[current] && secs[current].getBoundingClientRect();
+  if (held && held.bottom > bandTop && held.top < bandBottom) return current;
+  let found = 0;
+  secs.forEach((el, i) => {
+    if (el.getBoundingClientRect().top <= bandBottom) found = i;
+  });
+  return found;
 }
 /* pick up where the page was left: the last section seen, if past the first */
 let resumeGuard = "";

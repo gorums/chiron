@@ -44,6 +44,7 @@ function setMarkStatus(mid, id, status) {
 }
 function delMark(mid, id) {
   STATE.marks[mid] = marksOf(mid).filter(x => x.id !== id);
+  forget(id);
   save();
   if (route.view === "m") renderStep(byId(mid), 1);
   else render();

@@ -184,8 +184,11 @@ from the same file opened off disk, and every difference goes through one detect
 
 - **Progress syncs to the platform.** `save()` still writes localStorage, then debounces a
   `PUT /api/courses/<id>/progress`; `pagehide` flushes with `sendBeacon`. On boot `syncPull()`
-  runs before the first render and the newer `updatedAt` wins, so the same course can be
-  studied from two browsers. Device settings (`bridge`, `ui`, `theme`) never leave the
+  runs before the first render and **merges** the platform copy into the local one
+  (`mergeStates` in `01-state.js`: union of every keyed collection, the later entry on a
+  clash, deletions remembered in `STATE.gone`), so two tabs or two browsers never lose each
+  other's chats or highlights. A `storage` event merges what another tab of the same
+  course saved; a tab becoming visible pulls again. Device settings (`bridge`, `ui`, `theme`) never leave the
   browser — `progress.DEVICE_KEYS` strips them again server-side.
 - **The tutor answers on the same origin.** `connMode()` returns `"studio"` when Studio
   reports Claude available and no API key is saved; `askBridge()` then posts to `/api/ask`,

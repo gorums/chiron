@@ -183,6 +183,7 @@ h2.big {
 .sec {
   border-top: 1px solid var(--line);
   padding: 20px 0 4px;
+  scroll-margin-top: 56px; /* the sticky topbar */
 }
 .sec:first-child {
   border-top: 0;

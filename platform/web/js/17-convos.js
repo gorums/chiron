@@ -114,7 +114,8 @@ function pickSection(mid, i) {
   activeConvoIds()[mid] = next.id;
   pruneEmpty(mid, next.id);
   save();
-  rail.sectionLockUntil = Date.now() + 1500;
+  rail.section = i;
+  lockSectionFollowing();
   rail.menuOpen = false;
   rail.pinned = null;
   rail.pinnedQuestions = null;
@@ -158,6 +159,7 @@ function deleteConvo(id) {
     () => {
       const mid = c.mid;
       delete convos()[id];
+      forget(id);
       if (activeConvoIds()[mid] === id) delete activeConvoIds()[mid];
       save();
       rail.menuOpen = false;

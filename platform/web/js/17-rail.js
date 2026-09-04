@@ -9,7 +9,7 @@ const rail = {
   generating: false, // asking the tutor for question suggestions
   menuOpen: false, // the conversation menu is showing
   sending: false, // a reply is on its way
-  sectionLockUntil: 0, // no section-following until this time (a menu pick scrolls past sections)
+  sectionLockUntil: 0, // no section-following until this time (a jump scrolls past sections)
   compacting: false, // a conversation is being summarised into a fresh one
 };
 
@@ -226,6 +226,15 @@ function attachParaButtons(mid) {
 }
 
 /* ---------- context ---------- */
+/* How long after the last scroll event a jump counts as finished. */
+const SCROLL_SETTLE_MS = 250;
+/* How often, at most, the section under the reading line is recomputed while scrolling. */
+const SCROLL_THROTTLE_MS = 40;
+/* A jump is starting: the sections the smooth scroll passes through must not steal the
+   chat. The scroll handler in 07-module.js keeps the lock alive while scrolling lasts. */
+function lockSectionFollowing() {
+  rail.sectionLockUntil = Date.now() + 1500;
+}
 function setCurSec(i) {
   if (i === rail.section) return;
   rail.section = i;

@@ -40,6 +40,7 @@ const blank = () => ({
   sheets: {},
   bridge: connDefaults(),
   streak: { days: 0, last: null, seen: [], freezes: 0, frozen: [] },
+  gone: {}, // id -> when, for conversations and marks deleted on purpose (see mergeStates)
   theme: null,
   v: 1,
 });
@@ -57,7 +58,18 @@ function load() {
 /* Older saves predate some fields; fill them in rather than guarding every read. */
 function upgrade(s) {
   const b = blank();
-  ["mcards", "chk", "cpHist", "bookmarks", "pos", "sheets"].forEach(k => {
+  [
+    "mcards",
+    "chk",
+    "cpHist",
+    "bookmarks",
+    "pos",
+    "sheets",
+    "gone",
+    "convos",
+    "active",
+    "marks",
+  ].forEach(k => {
     if (!s[k] || typeof s[k] !== "object") s[k] = b[k];
   });
   s.plan = Object.assign({}, b.plan, s.plan || {});
@@ -72,6 +84,113 @@ function save() {
     localStorage.setItem(KEY, JSON.stringify(STATE));
   } catch (e) {}
   syncPush();
+}
+
+/* ---- merging two copies of the state ----
+   Two tabs of one course, or two browsers, each hold a copy and save the whole thing.
+   Replacing one copy with the other loses whatever the other did since - a conversation,
+   a highlight, a section ticked - which is how chats went missing. So copies are merged:
+   every keyed collection is the union of both, a key held by both taking the entry from
+   the copy that saved later (a conversation: the one updated later), progress per module
+   keeping every section read on either side, and deletions remembered in `gone` so a
+   stale copy cannot bring a deleted conversation or mark back. Scalars come from the
+   later copy. Device settings (`bridge`, `ui`, `theme`) are the caller's business. */
+const MERGED_MAPS = [
+  "progress",
+  "cards",
+  "mcards",
+  "notes",
+  "marks",
+  "convos",
+  "active",
+  "chk",
+  "bookmarks",
+  "pos",
+  "sheets",
+];
+function mergeStates(a, b) {
+  const [older, newer] = (a.updatedAt || 0) <= (b.updatedAt || 0) ? [a, b] : [b, a];
+  const out = Object.assign(blank(), newer);
+  const gone = Object.assign({}, older.gone || {}, newer.gone || {});
+  out.gone = gone;
+  MERGED_MAPS.forEach(k => {
+    out[k] = Object.assign({}, older[k] || {}, newer[k] || {});
+  });
+
+  Object.keys(out.convos).forEach(id => {
+    const x = (older.convos || {})[id],
+      y = (newer.convos || {})[id];
+    if (gone[id]) delete out.convos[id];
+    else if (x && y) out.convos[id] = (x.updated || 0) > (y.updated || 0) ? x : y;
+  });
+  Object.keys(out.active).forEach(mid => {
+    if (!out.convos[out.active[mid]]) delete out.active[mid];
+  });
+
+  out.marks = {};
+  const mids = new Set([...Object.keys(older.marks || {}), ...Object.keys(newer.marks || {})]);
+  mids.forEach(mid => {
+    const byId = {};
+    [...((older.marks || {})[mid] || []), ...((newer.marks || {})[mid] || [])].forEach(mk => {
+      if (mk && mk.id && !gone[mk.id]) byId[mk.id] = mk;
+    });
+    out.marks[mid] = Object.values(byId);
+  });
+
+  Object.keys(out.progress).forEach(mid => {
+    const x = (older.progress || {})[mid],
+      y = (newer.progress || {})[mid];
+    if (!x || !y) return;
+    const p = (out.progress[mid] = Object.assign({}, x, y));
+    p.secs = Object.assign({}, x.secs || {}, y.secs || {});
+    p.elab = Object.assign({}, x.elab || {}, y.elab || {});
+    p.elabFb = Object.assign({}, x.elabFb || {}, y.elabFb || {});
+    p.time = Math.max(x.time || 0, y.time || 0);
+    p.done = !!(x.done || y.done);
+    p.doneAt = y.doneAt || x.doneAt || null;
+    p.predict = y.predict || x.predict || "";
+    p.transfer = y.transfer || x.transfer || null;
+    if (x.quiz && x.quiz.finished && !(y.quiz && y.quiz.finished)) p.quiz = x.quiz;
+  });
+
+  const sa = older.streak || {},
+    sb = newer.streak || {};
+  out.streak = Object.assign({}, sa, sb);
+  out.streak.days = Math.max(sa.days || 0, sb.days || 0);
+  out.streak.last = Math.max(sa.last || 0, sb.last || 0) || null;
+  out.streak.seen = [...new Set([...(sa.seen || []), ...(sb.seen || [])])].sort((p, q) => p - q);
+  out.streak.frozen = [...new Set([...(sa.frozen || []), ...(sb.frozen || [])])].sort(
+    (p, q) => p - q
+  );
+
+  const seenAt = new Set((newer.cpHist || []).map(h => h.at));
+  out.cpHist = [
+    ...(newer.cpHist || []),
+    ...(older.cpHist || []).filter(h => !seenAt.has(h.at)),
+  ].sort((p, q) => (p.at || 0) - (q.at || 0));
+
+  out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
+  return out;
+}
+/* Something deleted on purpose stays deleted when copies merge. */
+function forget(id) {
+  if (!STATE.gone) STATE.gone = {};
+  STATE.gone[id] = Date.now();
+}
+/* Another tab of this course saved: take in what it did. The rail is redrawn only when
+   the reader is not mid-sentence there. */
+window.addEventListener("storage", e => {
+  if (e.key !== KEY || !e.newValue) return;
+  try {
+    STATE = upgrade(mergeStates(STATE, JSON.parse(e.newValue)));
+  } catch (err) {
+    return;
+  }
+  refreshRailQuietly();
+});
+function refreshRailQuietly() {
+  const inp = document.getElementById("railin");
+  if (route.view === "m" && railOpen() && !rail.sending && !(inp && inp.value)) renderRail();
 }
 
 /* ---- platform sync ----
@@ -134,20 +253,34 @@ async function syncPull() {
     syncOn = true;
     syncState = "on";
     const remote = j && j.state;
-    if (remote && (remote.updatedAt || 0) > (STATE.updatedAt || 0)) {
-      const keep = { bridge: STATE.bridge, ui: STATE.ui, theme: STATE.theme };
-      STATE = upgrade(Object.assign(blank(), remote, keep));
-      try {
-        localStorage.setItem(KEY, JSON.stringify(STATE));
-      } catch (e) {}
-      return true;
+    if (!remote) {
+      syncPush(true);
+      return false;
     }
-    if (!remote || (STATE.updatedAt || 0) > (remote.updatedAt || 0)) syncPush(true);
+    // Merge rather than replace: the platform copy may be behind this browser on some
+    // things and ahead on others. Whatever this browser had that the platform lacked
+    // goes back up straight away.
+    const keep = { bridge: STATE.bridge, ui: STATE.ui, theme: STATE.theme };
+    const before = JSON.stringify(STATE);
+    STATE = upgrade(Object.assign(mergeStates(STATE, remote), keep));
+    const changed = JSON.stringify(STATE) !== before;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(STATE));
+    } catch (e) {}
+    if (changed || (STATE.updatedAt || 0) > (remote.updatedAt || 0)) syncPush(true);
+    return changed;
   } catch (e) {
     syncState = "off";
   }
   return false;
 }
+/* Coming back to a tab that sat in the background: another browser may have studied since. */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !STUDIO) return;
+  syncPull().then(changed => {
+    if (changed) refreshRailQuietly();
+  });
+});
 function syncPush(now) {
   if (!STUDIO || !syncOn) return;
   clearTimeout(syncTimer);
