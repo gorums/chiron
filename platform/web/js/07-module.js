@@ -189,6 +189,20 @@ function renderStep(m, step) {
   }
 }
 function jump(e, i) { e.preventDefault(); document.getElementById("sec" + i).scrollIntoView({ behavior: "smooth", block: "start" }); }
+/* From the chat: take the reader to the part of the module a question was asked about.
+   The passage itself when the question came from a selection, the section otherwise.
+   Switches to the Read step first when the reader is elsewhere. */
+function jumpToPassage(mid, sec, markId) {
+  const here = route.v === "m" && route.id === mid && (route.step || 0) === 1;
+  if (!here) { resumeGuard = mid; go(`#/m/${mid}/1`); }
+  setTimeout(() => {
+    const mk = markId ? document.querySelector(`mark.hl[data-k="${markId}"]`) : null;
+    const el = mk || document.getElementById("sec" + sec);
+    if (!el) return;
+    el.scrollIntoView({ behavior: here ? "smooth" : "auto", block: mk ? "center" : "start" });
+    el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600);
+  }, here ? 0 : 80);
+}
 function setupToc() {
   const links = [...document.querySelectorAll("#toc a")];
   const secs = [...document.querySelectorAll(".sec")];
