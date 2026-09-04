@@ -628,5 +628,82 @@ class TestShippedMarketingCourse(unittest.TestCase):
         self.assertEqual(sum(len(m.sections) for m in mods), 152)
 
 
+
+class TestCodeConventions(unittest.TestCase):
+    """The rules in CLAUDE.md "Code conventions" that a test can hold."""
+
+    PLATFORM = os.path.dirname(HERE)
+    REPO = os.path.dirname(PLATFORM)
+
+    def _python_files(self):
+        out = []
+        for sub in ("coursekit", "studio"):
+            base = os.path.join(self.PLATFORM, sub)
+            out += [os.path.join(base, n) for n in sorted(os.listdir(base)) if n.endswith(".py")]
+        return out
+
+    def test_every_module_starts_with_a_docstring(self):
+        """A module says what it is for before it says anything else."""
+        import ast
+        missing = []
+        for path in self._python_files():
+            if os.path.basename(path) == "__init__.py":
+                continue
+            with open(path, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read())
+            if not ast.get_docstring(tree):
+                missing.append(os.path.relpath(path, self.PLATFORM))
+        self.assertEqual(missing, [], "modules without a docstring: %s" % missing)
+
+    def test_no_module_reaches_into_another_modules_privates(self):
+        """`_name` is private to its module. Something two modules need is public and lives
+        in one place (files.py, ids.py, ...)."""
+        import re
+        offenders = []
+        pattern = re.compile(r"\b(?!self\b|cls\b)([a-z_][a-z0-9_]*)\._[a-z][a-zA-Z0-9_]*\b")
+        for path in self._python_files():
+            with open(path, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    code = line.split("#")[0]
+                    for m in pattern.finditer(code):
+                        if m.group(1) in ("self", "cls", "os", "sys", "re", "json"):
+                            continue
+                        offenders.append("%s:%d %s" % (os.path.relpath(path, self.PLATFORM), n, m.group(0)))
+        self.assertEqual(offenders, [], "\n".join(offenders))
+
+    def _prettier(self):
+        """The formatter, when it is installed: `npm install` at the repo root, or on PATH."""
+        local = os.path.join(self.REPO, "node_modules", ".bin",
+                             "prettier.cmd" if os.name == "nt" else "prettier")
+        if os.path.isfile(local):
+            return local
+        return shutil.which("prettier")
+
+    def test_front_end_source_is_prettier_formatted(self):
+        """One statement per line, one style everywhere: `npm run format` before a commit."""
+        prettier = self._prettier()
+        if not prettier:
+            self.skipTest("prettier not installed (npm install)")
+        import subprocess
+        proc = subprocess.run([prettier, "--check", "platform/web/js/*.js", "platform/web/css/*.css",
+                               "platform/studio/ui/js/*.js", "platform/studio/ui/*.css",
+                               "platform/tests/page_smoke.js"],
+                              cwd=self.REPO, capture_output=True, text=True, encoding="utf-8",
+                              shell=(os.name == "nt"))
+        self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
+
+    def test_page_javascript_files_stay_small(self):
+        """A file is one concern. Past this size it is two, and should be split (17-rail.js
+        became 17-convos.js + 17-rail.js at 800 lines)."""
+        big = []
+        for path in bundler.source_files():
+            if path.endswith(".js"):
+                with open(path, encoding="utf-8") as fh:
+                    n = sum(1 for _ in fh)
+                if n > 700:
+                    big.append("%s: %d lines" % (os.path.basename(path), n))
+        self.assertEqual(big, [], "\n".join(big))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

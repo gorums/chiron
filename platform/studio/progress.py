@@ -15,16 +15,12 @@ describe a browser, not a reader, and a key does not belong in a file that may b
 
 from __future__ import annotations
 
-import json
 import os
-import re
-import tempfile
 import time
 from typing import Any, Dict, Optional
 
-SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,48}$")
-SAFE_PROFILE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
-DEFAULT_PROFILE = "default"
+from .files import read_json, write_json
+from .ids import DEFAULT_PROFILE, is_course_id, is_profile
 
 # Keys in the page's state object that describe the browser, not the reader.
 DEVICE_KEYS = ("bridge", "ui", "theme")
@@ -40,14 +36,14 @@ class Store:
 
     def __init__(self, directory: str, profile: str = DEFAULT_PROFILE):
         profile = (profile or DEFAULT_PROFILE).strip().lower()
-        if not SAFE_PROFILE.match(profile):
+        if not is_profile(profile):
             raise ValueError("Bad profile name.")
         self.root = directory
         self.profile = profile
         self.directory = directory if profile == DEFAULT_PROFILE else os.path.join(directory, profile)
 
     def path(self, course_id: str) -> str:
-        if not SAFE_ID.match(course_id):
+        if not is_course_id(course_id):
             raise ValueError("Bad course id.")
         return os.path.join(self.directory, "%s.json" % course_id)
 
@@ -65,8 +61,7 @@ class Store:
         if not os.path.isfile(path):
             return None
         try:
-            with open(path, encoding="utf-8") as fh:
-                record = json.load(fh)
+            record = read_json(path)
         except (OSError, ValueError):
             return None
         if not isinstance(record, dict) or not isinstance(record.get("state"), dict):
@@ -80,21 +75,11 @@ class Store:
         clean = {k: v for k, v in state.items() if k not in DEVICE_KEYS}
         record = {
             "course": course_id,
-            "updatedAt": _number(clean.get("updatedAt")) or int(time.time() * 1000),
+            "updatedAt": number(clean.get("updatedAt")) or int(time.time() * 1000),
             "receivedAt": int(time.time() * 1000),
             "state": clean,
         }
-        os.makedirs(self.directory, exist_ok=True)
-        path = self.path(course_id)
-        # Write-then-rename so a crash mid-write cannot leave a half file behind.
-        fd, tmp = tempfile.mkstemp(prefix=".progress-", suffix=".json", dir=self.directory)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(record, fh, ensure_ascii=False)
-            os.replace(tmp, path)
-        finally:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
+        write_json(self.path(course_id), record, indent=None)
         return record
 
     def delete(self, course_id: str) -> bool:
@@ -123,7 +108,7 @@ def profiles(directory: str) -> list:
     names = set()
     if os.path.isdir(directory):
         for name in os.listdir(directory):
-            if SAFE_PROFILE.match(name) and os.path.isdir(os.path.join(directory, name)):
+            if is_profile(name) and os.path.isdir(os.path.join(directory, name)):
                 names.add(name)
     names.discard(DEFAULT_PROFILE)
     return [DEFAULT_PROFILE] + sorted(names)
@@ -136,12 +121,12 @@ def summarise(state: Dict[str, Any], ids) -> Dict[str, Any]:
     entry = lambda mid: progress.get(mid) if isinstance(progress.get(mid), dict) else {}  # noqa: E731
     done = [mid for mid in ids if entry(mid).get("done")]
     started = [mid for mid in ids if mid not in done and _touched(entry(mid))]
-    seconds = sum(_number(entry(mid).get("time")) for mid in ids)
+    seconds = sum(number(entry(mid).get("time")) for mid in ids)
     raw_cards = state.get("cards")
     cards = raw_cards if isinstance(raw_cards, dict) else {}
     today = int(time.time() // 86400)
     due = sum(1 for c in cards.values()
-              if isinstance(c, dict) and _number(c.get("due")) <= today)
+              if isinstance(c, dict) and number(c.get("due")) <= today)
     # Continue where the reader left off: first started module, else first undone one.
     nxt = started[0] if started else next((mid for mid in ids if mid not in done), None)
     streak = state.get("streak") if isinstance(state.get("streak"), dict) else {}
@@ -167,7 +152,8 @@ def _touched(entry: Any) -> bool:
     return isinstance(secs, dict) and any(secs.values())
 
 
-def _number(value: Any) -> float:
+def number(value: Any) -> float:
+    """A float out of whatever the page stored, 0.0 for anything unusable."""
     try:
         return float(value or 0)
     except (TypeError, ValueError):

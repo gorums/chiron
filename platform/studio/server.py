@@ -1,9 +1,15 @@
-"""The Course Studio server.
+"""The Course Studio server: HTTP in, JSON out.
 
 A small local app: it serves the Studio UI, lists and builds courses, runs generation jobs,
 keeps the platform-side copy of the reader's progress, and answers the tutor inside a served
-course. Bound to 127.0.0.1 so nothing outside this machine can reach it — it writes files
+course. Bound to 127.0.0.1 so nothing outside this machine can reach it - it writes files
 and spawns processes, so that binding is a security boundary, not a default.
+
+Every route is one method on `Handler`, registered with `@route(METHOD, pattern)`. The
+pattern is a regex over the URL path; its named groups become the method's keyword
+arguments. A `course_id` group is checked and resolved before the method runs (400 for a
+bad id, 404 for a missing course) and a `mid` group is checked for shape, so a handler can
+trust both. The table at the bottom of the class lists every route in one place.
 
     GET  /                                  the UI
     GET  /api/state                         courses (with progress), Claude availability, jobs,
@@ -57,280 +63,62 @@ import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from coursekit import config as ck_config
 from coursekit import loader as ck_loader
 from coursekit.errors import CourseError
-from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
-from coursekit import settings as ck_settings
+from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, generator, jobs, manage, prefs, progress, search, transfer
-from .log import log
+from . import catalog, claude_cli, curriculum, editing, generator, jobs, manage, progress, reviews, search, transfer
 from . import log as logmod
+from .errors import GenerationError
+from .files import write_text
+from .ids import DEFAULT_PROFILE, is_course_id, is_module_id, is_profile
+from .log import log
+from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, TRASH_DIR, store
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI_DIR = os.path.join(HERE, "ui")
-PLATFORM_DIR = os.path.dirname(HERE)
-# COURSES_DIR and DIST_DIR come from coursekit.paths: courses are separate repositories
-# and live wherever `.env` or the environment says, not inside this one.
-# Reader progress, kept apart from both the course (which is content) and dist/ (which is
-# regenerated). `paths.state` / `paths.progress` in settings.json; STUDIO_STATE_ROOT and
-# STUDIO_STATE_DIR override them so a container can point at a volume of its own.
-STATE_ROOT = SETTINGS.state_dir
-STATE_DIR = SETTINGS.progress_dir
-JOBS_DIR = os.path.join(STATE_ROOT, "jobs")       # finished jobs, replayable after a restart
-TRASH_DIR = os.path.join(STATE_ROOT, "trash")     # removed modules and courses, never deleted
-LOGS_DIR = os.path.join(STATE_ROOT, "logs")       # studio.log, rotating
-PREFS_PATH = os.path.join(STATE_ROOT, "studio.json")
 
 # `studio.port` / `studio.host` in settings.json; STUDIO_PORT and STUDIO_HOST override them.
-# The host is loopback unless told otherwise. Studio writes files and spawns processes, so
-# the default must stay local. A container sets 0.0.0.0 to be reachable through its
-# published port, and compose publishes that port to loopback on the host so the boundary
-# is preserved.
+# The host is loopback unless told otherwise. A container sets 0.0.0.0 to be reachable
+# through its published port, and compose publishes that port to loopback on the host so
+# the boundary is preserved.
 DEFAULT_PORT = int(SETTINGS.get("studio.port"))
 DEFAULT_HOST = str(SETTINGS.get("studio.host"))
-SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,48}$")
-SAFE_MID = re.compile(r"^M\d{2,3}$")
-EDITABLE = (".md", ".json")
 MAX_BODY = int(SETTINGS.get("studio.maxBodyBytes"))
 ASK_TIMEOUT = int(SETTINGS.get("studio.askTimeout"))
-RECENT_JOBS = int(SETTINGS.get("studio.recentJobs"))
 GIT_TIMEOUT = int(SETTINGS.get("studio.gitTimeout"))
 SEARCH_LIMIT = int(SETTINGS.get("studio.searchLimit"))
 MIN_HOURS = float(SETTINGS.get("generation.minHours"))
 MAX_HOURS = float(SETTINGS.get("generation.maxHours"))
 
-REGISTRY = jobs.Registry(JOBS_DIR)
-PREFS = prefs.Prefs(PREFS_PATH)
+NO_CLAUDE = "Claude Code is not on this PATH, so nothing can be written."
+JOB_RUNNING = "That course already has a job running."
+
+# --------------------------------------------------------------------------- routing
+
+Route = Tuple[str, "re.Pattern[str]", Callable]
+ROUTES: List[Route] = []
 
 
-def store() -> progress.Store:
-    """The progress store of the active reader profile. Resolved per request, so switching
-    profiles in Studio takes effect without a restart."""
-    return progress.Store(STATE_DIR, PREFS.profile)
-LOG_FILE = logmod.configure(LOGS_DIR)
+def route(method: str, pattern: str):
+    """Register a Handler method for `METHOD <pattern>`. Named groups become arguments."""
+    def register(fn):
+        ROUTES.append((method, re.compile("^" + pattern + "$"), fn))
+        return fn
+    return register
 
 
-# --------------------------------------------------------------------------- course listing
-
-
-def _module_ids(cfg) -> List[str]:
-    """Module ids in course order, from filenames alone - cheap enough for every listing.
-    The order is the loader's (`course.json` `order`, then filename), so it matches the build."""
-    ids = []
-    for part in cfg.parts:
-        if not os.path.isdir(os.path.join(cfg.modules_dir, part.dir)):
-            continue
-        for name in ck_loader.module_files(cfg, part):
-            ids.append(name.split("-", 1)[0])
-    return ids
-
-
-def course_summary(course_id: str) -> Dict[str, Any]:
-    root = os.path.join(COURSES_DIR, course_id)
-    info: Dict[str, Any] = {"id": course_id, "ok": False, "title": course_id,
-                            "modules": 0, "hours": 0, "built": False, "error": ""}
-    try:
-        cfg = ck_config.load(root)
-        ids = _module_ids(cfg)
-        info.update(ok=True, title=cfg.title, hours=cfg.hours, tagline=cfg.tagline,
-                    subject=cfg.subject, parts=len(cfg.parts), modules=len(ids),
-                    localFile=cfg.local_file, webFile=cfg.web_file,
-                    progress=store().summary(course_id, ids))
-        built = os.path.join(DIST_DIR, cfg.id, cfg.local_file)
-        if os.path.isfile(built):
-            info.update(built=True, builtAt=os.path.getmtime(built))
-        info["resumable"] = can_resume(course_id)
-    except CourseError as exc:
-        info["error"] = str(exc)
-    except Exception as exc:  # noqa: BLE001
-        info["error"] = str(exc)
-    job = REGISTRY.active_for(course_id)
-    if job:
-        info["job"] = job.summary()
-    return info
-
-
-def course_detail(course_id: str) -> Dict[str, Any]:
-    """Everything the course page in Studio shows. Parses the modules, so not for listings."""
-    info = course_summary(course_id)
-    if not info["ok"]:
-        return info
-    root = os.path.join(COURSES_DIR, course_id)
-    cfg = ck_config.load(root)
-    info["parts"] = [dict(p.public(), dir=p.dir) for p in cfg.parts]
-    info["audience"] = cfg.audience
-    info["practitioner"] = cfg.practitioner
-    info["moduleList"] = []
-    sources: Dict[str, str] = {}
-    try:
-        for m in ck_loader.load_modules(cfg):
-            sources[m.id] = m.source
-            info["moduleList"].append({
-                "id": m.id, "num": m.num, "part": m.part, "title": m.title, "short": m.short,
-                "minutes": m.minutes, "sections": len(m.sections),
-                "path": os.path.relpath(m.source, root).replace(os.sep, "/"),
-            })
-    except CourseError as exc:
-        info["error"] = str(exc)
-    info["files"] = course_files(root)
-    record = store().load(course_id)
-    state_obj = record["state"] if record else {}
-    info["moduleProgress"] = _module_progress(state_obj)
-    info["questions"] = open_questions(state_obj, info["moduleList"])
-    info["settings"] = manage.settings(root)
-    info["order"] = cfg.order
-    info["reviews"] = generator.load_reviews(STATE_ROOT, course_id, sources)
-    info["profile"] = PREFS.profile
-    return info
-
-
-def open_questions(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """The passages the reader marked with a question, newest first.
-
-    These are the reader's own record of where the course stopped short - the best brief an
-    Add-a-module form can be given.
-    """
-    titles = {m["id"]: m["title"] for m in module_list}
-    out = []
-    marks = state.get("marks") if isinstance(state.get("marks"), dict) else {}
-    for mid, rows in marks.items():
-        for m in rows if isinstance(rows, list) else []:
-            if not isinstance(m, dict) or m.get("status") not in ("open", "answered"):
-                continue
-            out.append({
-                "mid": mid, "title": titles.get(mid, mid), "id": m.get("id", ""),
-                "sec": m.get("sec"), "text": str(m.get("text") or "")[:400],
-                "q": str(m.get("q") or "")[:400], "note": str(m.get("note") or "")[:400],
-                "status": m.get("status"), "ts": m.get("ts") or 0,
-            })
-    return sorted(out, key=lambda q: q["ts"], reverse=True)
-
-
-def _module_progress(state: Dict[str, Any]) -> Dict[str, Any]:
-    out = {}
-    for mid, entry in (state.get("progress") or {}).items():
-        if not isinstance(entry, dict):
-            continue
-        secs = entry.get("secs") or {}
-        out[mid] = {
-            "done": bool(entry.get("done")),
-            "minutes": int(progress._number(entry.get("time")) // 60),
-            "read": sum(1 for v in secs.values() if v) if isinstance(secs, dict) else 0,
-            "quiz": bool((entry.get("quiz") or {}).get("finished")) if isinstance(entry.get("quiz"), dict) else False,
-        }
-    return out
-
-
-def course_files(root: str) -> List[str]:
-    """Every markdown and JSON file in the course, as repo-relative posix paths."""
-    out = []
-    for base, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
-        for name in sorted(files):
-            if name.endswith(EDITABLE):
-                out.append(os.path.relpath(os.path.join(base, name), root).replace(os.sep, "/"))
-    return out
-
-
-def list_courses() -> list:
-    if not os.path.isdir(COURSES_DIR):
-        return []
-    ids = sorted(d for d in os.listdir(COURSES_DIR)
-                 if os.path.isfile(os.path.join(COURSES_DIR, d, "course.json")))
-    return [course_summary(cid) for cid in ids]
-
-
-def calendar(courses: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Study days across every course, for the library's heatmap and the cross-course streak.
-
-    A day counts when any course marked it. The streak is the run of consecutive days ending
-    today or yesterday - yesterday, so a reader who has not opened anything yet today does not
-    see their streak vanish at breakfast.
-    """
-    by_day: Dict[str, List[str]] = {}
-    for c in courses:
-        for day in ((c.get("progress") or {}).get("seen") or []):
-            by_day.setdefault(str(int(day)), []).append(c["id"])
-    today = int(time.time() // 86400)
-    days = {int(k) for k in by_day}
-    streak, cursor = 0, today if today in days else today - 1
-    while cursor in days:
-        streak += 1
-        cursor -= 1
-    return {"days": by_day, "streak": streak, "today": today, "total": len(days)}
-
-
-def state() -> Dict[str, Any]:
-    courses = list_courses()
-    return {
-        "courses": courses,
-        "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or "",
-                   "model": PREFS.model},
-        "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
-        "root": REPO_ROOT,
-        "profile": PREFS.profile,
-        "profiles": progress.profiles(STATE_DIR),
-        "calendar": calendar(courses),
-        "git": bool(transfer.shutil.which("git")),
-    }
-
-
-def profiles_view() -> Dict[str, Any]:
-    return {"active": PREFS.profile, "profiles": progress.profiles(STATE_DIR)}
-
-
-def settings_view() -> Dict[str, Any]:
-    return {
-        "model": PREFS.model,
-        "profile": PREFS.profile,
-        "models": [{"id": m[0], "name": m[1], "note": m[2]} for m in prefs.MODELS],
-        "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or ""},
-        "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,
-                  "state": STATE_ROOT, "log": LOG_FILE, "settings": SETTINGS.path,
-                  "overlay": SETTINGS.overlay},
-        "platform": SETTINGS.describe(),
-        "overrides": dict(SETTINGS.overrides),
-        "envKeys": dict(ck_settings.ENV_KEYS),
-        "logs": {"maxBytes": logmod.MAX_BYTES, "backups": logmod.BACKUPS},
-    }
-
-
-def can_resume(course_id: str) -> bool:
-    """A course that does not build clean but still has a curriculum to finish from -
-    saved in plan/plan.json, or reconstructible from course.json."""
-    root = os.path.join(COURSES_DIR, course_id)
-    try:
-        generator._load_plan(root)
-    except (CourseError, generator.GenerationError, ValueError, OSError):
-        return False
-    try:
-        return bool(generator.check_course(root))
-    except CourseError:
-        return True
-
-
-def resolve_course_file(course_id: str, relative: str) -> str:
-    """A path inside the course folder, or a ValueError. Only markdown and JSON qualify."""
-    root = os.path.join(COURSES_DIR, course_id)
-    clean = posixpath.normpath("/" + (relative or "").replace("\\", "/").lstrip("/")).lstrip("/")
-    if not clean or clean == "." or not clean.endswith(EDITABLE):
-        raise ValueError("Only .md and .json files inside the course can be edited.")
-    full = os.path.normpath(os.path.join(root, clean))
-    if os.path.commonpath([os.path.abspath(root), os.path.abspath(full)]) != os.path.abspath(root):
-        raise ValueError("That path is outside the course.")
-    return full
-
-
-# --------------------------------------------------------------------------- handler
+COURSE = r"/api/courses/(?P<course_id>[^/]+)"
+MODULE = COURSE + r"/modules/(?P<mid>[^/]+)"
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "CourseStudio/1.1"
+    server_version = "CourseStudio/1.2"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):      # access lines go to the log at DEBUG, not the console
@@ -338,6 +126,43 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_error(self, fmt, *args):
         log.warning("http: " + (fmt % args))
+
+    # ---- dispatch ----
+
+    def do_GET(self):
+        self._dispatch("GET")
+
+    def do_PUT(self):
+        self._dispatch("PUT")
+
+    def do_POST(self):
+        self._dispatch("POST")
+
+    def _dispatch(self, method: str) -> None:
+        url = urlparse(self.path)
+        self.query = parse_qs(url.query)
+        self._raw = None
+        try:
+            self._raw_body()                 # drain first, whatever the route does; see _raw_body
+            for verb, pattern, fn in ROUTES:
+                found = pattern.match(url.path) if verb == method else None
+                if not found:
+                    continue
+                args = found.groupdict()
+                if "course_id" in args and not self._course_exists(args["course_id"]):
+                    return
+                if "mid" in args and not is_module_id(args["mid"]):
+                    return self._fail("Bad module id.")
+                return fn(self, **args)
+            self._fail("Not found", 404)
+        except BrokenPipeError:
+            pass
+        except CourseError as exc:
+            log.warning("%s %s: %s", method, url.path, exc)
+            self._fail(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            log.exception("%s %s failed", method, url.path)
+            self._fail(str(exc), 500)
 
     # ---- plumbing ----
 
@@ -364,13 +189,13 @@ class Handler(BaseHTTPRequestHandler):
     def _raw_body(self) -> bytes:
         """The request body, read exactly once.
 
-        Every handler must consume it, even one that ignores it: the server speaks
+        Every request must consume it, even a route that ignores it: the server speaks
         HTTP/1.1 with keep-alive, so bytes left unread sit on the connection and become the
         first bytes of the *next* request - which then fails with "Bad request syntax ('{}')"
         and the browser sees an HTML error page where it expected JSON.
         """
         # One handler instance serves a whole keep-alive connection, so the cache is per
-        # request: do_GET/do_POST/do_PUT reset it before anything else runs.
+        # request: _dispatch resets it before anything else runs.
         if getattr(self, "_raw", None) is not None:
             return self._raw
         length = int(self.headers.get("Content-Length") or 0)
@@ -393,77 +218,46 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         return data if isinstance(data, dict) else {}
 
-    def _course_root(self, course_id: str) -> Optional[str]:
-        if not SAFE_ID.match(course_id):
+    def _param(self, name: str, default: str = "") -> str:
+        return (self.query.get(name) or [default])[0]
+
+    def _course_exists(self, course_id: str) -> bool:
+        if not is_course_id(course_id):
             self._fail("Bad course id.")
-            return None
-        root = os.path.join(COURSES_DIR, course_id)
-        if not os.path.isfile(os.path.join(root, "course.json")):
+            return False
+        if not os.path.isfile(os.path.join(catalog.course_root(course_id), "course.json")):
             self._fail("No such course.", 404)
-            return None
-        return root
+            return False
+        return True
 
-    # ---- GET ----
+    def _idle(self, course_id: str, message: str = JOB_RUNNING) -> bool:
+        """False, with the reply sent, when a job already runs on the course."""
+        if REGISTRY.active_for(course_id):
+            self._fail(message)
+            return False
+        return True
 
-    def do_GET(self):
-        url = urlparse(self.path)
-        path = url.path
-        self._raw = None
-        try:
-            self._raw_body()                     # a GET with a body is odd but must not poison the next request
-            if path in ("/", "/index.html"):
-                return self._static(os.path.join(UI_DIR, "index.html"))
-            if path.startswith("/ui/"):
-                return self._static(self._under(UI_DIR, path[4:]))
-            if path == "/api/state":
-                return self._json(state())
-            if path == "/api/search":
-                q = (parse_qs(url.query).get("q") or [""])[0]
-                return self._json(search.search(COURSES_DIR, q, SEARCH_LIMIT))
-            if path == "/api/profile":
-                return self._json({"profile": PREFS.profile})
-            if path == "/api/profiles":
-                return self._json(profiles_view())
-            if path.startswith("/api/jobs/") and path.endswith("/events"):
-                return self._events(path.split("/")[3], url)
-            if path.startswith("/api/courses/"):
-                bits = path.split("/")
-                if len(bits) == 4:
-                    return self._course_get(bits[3])
-                if len(bits) == 5 and bits[4] == "progress":
-                    return self._progress_get(bits[3])
-                if len(bits) == 5 and bits[4] == "files":
-                    return self._file_get(bits[3], url)
-                if len(bits) == 5 and bits[4] == "settings":
-                    return self._settings_get(bits[3])
-                if len(bits) == 5 and bits[4] == "export":
-                    return self._export(bits[3])
-                if len(bits) == 5 and bits[4] == "reviews":
-                    if not self._course_root(bits[3]):
-                        return
-                    return self._json({"reviews": generator.load_reviews(STATE_ROOT, bits[3])})
-            if path == "/api/settings":
-                return self._json(settings_view())
-            if path == "/api/logs":
-                q = parse_qs(url.query)
-                return self._json({"lines": logmod.recent(
-                    limit=int((q.get("limit") or ["400"])[0]),
-                    level=(q.get("level") or [""])[0], contains=(q.get("q") or [""])[0]),
-                    "file": LOG_FILE})
-            if path.startswith("/course/"):
-                return self._built_file(path)
-            return self._fail("Not found", 404)
-        except BrokenPipeError:
-            pass
-        except CourseError as exc:
-            log.warning("GET %s: %s", path, exc)
-            self._fail(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            log.exception("GET %s failed", path)
-            self._fail(str(exc), 500)
+    def _claude(self, message: str = NO_CLAUDE) -> bool:
+        """False, with the reply sent, when Claude Code cannot be found."""
+        if not claude_cli.available():
+            self._fail(message)
+            return False
+        return True
 
-    def _under(self, base: str, relative: str) -> str:
-        """Resolve inside `base` or refuse — the UI path is user-supplied."""
+    def _model(self, brief: Dict[str, Any]) -> str:
+        """The model a job should use: the request's, else Studio's default."""
+        asked = str(brief.get("model") or "").strip()
+        return asked if asked in claude_cli.MODEL_ALIASES else PREFS.model
+
+    def _start_job(self, job: jobs.Job, work: Callable[[jobs.Job], Any]) -> None:
+        REGISTRY.add(job).start(work)
+        self._json({"job": job.summary()})
+
+    # ---- static files ----
+
+    @staticmethod
+    def _under(base: str, relative: str) -> str:
+        """Resolve inside `base` or refuse - the UI path is user-supplied."""
         clean = posixpath.normpath("/" + relative.lstrip("/")).lstrip("/")
         full = os.path.normpath(os.path.join(base, clean))
         if os.path.commonpath([os.path.abspath(base), os.path.abspath(full)]) != os.path.abspath(base):
@@ -479,47 +273,189 @@ class Handler(BaseHTTPRequestHandler):
         with open(path, "rb") as fh:
             self._send(200, fh.read(), ctype)
 
-    def _built_file(self, path: str) -> None:
-        bits = path.split("/", 3)
-        if len(bits) < 4 or not SAFE_ID.match(bits[2]):
-            return self._fail("Not found", 404)
-        return self._static(self._under(os.path.join(DIST_DIR, bits[2]), bits[3]))
+    @route("GET", r"/(index\.html)?")
+    def ui_index(self):
+        self._static(os.path.join(UI_DIR, "index.html"))
 
-    def _course_get(self, course_id: str) -> None:
-        if not self._course_root(course_id):
-            return
-        self._json(course_detail(course_id))
+    @route("GET", r"/ui/(?P<path>.+)")
+    def ui_file(self, path: str):
+        self._static(self._under(UI_DIR, path))
 
-    def _settings_get(self, course_id: str) -> None:
-        root = self._course_root(course_id)
-        if not root:
-            return
-        self._json(manage.settings(root))
+    @route("GET", r"/course/(?P<course_id>[^/]+)/(?P<path>.+)")
+    def built_file(self, course_id: str, path: str):
+        self._static(self._under(os.path.join(DIST_DIR, course_id), path))
 
-    def _progress_get(self, course_id: str) -> None:
-        if not self._course_root(course_id):
-            return
-        record = store().load(course_id)
-        self._json({"state": record["state"] if record else None,
-                    "updatedAt": record["updatedAt"] if record else None,
-                    "profile": PREFS.profile})
+    # ---- the library ----
 
-    def _export(self, course_id: str) -> None:
-        root = self._course_root(course_id)
-        if not root:
-            return
-        data = transfer.export_zip(root)
+    @route("GET", r"/api/state")
+    def state(self):
+        self._json(catalog.state())
+
+    @route("GET", r"/api/search")
+    def search(self):
+        self._json(search.search(COURSES_DIR, self._param("q"), SEARCH_LIMIT))
+
+    @route("GET", r"/api/settings")
+    def settings_get(self):
+        self._json(catalog.settings_view())
+
+    @route("POST", r"/api/settings")
+    def settings_post(self):
+        try:
+            saved = PREFS.save(self._body())
+        except ValueError as exc:
+            return self._fail(str(exc))
+        log.info("settings: model -> %s", saved["model"])
+        self._json({"ok": True, "settings": catalog.settings_view()})
+
+    @route("GET", r"/api/logs")
+    def logs(self):
+        lines = logmod.recent(limit=int(self._param("limit", "400")),
+                              level=self._param("level"), contains=self._param("q"))
+        self._json({"lines": lines, "file": LOG_FILE})
+
+    @route("POST", r"/api/logs/clear")
+    def logs_clear(self):
+        logmod.clear()
+        self._json({"ok": True})
+
+    # ---- reader profiles ----
+
+    @route("GET", r"/api/profile")
+    def profile(self):
+        self._json({"profile": PREFS.profile})
+
+    @route("GET", r"/api/profiles")
+    def profiles_get(self):
+        self._json(catalog.profiles_view())
+
+    @route("POST", r"/api/profiles")
+    def profiles_post(self):
+        body = self._body()
+        action = str(body.get("action") or "switch")
+        name = str(body.get("name") or "").strip().lower()
+        if action in ("switch", "add"):
+            try:
+                PREFS.save({"profile": name})
+            except ValueError as exc:
+                return self._fail(str(exc))
+            if action == "add":
+                os.makedirs(progress.Store(PROGRESS_DIR, name).directory, exist_ok=True)
+            log.info("profile -> %s", name)
+        elif action == "remove":
+            if name == DEFAULT_PROFILE:
+                return self._fail("The default profile cannot be removed.")
+            if not is_profile(name):
+                return self._fail("Bad profile name.")
+            directory = progress.Store(PROGRESS_DIR, name).directory
+            if os.path.isdir(directory):
+                dest = os.path.join(TRASH_DIR, "profile-%s-%s" % (name, time.strftime("%Y%m%d-%H%M%S")))
+                os.makedirs(TRASH_DIR, exist_ok=True)
+                os.replace(directory, dest)
+            if PREFS.profile == name:
+                PREFS.save({"profile": DEFAULT_PROFILE})
+            log.info("profile %s removed (to trash)", name)
+        else:
+            return self._fail("Unknown action.")
+        self._json(dict(catalog.profiles_view(), ok=True))
+
+    # ---- moving courses in and out ----
+
+    @route("POST", r"/api/import")
+    def import_zip(self):
+        body = self._body()
+        raw = str(body.get("data") or "")
+        if "," in raw[:80] and raw.lstrip().startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        try:
+            data = base64.b64decode(raw, validate=True)
+        except (ValueError, TypeError):
+            return self._fail("Send the zip as base64 in {data}.")
+        if not data:
+            return self._fail("The upload is empty.")
+        course = transfer.import_zip(COURSES_DIR, data)
+        log.info("import zip: %s (%d modules) from %s", course["id"], course["modules"],
+                 body.get("name") or "upload")
+        self._json(dict(course, ok=True, build=self._try_build(course["id"])))
+
+    @route("POST", r"/api/import/git")
+    def import_git(self):
+        body = self._body()
+        course = transfer.import_git(COURSES_DIR, str(body.get("url") or ""), timeout=GIT_TIMEOUT)
+        log.info("import git: %s from %s", course["id"], course["url"])
+        self._json(dict(course, ok=True, build=self._try_build(course["id"])))
+
+    def _try_build(self, course_id: str) -> Dict[str, Any]:
+        """Build a freshly imported course if it is consistent; report why not otherwise."""
+        root = catalog.course_root(course_id)
+        try:
+            problems = generator.check_course(root)
+            if problems:
+                return {"built": False, "problems": problems}
+            return {"built": True, "result": generator.build_course(root, DIST_DIR)}
+        except CourseError as exc:
+            return {"built": False, "problems": [str(exc)]}
+
+    @route("GET", COURSE + r"/export")
+    def export(self, course_id: str):
+        data = transfer.export_zip(catalog.course_root(course_id))
         log.info("export %s: %d KB", course_id, len(data) // 1024)
         self._send(200, data, "application/zip",
                    {"Content-Disposition": 'attachment; filename="%s.zip"' % course_id})
 
-    def _file_get(self, course_id: str, url) -> None:
-        root = self._course_root(course_id)
-        if not root:
+    # ---- one course ----
+
+    @route("GET", COURSE)
+    def course_get(self, course_id: str):
+        self._json(catalog.course_detail(course_id))
+
+    @route("GET", COURSE + r"/settings")
+    def course_settings_get(self, course_id: str):
+        self._json(manage.settings(catalog.course_root(course_id)))
+
+    @route("POST", COURSE + r"/settings")
+    def course_settings_post(self, course_id: str):
+        if not self._idle(course_id, "That course has a job running; wait for it to finish."):
             return
-        relative = (parse_qs(url.query).get("path") or [""])[0]
+        self._json({"ok": True, "settings": manage.update_settings(catalog.course_root(course_id), self._body())})
+
+    @route("GET", COURSE + r"/reviews")
+    def reviews_get(self, course_id: str):
+        self._json({"reviews": reviews.load_reviews(STATE_ROOT, course_id)})
+
+    @route("POST", COURSE + r"/(?P<action>check|build)")
+    def check_or_build(self, course_id: str, action: str):
+        root = catalog.course_root(course_id)
+        problems = generator.check_course(root)
+        if action == "check":
+            log.info("check %s: %s", course_id, "consistent" if not problems else
+                     "%d problem(s): %s" % (len(problems), "; ".join(problems)[:600]))
+            return self._json({"problems": problems})
+        if problems:
+            log.warning("build %s refused: %d problem(s): %s", course_id, len(problems),
+                        "; ".join(problems)[:600])
+            return self._json({"problems": problems, "built": False})
+        result = generator.build_course(root, DIST_DIR)
+        log.info("build %s: %d modules, %d sections, %s KB", course_id,
+                 result["modules"], result["sections"], result["kb"])
+        self._json({"problems": [], "built": True, "result": result})
+
+    @route("POST", COURSE + r"/delete")
+    def delete_course(self, course_id: str):
+        if not self._idle(course_id, "That course has a job running; stop it first."):
+            return
+        if (self._body().get("confirm") or "") != course_id:
+            return self._fail("Type the course id to confirm.")
+        store().delete_everywhere(course_id)
+        self._json(dict(manage.trash_course(COURSES_DIR, DIST_DIR, TRASH_DIR, course_id), ok=True))
+
+    # ---- files of a course ----
+
+    @route("GET", COURSE + r"/files")
+    def file_get(self, course_id: str):
+        relative = self._param("path")
         try:
-            full = resolve_course_file(course_id, relative)
+            full = catalog.resolve_course_file(catalog.course_root(course_id), relative)
         except ValueError as exc:
             return self._fail(str(exc))
         if not os.path.isfile(full):
@@ -527,66 +463,39 @@ class Handler(BaseHTTPRequestHandler):
         with open(full, encoding="utf-8") as fh:
             self._json({"path": relative, "text": fh.read()})
 
-    def _events(self, job_id: str, url) -> None:
-        """Server-Sent Events, replayed from the client's last index so a refresh loses nothing."""
-        job = REGISTRY.get(job_id)
-        if not job:
-            return self._fail("No such job", 404)
-        cursor = int((parse_qs(url.query).get("from") or ["0"])[0])
-
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Connection", "close")
-        self.end_headers()
-
-        last_beat = time.time()
+    @route("PUT", COURSE + r"/files")
+    def file_put(self, course_id: str):
+        relative = self._param("path")
         try:
-            while True:
-                for event in job.since(cursor):
-                    cursor = event["i"] + 1
-                    self.wfile.write(
-                        ("data: %s\n\n" % json.dumps(event, ensure_ascii=False)).encode("utf-8")
-                    )
-                    self.wfile.flush()
-                if job.finished and cursor >= len(job.events):
-                    return
-                if time.time() - last_beat > 15:      # keep proxies and the browser awake
-                    self.wfile.write(b": ping\n\n")
-                    self.wfile.flush()
-                    last_beat = time.time()
-                time.sleep(0.25)
-        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
-            return
+            full = catalog.resolve_course_file(catalog.course_root(course_id), relative)
+        except ValueError as exc:
+            return self._fail(str(exc))
+        text = self._body().get("text")
+        if not isinstance(text, str):
+            return self._fail("Send {text: ...}.")
+        if full.endswith(".json"):
+            try:
+                json.loads(text)
+            except ValueError as exc:
+                return self._fail("That is not valid JSON: %s" % exc)
+        write_text(full, text)
+        self._json({"ok": True, "path": relative})
 
-    # ---- PUT ----
+    # ---- reader progress ----
 
-    def do_PUT(self):
-        url = urlparse(self.path)
-        path = url.path
-        self._raw = None
-        try:
-            self._raw_body()                     # drain first; see _raw_body
-            if path.startswith("/api/courses/"):
-                bits = path.split("/")
-                if len(bits) == 5 and bits[4] == "progress":
-                    return self._progress_put(bits[3], url)
-                if len(bits) == 5 and bits[4] == "files":
-                    return self._file_put(bits[3], url)
-            return self._fail("Not found", 404)
-        except CourseError as exc:
-            log.warning("PUT %s: %s", path, exc)
-            self._fail(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            log.exception("PUT %s failed", path)
-            self._fail(str(exc), 500)
+    @route("GET", COURSE + r"/progress")
+    def progress_get(self, course_id: str):
+        record = store().load(course_id)
+        self._json({"state": record["state"] if record else None,
+                    "updatedAt": record["updatedAt"] if record else None,
+                    "profile": PREFS.profile})
 
-    def _progress_put(self, course_id: str, url=None) -> None:
-        if not self._course_root(course_id):
-            return
+    @route("PUT", COURSE + r"/progress")
+    @route("POST", COURSE + r"/progress")      # sendBeacon can only POST
+    def progress_put(self, course_id: str):
         # A page names the profile it loaded under. If Studio has since switched to another
         # reader, its state must not land in that reader's file.
-        asked = (parse_qs(url.query).get("profile") or [""])[0] if url is not None else ""
+        asked = self._param("profile")
         if asked and asked != PREFS.profile:
             return self._fail("Studio is now reading as '%s'; this page belongs to '%s'. Reload it."
                               % (PREFS.profile, asked), 409)
@@ -597,97 +506,47 @@ class Handler(BaseHTTPRequestHandler):
         record = store().save(course_id, state_obj)
         self._json({"ok": True, "updatedAt": record["updatedAt"], "profile": PREFS.profile})
 
-    def _file_put(self, course_id: str, url) -> None:
-        if not self._course_root(course_id):
+    # ---- modules of a course, without a model ----
+
+    @route("POST", MODULE + r"/remove")
+    def remove_module(self, course_id: str, mid: str):
+        if not self._idle(course_id, "That course has a job running; wait for it to finish."):
             return
-        relative = (parse_qs(url.query).get("path") or [""])[0]
-        try:
-            full = resolve_course_file(course_id, relative)
-        except ValueError as exc:
-            return self._fail(str(exc))
+        root = catalog.course_root(course_id)
+        removed = manage.remove_module(root, mid, TRASH_DIR)
+        self._json(dict(removed, ok=True, problems=generator.check_course(root)))
+
+    @route("POST", MODULE + r"/move")
+    def move_module(self, course_id: str, mid: str):
+        if not self._idle(course_id, "That course has a job running; wait for it to finish."):
+            return
+        root = catalog.course_root(course_id)
         body = self._body()
-        text = body.get("text")
-        if not isinstance(text, str):
-            return self._fail("Send {text: ...}.")
-        if full.endswith(".json"):
-            try:
-                json.loads(text)
-            except ValueError as exc:
-                return self._fail("That is not valid JSON: %s" % exc)
-        os.makedirs(os.path.dirname(full), exist_ok=True)
-        with open(full, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text if text.endswith("\n") else text + "\n")
-        self._json({"ok": True, "path": relative})
-
-    # ---- POST ----
-
-    def do_POST(self):
-        path = urlparse(self.path).path
-        self._raw = None
         try:
-            self._raw_body()                     # drain first; see _raw_body
-            if path == "/api/generate":
-                return self._generate()
-            if path == "/api/ask":
-                return self._ask()
-            if path == "/api/settings":
-                try:
-                    saved = PREFS.save(self._body())
-                except ValueError as exc:
-                    return self._fail(str(exc))
-                log.info("settings: model -> %s", saved["model"])
-                return self._json({"ok": True, "settings": settings_view()})
-            if path == "/api/logs/clear":
-                logmod.clear()
-                return self._json({"ok": True})
-            if path == "/api/profiles":
-                return self._profiles()
-            if path == "/api/import":
-                return self._import_zip()
-            if path == "/api/import/git":
-                return self._import_git()
-            if path.startswith("/api/jobs/"):
-                bits = path.split("/")
-                if len(bits) == 5 and bits[4] in ("answer", "cancel"):
-                    return self._job_action(bits[3], bits[4])
-            if path.startswith("/api/courses/"):
-                bits = path.split("/")
-                if len(bits) == 5 and bits[4] in ("check", "build"):
-                    return self._course_action(bits[3], bits[4])
-                if len(bits) == 5 and bits[4] == "progress":   # sendBeacon can only POST
-                    return self._progress_put(bits[3], urlparse(self.path))
-                if len(bits) == 5 and bits[4] == "extend":
-                    return self._extend(bits[3])
-                if len(bits) == 5 and bits[4] == "resume":
-                    return self._resume(bits[3])
-                if len(bits) == 5 and bits[4] == "settings":
-                    return self._settings_post(bits[3])
-                if len(bits) == 5 and bits[4] == "delete":
-                    return self._delete_course(bits[3])
-                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "rewrite":
-                    return self._rewrite(bits[3], bits[5])
-                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "remove":
-                    return self._remove_module(bits[3], bits[5])
-                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "move":
-                    return self._move_module(bits[3], bits[5])
-                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "review":
-                    return self._review(bits[3], bits[5])
-                if len(bits) == 7 and bits[4] == "modules" and bits[6] == "accept":
-                    return self._accept(bits[3], bits[5])
-            return self._fail("Not found", 404)
-        except CourseError as exc:
-            log.warning("POST %s: %s", path, exc)
-            self._fail(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            log.exception("POST %s failed", path)
-            self._fail(str(exc), 500)
+            index = int(body.get("index")) if body.get("index") is not None else -1
+        except (TypeError, ValueError):
+            index = -1
+        moved = manage.move_module(root, mid, str(body.get("part") or ""), index)
+        log.info("move %s/%s -> part %s index %s", course_id, mid, moved["part"], index)
+        self._json(dict(moved, ok=True, problems=generator.check_course(root)))
 
-    def _model(self, brief: Dict[str, Any]) -> str:
-        """The model a job should use: the request's, else Studio's default."""
-        asked = str(brief.get("model") or "").strip()
-        return asked if asked in claude_cli.MODEL_ALIASES else PREFS.model
+    @route("POST", MODULE + r"/accept")
+    def accept_module(self, course_id: str, mid: str):
+        """"This is good": the owner's verdict, which the review pill then shows."""
+        accepted = bool(self._body().get("accepted", True))
+        cfg = ck_config.load(catalog.course_root(course_id))
+        sources = {m.id: m.source for m in ck_loader.load_modules(cfg)}
+        if mid not in sources:
+            return self._fail("No module '%s' in this course." % mid, 404)
+        reviews.accept_module(STATE_ROOT, course_id, mid, accepted)
+        log.info("accept: course=%s module=%s accepted=%s", course_id, mid, accepted)
+        self._json({"ok": True, "accepted": accepted,
+                    "review": reviews.load_reviews(STATE_ROOT, course_id, sources).get(mid)})
 
-    def _generate(self) -> None:
+    # ---- jobs: generation and editing with a model ----
+
+    @route("POST", r"/api/generate")
+    def generate(self):
         brief = self._body()
         theme = (brief.get("theme") or "").strip()
         if not theme:
@@ -700,219 +559,121 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail("%g hours is the shortest course worth structuring." % MIN_HOURS)
         if hours > MAX_HOURS:
             return self._fail("%g hours is beyond what one course should hold." % MAX_HOURS)
-        if not claude_cli.available():
-            return self._fail("Claude Code is not on this PATH, so nothing can be written.")
-
-        brief["theme"], brief["hours"] = theme, hours
-        course_id = (brief.get("id") or "").strip().lower()
-        if course_id and not SAFE_ID.match(course_id):
-            return self._fail("A course id may hold lowercase letters, digits and hyphens only.")
-        brief["id"] = course_id or None
-        if brief["id"] and REGISTRY.active_for(brief["id"]):
-            return self._fail("That course already has a job running.")
-
-        brief["model"] = self._model(brief)
-        brief["resume"] = False
-        log.info("generate: theme=%r hours=%s model=%s", theme, hours, brief["model"])
-        job = REGISTRY.add(jobs.Job("generate", {"theme": theme, "hours": hours, "model": brief["model"]}))
-        job.start(lambda j: generator.generate(j, COURSES_DIR, DIST_DIR, brief))
-        self._json({"job": job.summary()})
-
-    def _resume(self, course_id: str) -> None:
-        root = self._course_root(course_id)
-        if not root:
+        if not self._claude():
             return
+        course_id = (brief.get("id") or "").strip().lower()
+        if course_id and not is_course_id(course_id):
+            return self._fail("A course id may hold lowercase letters, digits and hyphens only.")
+        if course_id and not self._idle(course_id):
+            return
+
+        brief.update(theme=theme, hours=hours, id=course_id or None, model=self._model(brief),
+                     resume=False)
+        log.info("generate: theme=%r hours=%s model=%s", theme, hours, brief["model"])
+        job = jobs.Job("generate", {"theme": theme, "hours": hours, "model": brief["model"]})
+        self._start_job(job, lambda j: generator.generate(j, COURSES_DIR, DIST_DIR, brief))
+
+    @route("POST", COURSE + r"/resume")
+    def resume(self, course_id: str):
+        root = catalog.course_root(course_id)
         try:
-            generator._load_plan(root)
-        except (generator.GenerationError, ValueError) as exc:
+            curriculum.load_plan(root)
+        except (GenerationError, ValueError) as exc:
             return self._fail("Cannot resume: %s" % exc)
-        if not can_resume(course_id):
+        if not catalog.can_resume(course_id):
             return self._fail("Nothing to resume: this course is complete and consistent. Use Build.")
-        if not claude_cli.available():
-            return self._fail("Claude Code is not on this PATH, so nothing can be written.")
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course already has a job running.")
-        body = self._body()
+        if not self._claude() or not self._idle(course_id):
+            return
         cfg = ck_config.load(root)
         brief = {"id": course_id, "theme": cfg.subject, "hours": cfg.hours, "resume": True,
-                 "model": self._model(body)}
+                 "model": self._model(self._body())}
         log.info("resume: course=%s model=%s", course_id, brief["model"])
-        job = REGISTRY.add(jobs.Job("generate", {"theme": cfg.subject, "hours": cfg.hours,
-                                                 "course": course_id, "resume": True,
-                                                 "model": brief["model"]}))
-        job.start(lambda j: generator.generate(j, COURSES_DIR, DIST_DIR, brief))
-        self._json({"job": job.summary()})
+        job = jobs.Job("generate", {"theme": cfg.subject, "hours": cfg.hours, "course": course_id,
+                                    "resume": True, "model": brief["model"]})
+        self._start_job(job, lambda j: generator.generate(j, COURSES_DIR, DIST_DIR, brief))
 
-    def _extend(self, course_id: str) -> None:
-        if not self._course_root(course_id):
-            return
+    @route("POST", COURSE + r"/extend")
+    def extend(self, course_id: str):
         brief = self._body()
         if not (brief.get("topic") or "").strip():
             return self._fail("Say what the new module should cover.")
-        if not claude_cli.available():
-            return self._fail("Claude Code is not on this PATH, so nothing can be written.")
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course already has a job running.")
+        if not self._claude() or not self._idle(course_id):
+            return
         brief["model"] = self._model(brief)
         log.info("extend: course=%s topic=%r model=%s", course_id, brief["topic"], brief["model"])
-        job = REGISTRY.add(jobs.Job("extend", {"course": course_id, "topic": brief["topic"]}))
-        job.start(lambda j: generator.extend(j, COURSES_DIR, DIST_DIR, course_id, brief))
-        self._json({"job": job.summary()})
+        job = jobs.Job("extend", {"course": course_id, "topic": brief["topic"]})
+        self._start_job(job, lambda j: editing.extend(j, COURSES_DIR, DIST_DIR, course_id, brief))
 
-    def _rewrite(self, course_id: str, mid: str) -> None:
-        if not self._course_root(course_id):
-            return
-        if not SAFE_MID.match(mid):
-            return self._fail("Bad module id.")
+    @route("POST", MODULE + r"/rewrite")
+    def rewrite(self, course_id: str, mid: str):
         brief = self._body()
-        if not claude_cli.available():
-            return self._fail("Claude Code is not on this PATH, so nothing can be written.")
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course already has a job running.")
+        if not self._claude() or not self._idle(course_id):
+            return
         brief["model"] = self._model(brief)
-        log.info("rewrite: course=%s module=%s model=%s", course_id, mid, brief["model"])
-        job = REGISTRY.add(jobs.Job("rewrite", {"course": course_id, "module": mid,
-                                                 "mode": "patch" if brief.get("mode") == "patch" else "rewrite"}))
-        job.start(lambda j: generator.rewrite(j, COURSES_DIR, DIST_DIR, course_id, mid, brief))
-        self._json({"job": job.summary()})
+        mode = "patch" if brief.get("mode") == "patch" else "rewrite"
+        log.info("rewrite: course=%s module=%s mode=%s model=%s", course_id, mid, mode, brief["model"])
+        job = jobs.Job("rewrite", {"course": course_id, "module": mid, "mode": mode})
+        self._start_job(job, lambda j: editing.rewrite(j, COURSES_DIR, DIST_DIR, course_id, mid, brief))
 
-    def _settings_post(self, course_id: str) -> None:
-        root = self._course_root(course_id)
-        if not root:
+    @route("POST", MODULE + r"/review")
+    def review(self, course_id: str, mid: str):
+        if not self._claude("Claude Code is not on this PATH, so nothing can be reviewed."):
             return
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course has a job running; wait for it to finish.")
-        self._json({"ok": True, "settings": manage.update_settings(root, self._body())})
-
-    def _delete_course(self, course_id: str) -> None:
-        if not self._course_root(course_id):
+        if not self._idle(course_id):
             return
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course has a job running; stop it first.")
-        if (self._body().get("confirm") or "") != course_id:
-            return self._fail("Type the course id to confirm.")
-        store().delete_everywhere(course_id)
-        self._json(dict(manage.trash_course(COURSES_DIR, DIST_DIR, TRASH_DIR, course_id), ok=True))
-
-    def _remove_module(self, course_id: str, mid: str) -> None:
-        root = self._course_root(course_id)
-        if not root:
-            return
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course has a job running; wait for it to finish.")
-        removed = manage.remove_module(root, mid, TRASH_DIR)
-        self._json(dict(removed, ok=True, problems=generator.check_course(root)))
-
-    def _move_module(self, course_id: str, mid: str) -> None:
-        root = self._course_root(course_id)
-        if not root:
-            return
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course has a job running; wait for it to finish.")
-        body = self._body()
-        try:
-            index = int(body.get("index")) if body.get("index") is not None else -1
-        except (TypeError, ValueError):
-            index = -1
-        moved = manage.move_module(root, mid, str(body.get("part") or ""), index)
-        log.info("move %s/%s -> part %s index %s", course_id, mid, moved["part"], index)
-        self._json(dict(moved, ok=True, problems=generator.check_course(root)))
-
-    def _accept(self, course_id: str, mid: str) -> None:
-        """"This is good": the owner's verdict, which the review pill then shows."""
-        root = self._course_root(course_id)
-        if not root:
-            return
-        if not SAFE_MID.match(mid):
-            return self._fail("Bad module id.")
-        accepted = bool(self._body().get("accepted", True))
-        cfg = ck_config.load(root)
-        sources = {m.id: m.source for m in ck_loader.load_modules(cfg)}
-        if mid not in sources:
-            return self._fail("No module '%s' in this course." % mid, 404)
-        generator.accept_module(STATE_ROOT, course_id, mid, accepted)
-        log.info("accept: course=%s module=%s accepted=%s", course_id, mid, accepted)
-        self._json({"ok": True, "accepted": accepted,
-                    "review": generator.load_reviews(STATE_ROOT, course_id, sources).get(mid)})
-
-    def _review(self, course_id: str, mid: str) -> None:
-        if not self._course_root(course_id):
-            return
-        if not SAFE_MID.match(mid):
-            return self._fail("Bad module id.")
-        if not claude_cli.available():
-            return self._fail("Claude Code is not on this PATH, so nothing can be reviewed.")
-        if REGISTRY.active_for(course_id):
-            return self._fail("That course already has a job running.")
         brief = self._body()
         brief["model"] = self._model(brief)
         log.info("review: course=%s module=%s model=%s", course_id, mid, brief["model"])
-        job = REGISTRY.add(jobs.Job("review", {"course": course_id, "module": mid}))
-        job.start(lambda j: generator.review(j, COURSES_DIR, STATE_ROOT, course_id, mid, brief))
-        self._json({"job": job.summary()})
+        job = jobs.Job("review", {"course": course_id, "module": mid})
+        self._start_job(job, lambda j: reviews.review(j, COURSES_DIR, STATE_ROOT, course_id, mid, brief))
 
-    def _profiles(self) -> None:
-        body = self._body()
-        action = str(body.get("action") or "switch")
-        name = str(body.get("name") or "").strip().lower()
-        if action in ("switch", "add"):
-            try:
-                PREFS.save({"profile": name})
-            except ValueError as exc:
-                return self._fail(str(exc))
-            if action == "add":
-                os.makedirs(progress.Store(STATE_DIR, name).directory, exist_ok=True)
-            log.info("profile -> %s", name)
-        elif action == "remove":
-            if name == progress.DEFAULT_PROFILE:
-                return self._fail("The default profile cannot be removed.")
-            if not progress.SAFE_PROFILE.match(name):
-                return self._fail("Bad profile name.")
-            directory = progress.Store(STATE_DIR, name).directory
-            if os.path.isdir(directory):
-                dest = os.path.join(TRASH_DIR, "profile-%s-%s" % (name, time.strftime("%Y%m%d-%H%M%S")))
-                os.makedirs(TRASH_DIR, exist_ok=True)
-                os.replace(directory, dest)
-            if PREFS.profile == name:
-                PREFS.save({"profile": progress.DEFAULT_PROFILE})
-            log.info("profile %s removed (to trash)", name)
-        else:
-            return self._fail("Unknown action.")
-        self._json(dict(profiles_view(), ok=True))
+    @route("POST", r"/api/jobs/(?P<job_id>[^/]+)/(?P<action>answer|cancel)")
+    def job_action(self, job_id: str, action: str):
+        job = REGISTRY.get(job_id)
+        if not job:
+            return self._fail("No such job", 404)
+        if action == "cancel":
+            job.cancel()
+            return self._json({"ok": True})
+        if not job.provide(self._body()):
+            return self._fail("That job is not waiting for an answer.")
+        self._json({"ok": True})
 
-    def _import_zip(self) -> None:
-        body = self._body()
-        raw = str(body.get("data") or "")
-        if "," in raw[:80] and raw.lstrip().startswith("data:"):
-            raw = raw.split(",", 1)[1]
+    @route("GET", r"/api/jobs/(?P<job_id>[^/]+)/events")
+    def job_events(self, job_id: str):
+        """Server-Sent Events, replayed from the client's last index so a refresh loses nothing."""
+        job = REGISTRY.get(job_id)
+        if not job:
+            return self._fail("No such job", 404)
+        cursor = int(self._param("from", "0"))
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        last_beat = time.time()
         try:
-            data = base64.b64decode(raw, validate=True)
-        except (ValueError, TypeError):
-            return self._fail("Send the zip as base64 in {data}.")
-        if not data:
-            return self._fail("The upload is empty.")
-        course = transfer.import_zip(COURSES_DIR, data)
-        log.info("import zip: %s (%d modules) from %s", course["id"], course["modules"], body.get("name") or "upload")
-        self._json(dict(course, ok=True, build=self._try_build(course["id"])))
+            while True:
+                for event in job.since(cursor):
+                    cursor = event["i"] + 1
+                    self.wfile.write(("data: %s\n\n" % json.dumps(event, ensure_ascii=False)).encode("utf-8"))
+                    self.wfile.flush()
+                if job.finished and cursor >= len(job.events):
+                    return
+                if time.time() - last_beat > 15:      # keep proxies and the browser awake
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_beat = time.time()
+                time.sleep(0.25)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
 
-    def _import_git(self) -> None:
-        body = self._body()
-        course = transfer.import_git(COURSES_DIR, str(body.get("url") or ""), timeout=GIT_TIMEOUT)
-        log.info("import git: %s from %s", course["id"], course["url"])
-        self._json(dict(course, ok=True, build=self._try_build(course["id"])))
+    # ---- the tutor ----
 
-    def _try_build(self, course_id: str) -> Dict[str, Any]:
-        """Build a freshly imported course if it is consistent; report why not otherwise."""
-        root = os.path.join(COURSES_DIR, course_id)
-        try:
-            problems = generator.check_course(root)
-            if problems:
-                return {"built": False, "problems": problems}
-            return {"built": True, "result": generator.build_course(root, DIST_DIR)}
-        except CourseError as exc:
-            return {"built": False, "problems": [str(exc)]}
-
-    def _ask(self) -> None:
+    @route("POST", r"/api/ask")
+    def ask(self):
         """The tutor, for a course served from here: same origin, no key, no bridge."""
         body = self._body()
         messages = body.get("messages") or []
@@ -928,41 +689,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(str(exc), 502)
         self._json({"text": text, "mode": "studio"})
 
-    def _job_action(self, job_id: str, action: str) -> None:
-        job = REGISTRY.get(job_id)
-        if not job:
-            return self._fail("No such job", 404)
-        if action == "cancel":
-            job.cancel()
-            return self._json({"ok": True})
-        if not job.provide(self._body()):
-            return self._fail("That job is not waiting for an answer.")
-        self._json({"ok": True})
-
-    def _course_action(self, course_id: str, action: str) -> None:
-        root = self._course_root(course_id)
-        if not root:
-            return
-        problems = generator.check_course(root)
-        if action == "check":
-            log.info("check %s: %s", course_id, "consistent" if not problems else
-                     "%d problem(s): %s" % (len(problems), "; ".join(problems)[:600]))
-            return self._json({"problems": problems})
-        if problems:
-            log.warning("build %s refused: %d problem(s): %s", course_id, len(problems),
-                        "; ".join(problems)[:600])
-            return self._json({"problems": problems, "built": False})
-        result = generator.build_course(root, DIST_DIR)
-        log.info("build %s: %d modules, %d sections, %s KB", course_id,
-                 result["modules"], result["sections"], result["kb"])
-        self._json({"problems": [], "built": True, "result": result})
-
 
 # --------------------------------------------------------------------------- entry point
 
 
-def serve(port: int = DEFAULT_PORT, open_browser: bool = True,
-          host: str = "") -> int:
+def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = "") -> int:
     host = host or DEFAULT_HOST
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True

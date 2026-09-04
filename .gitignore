@@ -6,3 +6,4 @@ __pycache__/
 .env
 # Reader progress synced from courses served by Studio. Personal, not content.
 state/
+node_modules/

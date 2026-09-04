@@ -7,14 +7,13 @@ course-specific belongs in `course.json`; anything per-browser belongs in the pa
 
 from __future__ import annotations
 
-import json
-import os
 from typing import Any, Dict
 
 from coursekit.settings import SETTINGS
 
 from . import claude_cli
-from .progress import DEFAULT_PROFILE, SAFE_PROFILE
+from .files import read_json, write_json
+from .ids import DEFAULT_PROFILE, is_profile
 
 # (alias, label, note) for every model in settings.json - the only list Settings offers.
 MODELS = tuple((m.get("alias") or m["id"], m.get("label") or m["id"], m.get("note", ""))
@@ -29,15 +28,14 @@ class Prefs:
     def load(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {}
         try:
-            with open(self.path, encoding="utf-8") as fh:
-                loaded = json.load(fh)
+            loaded = read_json(self.path)
             if isinstance(loaded, dict):
                 data = loaded
         except (OSError, ValueError):
             pass
         model = data.get("model") if data.get("model") in _ALLOWED else claude_cli.DEFAULT_MODEL
         profile = str(data.get("profile") or DEFAULT_PROFILE).strip().lower()
-        if not SAFE_PROFILE.match(profile):
+        if not is_profile(profile):
             profile = DEFAULT_PROFILE
         return {"model": model, "profile": profile}
 
@@ -51,14 +49,10 @@ class Prefs:
             current["model"] = model
         if "profile" in changes:
             profile = str(changes["profile"] or "").strip().lower()
-            if not SAFE_PROFILE.match(profile):
+            if not is_profile(profile):
                 raise ValueError("A profile name is lowercase letters, digits and hyphens, up to 31 characters.")
             current["profile"] = profile
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        tmp = self.path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(current, fh, indent=1)
-        os.replace(tmp, self.path)
+        write_json(self.path, current)
         return current
 
     @property

@@ -42,6 +42,12 @@ MODEL_ALIASES = SETTINGS.model_aliases
 # and Studio's own preference (state/studio.json) overrides that per call.
 DEFAULT_MODEL = SETTINGS.default_model
 
+
+def timeout_for(step: str) -> int:
+    """Seconds allowed for one kind of call: `generation.timeouts.<step>` in settings.json,
+    else the general `claude.timeout`."""
+    return int(SETTINGS.get("generation.timeouts." + step, DEFAULT_TIMEOUT))
+
 _FENCE = re.compile(r"^\s*```(?:json|markdown|md)?\s*\n(.*?)\n\s*```\s*$", re.S)
 
 

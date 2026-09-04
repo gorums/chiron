@@ -1,0 +1,12 @@
+{
+  "name": "courses-platform",
+  "private": true,
+  "description": "Formatting for the front-end source. The platform itself needs only Python.",
+  "scripts": {
+    "format": "prettier --write \"platform/web/**/*.{js,css}\" \"platform/studio/ui/**/*.{js,css}\" platform/tests/page_smoke.js",
+    "format:check": "prettier --check \"platform/web/**/*.{js,css}\" \"platform/studio/ui/**/*.{js,css}\" platform/tests/page_smoke.js"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.0"
+  }
+}

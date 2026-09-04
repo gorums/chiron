@@ -13,7 +13,7 @@ function viewLibrary() {
     DATA.library.templates.forEach(t => {
       const n = sheetFilled(t.slug);
       h += `<div class="card modelcard" onclick="go('#/library/t-${t.slug}')"><h3 style="font-size:16px">${esc(t.title)}</h3><p class="sub">${esc(t.blurb)}</p>
-        ${t.fields ? `<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><span class="bar" style="flex:1"><i style="width:${Math.round(n / t.fields * 100)}%"></i></span><span class="sub" style="font-size:11.5px">${n}/${t.fields}</span></div>` : ""}
+        ${t.fields ? `<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><span class="bar" style="flex:1"><i style="width:${Math.round((n / t.fields) * 100)}%"></i></span><span class="sub" style="font-size:11.5px">${n}/${t.fields}</span></div>` : ""}
         ${(t.uses || []).length ? `<p class="sub" style="font-size:11.5px;margin-top:6px">Used in ${t.uses.join(", ")}</p>` : ""}</div>`;
     });
     h += `</div>
@@ -28,7 +28,8 @@ function viewLibrary() {
   if (sub === "glossary") return viewGlossary();
   if (sub === "models") return viewModels();
   if (sub === "resources") {
-    $("#view").innerHTML = `<div class="wrap"><button class="btn sm" onclick="go('#/library')">← Library</button>
+    $("#view").innerHTML =
+      `<div class="wrap"><button class="btn sm" onclick="go('#/library')">← Library</button>
       <div class="prose" style="padding-left:0;margin-top:18px">${DATA.library.resources}</div></div>`;
     return;
   }
@@ -38,11 +39,14 @@ function viewLibrary() {
     viewWorksheet(t);
   }
 }
-let glossFilter = "", glossStar = false;
+let glossFilter = "",
+  glossStar = false;
 function viewGlossary() {
-  const terms = DATA.library.glossary.filter(t =>
-    (!glossStar || t.star) &&
-    (!glossFilter || (t.term + " " + t.def).toLowerCase().includes(glossFilter.toLowerCase())));
+  const terms = DATA.library.glossary.filter(
+    t =>
+      (!glossStar || t.star) &&
+      (!glossFilter || (t.term + " " + t.def).toLowerCase().includes(glossFilter.toLowerCase()))
+  );
   let h = `<div class="wrap"><button class="btn sm" onclick="go('#/library')">← Library</button>
     <h2 class="big" style="margin-top:14px">Glossary</h2>
     <p class="sub" style="margin-bottom:16px">${DATA.library.glossary.length} terms. The ${DATA.library.glossary.filter(t => t.star).length} starred ones are the ones to know cold.</p>
@@ -57,7 +61,14 @@ function viewGlossary() {
   h += `</div></div>`;
   $("#view").innerHTML = h;
   const gf = $("#gf");
-  gf.addEventListener("input", e => { glossFilter = e.target.value; const p = gf.selectionStart; viewGlossary(); const n = $("#gf"); n.focus(); n.setSelectionRange(p, p); });
+  gf.addEventListener("input", e => {
+    glossFilter = e.target.value;
+    const p = gf.selectionStart;
+    viewGlossary();
+    const n = $("#gf");
+    n.focus();
+    n.setSelectionRange(p, p);
+  });
 }
 function viewModels() {
   const n = DATA.library.models.length;
@@ -78,8 +89,13 @@ function toggleModel(i) {
   hint.classList.toggle("hidden");
 }
 function viewPlan() {
-  const map = { curriculum: DATA.library.plan.curriculum, how: DATA.library.plan.how, expert: DATA.library.plan.expert };
+  const map = {
+    curriculum: DATA.library.plan.curriculum,
+    how: DATA.library.plan.how,
+    expert: DATA.library.plan.expert,
+  };
   const html = map[route.id] || map.curriculum;
-  $("#view").innerHTML = `<div class="wrap"><button class="btn sm" onclick="go('#/library')">← Library</button>
+  $("#view").innerHTML =
+    `<div class="wrap"><button class="btn sm" onclick="go('#/library')">← Library</button>
     <div class="prose" style="padding-left:0;margin-top:18px">${html}</div></div>`;
 }

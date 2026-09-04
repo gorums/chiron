@@ -1,11 +1,13 @@
 /* ---------- boot ---------- */
 function render() {
-  if (route.v !== "m") stopTimer();
-  closePanel(); clearSel();
-  if (route.v !== "m") pinned = null;
-  if (!(route.v === "m" && route.step === 2) && !(route.v === "check" && route.id === "run")) QZ = null;
+  if (route.view !== "m") stopTimer();
+  closePanel();
+  clearSel();
+  if (route.view !== "m") rail.pinned = null;
+  if (!(route.view === "m" && route.step === 2) && !(route.view === "check" && route.id === "run"))
+    QUIZ = null;
   renderSidebar();
-  const v = route.v;
+  const v = route.view;
   if (v === "m") viewModule();
   else if (v === "review") viewReview();
   else if (v === "check") viewCheck();
@@ -19,16 +21,26 @@ function render() {
   $("#sidebar").classList.remove("open");
   applyRail();
   const tg = document.getElementById("railtoggle");
-  if (tg) tg.classList.toggle("show", route.v === "m");
-  if (route.v === "m" && railOpen()) renderRail();
+  if (tg) tg.classList.toggle("show", route.view === "m");
+  if (route.view === "m" && railOpen()) renderRail();
 }
 /* the left sidebar: a slide-over on a narrow screen, hideable on a wide one */
-function isNarrow() { return window.innerWidth <= 860; }
-function applySide() { document.body.classList.toggle("side-off", !!(S.ui && S.ui.sideOff)); applyRail(); }
+function isNarrow() {
+  return window.innerWidth <= 860;
+}
+function applySide() {
+  document.body.classList.toggle("side-off", !!(STATE.ui && STATE.ui.sideOff));
+  applyRail();
+}
 function toggleSidebar() {
-  if (isNarrow()) { $("#sidebar").classList.toggle("open"); return; }
-  if (!S.ui) S.ui = {};
-  S.ui.sideOff = !S.ui.sideOff; save(); applySide();
+  if (isNarrow()) {
+    $("#sidebar").classList.toggle("open");
+    return;
+  }
+  if (!STATE.ui) STATE.ui = {};
+  STATE.ui.sideOff = !STATE.ui.sideOff;
+  save();
+  applySide();
 }
 $("#opensearch").onclick = openPalette;
 $("#themebtn").onclick = cycleTheme;
@@ -36,7 +48,16 @@ $("#helpbtn").onclick = openHelp;
 $("#menubtn").onclick = toggleSidebar;
 parseHash();
 // Who is reading (Studio may have switched profiles), then the platform copy of their
-// progress, so the first paint is right. Device settings are applied once S is final.
+// progress, so the first paint is right. Device settings are applied once STATE is final.
 profileInit()
-  .then(() => { applySide(); migrateChats(); applyReading(); return syncPull(); })
-  .finally(() => { render(); setTimeout(() => checkBridge(true), 250); setTimeout(notifyDue, 1500); });
+  .then(() => {
+    applySide();
+    migrateChats();
+    applyReading();
+    return syncPull();
+  })
+  .finally(() => {
+    render();
+    setTimeout(() => checkBridge(true), 250);
+    setTimeout(notifyDue, 1500);
+  });

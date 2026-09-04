@@ -13,15 +13,16 @@ Two rules carried over from the rest of the platform:
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import shutil
-import time
 from typing import Any, Dict, List
 
 from coursekit import config as ck_config
+from coursekit import loader as ck_loader
 from coursekit.errors import CourseError
+
+from .files import read_json, stamp, write_json
+from .ids import is_module_id
 
 # The fields the settings form may change, with a small validator for each.
 _TEXT = lambda v, n: str(v or "").strip()[:n]  # noqa: E731
@@ -34,30 +35,13 @@ SETTINGS = {
 }
 # The reader's own case (`anchor` in course.json): four short texts, all optional.
 ANCHOR_KEYS = ("label", "prompt", "placeholder", "noun")
-_SAFE_MID = re.compile(r"^M\d{2,3}$")
-
-
-def _read_json(path: str) -> Any:
-    with open(path, encoding="utf-8") as fh:
-        return json.load(fh)
-
-
-def _write_json(path: str, obj: Any) -> None:
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(obj, fh, ensure_ascii=False, indent=1)
-        fh.write("\n")
-
-
-def _stamp() -> str:
-    return time.strftime("%Y%m%d-%H%M%S")
-
 
 # --------------------------------------------------------------------------- settings
 
 
 def settings(root: str) -> Dict[str, Any]:
     """The editable subset of course.json, as the form shows it."""
-    manifest = _read_json(os.path.join(root, "course.json"))
+    manifest = read_json(os.path.join(root, "course.json"))
     out = {k: manifest.get(k, "") for k in SETTINGS}
     out["id"] = manifest.get("id", "")
     out["hours"] = manifest.get("hours", 0)
@@ -73,7 +57,7 @@ def settings(root: str) -> Dict[str, Any]:
 def update_settings(root: str, changes: Dict[str, Any]) -> Dict[str, Any]:
     """Apply a settings form. Returns what is now stored. Raises CourseError on bad input."""
     path = os.path.join(root, "course.json")
-    manifest = _read_json(path)
+    manifest = read_json(path)
     if "id" in changes and changes["id"] != manifest.get("id"):
         raise CourseError("A course's id cannot change: it is the key the reader's progress is stored under.")
 
@@ -111,7 +95,7 @@ def update_settings(root: str, changes: Dict[str, Any]) -> Dict[str, Any]:
                     raise CourseError("Part hours must be a number.")
         manifest["hours"] = _tidy(sum(float(p.get("hours") or 0) for p in manifest["parts"]))
 
-    _write_json(path, manifest)
+    write_json(path, manifest)
     ck_config.load(root)          # it must still be a valid manifest
     return settings(root)
 
@@ -145,9 +129,8 @@ def move_module(root: str, mid: str, part_id: str = "", index: int = -1) -> Dict
     course.json as the full list of ids, which is what the loader sorts by. Progress is keyed
     by id and does not notice. Returns the new order.
     """
-    if not _SAFE_MID.match(mid or ""):
+    if not is_module_id(mid):
         raise CourseError("Bad module id.")
-    from coursekit import loader as ck_loader
     cfg = ck_config.load(root)
     modules = ck_loader.load_modules(cfg)
     current = next((m for m in modules if m.id == mid), None)
@@ -181,9 +164,9 @@ def move_module(root: str, mid: str, part_id: str = "", index: int = -1) -> Dict
         order.extend(ids)
 
     manifest_path = os.path.join(root, "course.json")
-    manifest = _read_json(manifest_path)
+    manifest = read_json(manifest_path)
     manifest["order"] = order
-    _write_json(manifest_path, manifest)
+    write_json(manifest_path, manifest)
     ck_config.load(root)
     return {"order": order, "part": part.id, "moved": part.id != current.part}
 
@@ -197,7 +180,7 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
     The file goes to the trash rather than being deleted. Progress for the id is left alone in
     the reader's state — harmless, and the id is never reused so it can never be confused.
     """
-    if not _SAFE_MID.match(mid or ""):
+    if not is_module_id(mid):
         raise CourseError("Bad module id.")
     cfg = ck_config.load(root)
 
@@ -212,7 +195,7 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
     if not found:
         raise CourseError("No module '%s' in this course." % mid)
 
-    dest = os.path.join(trash_dir, "%s-%s-%s" % (cfg.id, mid, _stamp()))
+    dest = os.path.join(trash_dir, "%s-%s-%s" % (cfg.id, mid, stamp()))
     os.makedirs(dest, exist_ok=True)
     for path in found:
         shutil.move(path, os.path.join(dest, os.path.basename(path)))
@@ -226,7 +209,7 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
             if not name.endswith(".json"):
                 continue
             path = os.path.join(assess_dir, name)
-            rows = _read_json(path)
+            rows = read_json(path)
             if isinstance(rows, list) and any(isinstance(r, dict) and r.get("id") == mid for r in rows):
                 kept = [r for r in rows if not (isinstance(r, dict) and r.get("id") == mid)]
                 removed["assessment"] = True
@@ -238,14 +221,14 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
             if not name.endswith(".json"):
                 continue
             path = os.path.join(sugg_dir, name)
-            rows = _read_json(path)
+            rows = read_json(path)
             if isinstance(rows, dict) and mid in rows:
                 del rows[mid]
                 removed["suggestions"] = True
                 _drop_or_write(path, rows, empty=not rows)
 
     manifest_path = os.path.join(root, "course.json")
-    manifest = _read_json(manifest_path)
+    manifest = read_json(manifest_path)
     changed = False
     if mid in (manifest.get("shortTitles") or {}):
         del manifest["shortTitles"][mid]
@@ -254,7 +237,7 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
         manifest["order"] = [x for x in manifest["order"] if x != mid]
         changed = True
     if changed:
-        _write_json(manifest_path, manifest)
+        write_json(manifest_path, manifest)
     return removed
 
 
@@ -264,7 +247,7 @@ def _drop_or_write(path: str, rows: Any, empty: bool) -> None:
     if empty:
         os.unlink(path)
     else:
-        _write_json(path, rows)
+        write_json(path, rows)
 
 
 # --------------------------------------------------------------------------- trashing a course
@@ -275,7 +258,7 @@ def trash_course(courses_dir: str, dist_dir: str, trash_dir: str, course_id: str
     root = os.path.join(courses_dir, course_id)
     if not os.path.isfile(os.path.join(root, "course.json")):
         raise CourseError("No such course.")
-    dest = os.path.join(trash_dir, "%s-%s" % (course_id, _stamp()))
+    dest = os.path.join(trash_dir, "%s-%s" % (course_id, stamp()))
     os.makedirs(trash_dir, exist_ok=True)
     shutil.move(root, os.path.join(dest, "course"))
     built = os.path.join(dist_dir, course_id)

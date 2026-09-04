@@ -94,5 +94,5 @@ The gaps that still send someone to a text editor or a shell, plus the pieces th
 ## Verification standard
 
 Every phase ends with: `test_build.py` and `test_studio.py` green, the HTTP smoke test
-green, the bundle and `studio.js` passing `node --check`, the subject-leak grep empty, both
+green, the bundle and `ui/js/*.js` passing `node --check`, the subject-leak grep empty, both
 shipped courses rebuilt, and a manual pass through the UI in a browser served from Docker.

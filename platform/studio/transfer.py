@@ -27,7 +27,8 @@ from typing import Any, Dict, Optional
 from coursekit import config as ck_config
 from coursekit.errors import CourseError
 
-SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,48}$")
+from .ids import is_course_id
+
 # https://host/path or git@host:path. Nothing else: the URL becomes a subprocess argument.
 GIT_URL = re.compile(r"^(https?://[\w.\-]+(:\d+)?/[\w.\-/~%]+|git@[\w.\-]+:[\w.\-/~]+)$")
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".claude"}
@@ -146,7 +147,7 @@ def _install(courses_dir: str, staged: str, *, source: str, keep_git: bool = Fal
         raise CourseError("The repository has no course.json at its root - this is not a course.")
     cfg = ck_config.load(staged)             # raises ManifestError with the reason if broken
     course_id = cfg.id
-    if not SAFE_ID.match(course_id):
+    if not is_course_id(course_id):
         raise CourseError("The course id '%s' in course.json is not usable as a folder name." % course_id)
     dest = os.path.join(courses_dir, course_id)
     if os.path.exists(dest):

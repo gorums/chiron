@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import time
 import unittest
@@ -21,7 +22,8 @@ sys.path.insert(0, PLATFORM)
 
 from coursekit import config  # noqa: E402
 from coursekit.errors import CourseError  # noqa: E402
-from studio import claude_cli, generator, jobs  # noqa: E402
+from studio import catalog, claude_cli, coerce, curriculum, editing, files, generator, jobs, reviews  # noqa: E402
+from studio.errors import GenerationError  # noqa: E402
 
 
 class TestJsonExtraction(unittest.TestCase):
@@ -86,34 +88,34 @@ class TestSuggestionCoercion(unittest.TestCase):
     def ok(self, rows):
         self.assertEqual(len(rows), len(self.HEADINGS))
         for row in rows:
-            self.assertEqual(len(row), generator.QUESTIONS_PER_SECTION)
+            self.assertEqual(len(row), coerce.QUESTIONS_PER_SECTION)
             self.assertTrue(all(isinstance(q, str) and q for q in row))
 
     def test_exact_input_is_preserved(self):
         raw = [["a", "b", "c"], ["d", "e", "f"], ["g", "h", "i"]]
-        rows = generator._fix_suggestions(raw, self.HEADINGS)
+        rows = coerce.fix_suggestions(raw, self.HEADINGS)
         self.ok(rows)
         self.assertEqual(rows, raw)
 
     def test_too_few_sets_are_padded(self):
-        self.ok(generator._fix_suggestions([["a", "b", "c"]], self.HEADINGS))
+        self.ok(coerce.fix_suggestions([["a", "b", "c"]], self.HEADINGS))
 
     def test_too_many_sets_are_trimmed(self):
         raw = [["a", "b", "c"]] * 9
-        self.ok(generator._fix_suggestions(raw, self.HEADINGS))
+        self.ok(coerce.fix_suggestions(raw, self.HEADINGS))
 
     def test_ragged_rows_are_filled_and_capped(self):
-        self.ok(generator._fix_suggestions([["a"], ["b", "c", "d", "e", "f"], []], self.HEADINGS))
+        self.ok(coerce.fix_suggestions([["a"], ["b", "c", "d", "e", "f"], []], self.HEADINGS))
 
     def test_flat_list_is_regrouped(self):
-        rows = generator._fix_suggestions(["a", "b", "c", "d", "e", "f", "g", "h", "i"],
+        rows = coerce.fix_suggestions(["a", "b", "c", "d", "e", "f", "g", "h", "i"],
                                           self.HEADINGS)
         self.ok(rows)
         self.assertEqual(rows[0], ["a", "b", "c"])
 
     def test_garbage_still_yields_a_valid_shape(self):
         for raw in (None, {}, "nope", [None, 3, {"a": 1}]):
-            self.ok(generator._fix_suggestions(raw, self.HEADINGS))
+            self.ok(coerce.fix_suggestions(raw, self.HEADINGS))
 
 
 class TestQuizItemCoercion(unittest.TestCase):
@@ -121,7 +123,7 @@ class TestQuizItemCoercion(unittest.TestCase):
 
     def ok(self, item):
         from coursekit import validate as ck_validate
-        out = generator._fix_quiz_item(item)
+        out = coerce.fix_quiz_item(item)
         self.assertIsNotNone(out, item)
         self.assertEqual(ck_validate.quiz_item_problems(out, "q"), [], out)
         return out
@@ -140,10 +142,10 @@ class TestQuizItemCoercion(unittest.TestCase):
 
     def test_unknown_type_falls_back_to_single_and_hopeless_items_are_dropped(self):
         self.assertEqual(self.ok({"type": "bogus", "q": "h", "options": ["1", "2"], "answer": 1, "why": "w"})["type"], "single")
-        self.assertIsNone(generator._fix_quiz_item({"type": "numeric", "q": "d", "answer": "lots", "why": "w"}))
-        self.assertIsNone(generator._fix_quiz_item({"type": "cloze", "q": "no blank", "answer": "x", "why": "w"}))
-        self.assertIsNone(generator._fix_quiz_item({"type": "match", "q": "f", "pairs": [["a", "b"]], "why": "w"}))
-        self.assertIsNone(generator._fix_quiz_item({"q": "h", "options": ["only"], "answer": 0, "why": "w"}))
+        self.assertIsNone(coerce.fix_quiz_item({"type": "numeric", "q": "d", "answer": "lots", "why": "w"}))
+        self.assertIsNone(coerce.fix_quiz_item({"type": "cloze", "q": "no blank", "answer": "x", "why": "w"}))
+        self.assertIsNone(coerce.fix_quiz_item({"type": "match", "q": "f", "pairs": [["a", "b"]], "why": "w"}))
+        self.assertIsNone(coerce.fix_quiz_item({"q": "h", "options": ["only"], "answer": 0, "why": "w"}))
 
     def test_feedback_only_kept_when_it_lines_up(self):
         keep = self.ok({"q": "a", "options": ["x", "y"], "answer": 0, "feedback": ["no", "yes"], "hints": ["h", "", "i"], "why": "w"})
@@ -154,9 +156,9 @@ class TestQuizItemCoercion(unittest.TestCase):
     def test_roleplay_is_kept_when_whole_and_dropped_when_not(self):
         base = {"predict": "p", "quiz": [{"q": "a", "options": ["x", "y"], "answer": 0, "why": "w"}],
                 "cards": [{"front": "f", "back": "b"}], "elaborate": [], "transfer": {}}
-        whole = generator._fix_assessment(dict(base, roleplay={"persona": "You are", "situation": "s", "goal": "g", "rubric": "one"}), "M01")
+        whole = coerce.fix_assessment(dict(base, roleplay={"persona": "You are", "situation": "s", "goal": "g", "rubric": "one"}), "M01")
         self.assertEqual(whole["roleplay"]["rubric"], ["one"])
-        partial = generator._fix_assessment(dict(base, roleplay={"persona": "You are"}), "M01")
+        partial = coerce.fix_assessment(dict(base, roleplay={"persona": "You are"}), "M01")
         self.assertNotIn("roleplay", partial)
 
 
@@ -173,38 +175,38 @@ class TestAssessmentCoercion(unittest.TestCase):
         return row
 
     def test_clean_input(self):
-        out = generator._fix_assessment(self.base(), "M01")
+        out = coerce.fix_assessment(self.base(), "M01")
         self.assertEqual(out["id"], "M01")
         self.assertEqual(out["quiz"][0]["answer"], 1)
 
     def test_out_of_range_answer_is_clamped(self):
         for bad, expected in ((9, 3), (-4, 0), ("2", 2), (None, 0)):
             quiz = [{"q": "Q", "options": ["a", "b", "c", "d"], "answer": bad, "why": "w"}]
-            out = generator._fix_assessment(self.base(quiz=quiz), "M01")
+            out = coerce.fix_assessment(self.base(quiz=quiz), "M01")
             self.assertEqual(out["quiz"][0]["answer"], expected, "answer=%r" % bad)
 
     def test_missing_why_is_filled(self):
         quiz = [{"q": "Q", "options": ["a", "b"], "answer": 0}]
-        out = generator._fix_assessment(self.base(quiz=quiz), "M01")
+        out = coerce.fix_assessment(self.base(quiz=quiz), "M01")
         self.assertTrue(out["quiz"][0]["why"])
 
     def test_quiz_is_capped(self):
         quiz = [{"q": "Q", "options": ["a", "b"], "answer": 0, "why": "w"}] * 40
-        out = generator._fix_assessment(self.base(quiz=quiz), "M01")
-        self.assertEqual(len(out["quiz"]), generator.QUIZ_ITEMS)
+        out = coerce.fix_assessment(self.base(quiz=quiz), "M01")
+        self.assertEqual(len(out["quiz"]), coerce.QUIZ_ITEMS)
 
     def test_half_written_cards_are_dropped(self):
         cards = [{"front": "Q", "back": ""}, {"front": "", "back": "A"}, {"front": "Q2", "back": "A2"}]
-        out = generator._fix_assessment(self.base(cards=cards), "M01")
+        out = coerce.fix_assessment(self.base(cards=cards), "M01")
         self.assertEqual(out["cards"], [{"front": "Q2", "back": "A2"}])
 
     def test_unusable_input_raises_rather_than_shipping_empty(self):
-        with self.assertRaises(generator.GenerationError):
-            generator._fix_assessment(self.base(quiz=[]), "M01")
-        with self.assertRaises(generator.GenerationError):
-            generator._fix_assessment(self.base(cards=[]), "M01")
-        with self.assertRaises(generator.GenerationError):
-            generator._fix_assessment("not an object", "M01")
+        with self.assertRaises(GenerationError):
+            coerce.fix_assessment(self.base(quiz=[]), "M01")
+        with self.assertRaises(GenerationError):
+            coerce.fix_assessment(self.base(cards=[]), "M01")
+        with self.assertRaises(GenerationError):
+            coerce.fix_assessment("not an object", "M01")
 
     def test_output_passes_the_real_validator(self):
         from coursekit import validate as ck_validate
@@ -213,7 +215,7 @@ class TestAssessmentCoercion(unittest.TestCase):
             id, source = "M01", "x.md"
             sections = [1, 2]
 
-        assess = {"M01": generator._fix_assessment(self.base(), "M01")}
+        assess = {"M01": coerce.fix_assessment(self.base(), "M01")}
         sugg = {"M01": [["a", "b", "c"], ["d", "e", "f"]]}
         self.assertEqual(ck_validate.check([FakeModule()], assess, sugg), [])
 
@@ -233,7 +235,7 @@ class TestPlanNormalisation(unittest.TestCase):
         return base
 
     def test_fills_defaults(self):
-        out = generator.normalise_plan(self.plan(), "bread", 6, self.BRIEF)
+        out = curriculum.normalise_plan(self.plan(), "bread", 6, self.BRIEF)
         self.assertEqual(out["subject"], "bread")
         self.assertEqual(out["practitioner"], "baker")
         self.assertTrue(out["tutorPersona"].endswith("."))
@@ -244,42 +246,42 @@ class TestPlanNormalisation(unittest.TestCase):
                 "modules": [{"id": "M01", "part": "p1", "title": "A", "requires": ["M2"]},
                             {"id": "M02", "part": "p1", "title": "B", "requires": ["M1", "m01", "M09", "M02"]},
                             {"id": "M03", "part": "p1", "title": "C"}]}
-        out = generator.normalise_plan(plan, "x", 3, {})
+        out = curriculum.normalise_plan(plan, "x", 3, {})
         self.assertEqual([m["requires"] for m in out["modules"]], [[], ["M01"], []])
 
     def test_module_ids_are_renumbered_sequentially(self):
         modules = [{"id": "M05", "part": "p1", "title": "A"},
                    {"id": "M05", "part": "p2", "title": "B"},
                    {"id": "zzz", "part": "p1", "title": "C"}]
-        out = generator.normalise_plan(self.plan(modules=modules), "bread", 6, self.BRIEF)
+        out = curriculum.normalise_plan(self.plan(modules=modules), "bread", 6, self.BRIEF)
         self.assertEqual([m["id"] for m in out["modules"]], ["M01", "M02", "M03"])
 
     def test_unknown_part_reference_is_reassigned(self):
         modules = [{"id": "M01", "part": "nonsense", "title": "A"}]
-        out = generator.normalise_plan(self.plan(modules=modules), "bread", 6, self.BRIEF)
+        out = curriculum.normalise_plan(self.plan(modules=modules), "bread", 6, self.BRIEF)
         self.assertIn(out["modules"][0]["part"], ("p1", "p2"))
 
     def test_duplicate_directories_are_made_unique(self):
         parts = [{"id": "p1", "name": "A", "hours": 3, "dir": "same"},
                  {"id": "p2", "name": "B", "hours": 3, "dir": "same"}]
-        out = generator.normalise_plan(self.plan(parts=parts), "bread", 6, self.BRIEF)
+        out = curriculum.normalise_plan(self.plan(parts=parts), "bread", 6, self.BRIEF)
         self.assertNotEqual(out["parts"][0]["dir"], out["parts"][1]["dir"])
 
     def test_bad_minutes_fall_back(self):
         modules = [{"id": "M01", "part": "p1", "title": "A", "minutes": "ninety"}]
-        out = generator.normalise_plan(self.plan(modules=modules), "bread", 6, self.BRIEF)
+        out = curriculum.normalise_plan(self.plan(modules=modules), "bread", 6, self.BRIEF)
         self.assertEqual(out["modules"][0]["minutes"], 60)
 
     def test_empty_plan_is_rejected(self):
         for bad in ({"parts": [], "modules": []}, {"parts": [{"id": "p1", "name": "A", "dir": "d"}]}, "nope"):
-            with self.assertRaises(generator.GenerationError):
-                generator.normalise_plan(bad, "bread", 6, self.BRIEF)
+            with self.assertRaises(GenerationError):
+                curriculum.normalise_plan(bad, "bread", 6, self.BRIEF)
 
     def test_manifest_is_loadable_by_the_build(self):
         import tempfile
         from coursekit import config as ck_config
-        plan = generator.normalise_plan(self.plan(), "bread", 6, self.BRIEF)
-        manifest = generator.plan_to_manifest(plan, "bread")
+        plan = curriculum.normalise_plan(self.plan(), "bread", 6, self.BRIEF)
+        manifest = curriculum.plan_to_manifest(plan, "bread")
         tmp = tempfile.mkdtemp(prefix="studio-test-")
         with open(os.path.join(tmp, "course.json"), "w", encoding="utf-8") as fh:
             json.dump(manifest, fh)
@@ -593,7 +595,7 @@ class TestModelChoice(unittest.TestCase):
         from studio import prefs, server
         self.assertEqual([m[0] for m in prefs.MODELS], [m["alias"] for m in SETTINGS.models])
         self.assertEqual(claude_cli.MODEL_ALIASES, SETTINGS.model_aliases)
-        view = server.settings_view()
+        view = catalog.settings_view()
         self.assertEqual([m["id"] for m in view["models"]], [m[0] for m in prefs.MODELS])
         self.assertEqual(view["paths"]["settings"], SETTINGS.path)
         self.assertIn("STUDIO_PORT", view["envKeys"])
@@ -719,12 +721,12 @@ class TestCourseEditing(unittest.TestCase):
         self.modules = ck_loader.load_modules(self.cfg)
 
     def test_next_module_id_never_reuses(self):
-        self.assertEqual(generator.next_module_id(self.modules), "M07")
-        self.assertEqual(generator.next_module_id([{"id": "M03"}, {"id": "M10"}, {"id": "x"}]), "M11")
-        self.assertEqual(generator.next_module_id([]), "M01")
+        self.assertEqual(curriculum.next_module_id(self.modules), "M07")
+        self.assertEqual(curriculum.next_module_id([{"id": "M03"}, {"id": "M10"}, {"id": "x"}]), "M11")
+        self.assertEqual(curriculum.next_module_id([]), "M01")
 
     def test_plan_from_course_has_what_the_prompts_need(self):
-        plan = generator.plan_from_course(self.cfg, self.modules)
+        plan = curriculum.plan_from_course(self.cfg, self.modules)
         for key in ("title", "subject", "hours", "audience", "practitioner", "parts", "modules"):
             self.assertIn(key, plan)
         self.assertEqual(plan["modules"][0]["id"], "M01")
@@ -732,31 +734,31 @@ class TestCourseEditing(unittest.TestCase):
         self.assertEqual([p["dir"] for p in plan["parts"]][0], "01-foundations")
 
     def test_fix_spec_repairs_a_sloppy_design(self):
-        spec = generator._fix_spec({"title": " Deep dive ", "minutes": "abc", "sections": []},
+        spec = coerce.fix_spec({"title": " Deep dive ", "minutes": "abc", "sections": []},
                                    "M07", "p2", "topic", 45)
         self.assertEqual(spec["id"], "M07")
         self.assertEqual(spec["title"], "Deep dive")
         self.assertEqual(spec["minutes"], 45)
         self.assertEqual(len(spec["sections"]), 7)
-        self.assertEqual(generator._fix_spec("garbage", "M07", "p2", "topic", 45)["title"], "topic")
-        self.assertEqual(generator._fix_spec({"minutes": 9999}, "M07", "p2", "t", 45)["minutes"], 240)
+        self.assertEqual(coerce.fix_spec("garbage", "M07", "p2", "topic", 45)["title"], "topic")
+        self.assertEqual(coerce.fix_spec({"minutes": 9999}, "M07", "p2", "t", 45)["minutes"], 240)
 
     def test_store_module_data_adds_new_files_for_a_new_module(self):
         from coursekit import assessments as ck_assess
-        assess = generator._fix_assessment({
+        assess = coerce.fix_assessment({
             "quiz": [{"q": "Q", "options": ["a", "b"], "answer": 1, "why": "w"}],
             "cards": [{"front": "f", "back": "b"}]}, "M07")
-        generator._store_module_data(self.fixture.root, self.cfg, "M07", assess, [["a", "b", "c"]])
+        editing.store_module_data(self.fixture.root, self.cfg, "M07", assess, [["a", "b", "c"]])
         self.assertTrue(os.path.isfile(os.path.join(self.fixture.root, "data/assessments/M07.json")))
         self.assertIn("M07", ck_assess.load_assessments(self.cfg))
         self.assertEqual(ck_assess.load_suggestions(self.cfg)["M07"], [["a", "b", "c"]])
 
     def test_store_module_data_replaces_in_place_for_an_existing_module(self):
         from coursekit import assessments as ck_assess
-        assess = generator._fix_assessment({
+        assess = coerce.fix_assessment({
             "predict": "new", "quiz": [{"q": "Q", "options": ["a", "b"], "answer": 0, "why": "w"}],
             "cards": [{"front": "f", "back": "b"}]}, "M02")
-        generator._store_module_data(self.fixture.root, self.cfg, "M02", assess, [["x", "y", "z"]] * 3)
+        editing.store_module_data(self.fixture.root, self.cfg, "M02", assess, [["x", "y", "z"]] * 3)
         self.assertFalse(os.path.isfile(os.path.join(self.fixture.root, "data/assessments/M02.json")),
                          "no second file: the validator would see two claims on M02")
         loaded = ck_assess.load_assessments(self.cfg)
@@ -765,13 +767,12 @@ class TestCourseEditing(unittest.TestCase):
         self.assertEqual(self.fixture.problems(), [])
 
     def test_set_short_title(self):
-        generator._set_short_title(self.fixture.root, "M07", "Deep dive")
+        editing.set_short_title(self.fixture.root, "M07", "Deep dive")
         with open(self.fixture.cfg_path, encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["shortTitles"]["M07"], "Deep dive")
 
     def test_extend_writes_a_module_then_rebuilds(self):
         """The whole extend pipeline with Claude stubbed out."""
-        from studio import server
         calls = []
 
         def fake_ask(prompt, **kw):
@@ -795,7 +796,7 @@ class TestCourseEditing(unittest.TestCase):
         try:
             job = jobs.Job("extend")
             dist = os.path.join(self.tmp, "dist")
-            result = generator.extend(job, self.tmp, dist, "fixture",
+            result = editing.extend(job, self.tmp, dist, "fixture",
                                       {"topic": "reading a failed loaf", "part": "p3", "minutes": 45,
                                        "notes": "assume the starter is healthy"})
         finally:
@@ -810,7 +811,7 @@ class TestCourseEditing(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(dist, "fixture", "fixture-course-local.html")))
         # And the server's cheap id listing agrees with the loader.
         from coursekit import config as ck_config
-        self.assertEqual(server._module_ids(ck_config.load(self.fixture.root))[-1], "M07")
+        self.assertEqual(catalog.module_ids(ck_config.load(self.fixture.root))[-1], "M07")
 
     # ---- manage: settings, remove, trash ----
 
@@ -846,7 +847,7 @@ class TestCourseEditing(unittest.TestCase):
         claude_cli.ask = fake_ask
         try:
             job = jobs.Job("rewrite")
-            result = generator.rewrite(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture", "M03",
+            result = editing.rewrite(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture", "M03",
                                        {"notes": "add one sentence", "mode": "patch"})
         finally:
             claude_cli.ask = original
@@ -903,7 +904,7 @@ class TestCourseEditing(unittest.TestCase):
         with open(self.fixture.cfg_path, encoding="utf-8") as fh:
             self.assertNotIn("M03", json.load(fh)["shortTitles"])
         self.assertEqual(self.fixture.problems(), [], "no orphan data left for the validator")
-        self.assertEqual(generator.next_module_id(self.modules), "M07", "ids are not reused")
+        self.assertEqual(curriculum.next_module_id(self.modules), "M07", "ids are not reused")
         with self.assertRaises(CourseError):
             manage.remove_module(self.fixture.root, "M03", trash)
         with self.assertRaises(CourseError):
@@ -925,17 +926,16 @@ class TestCourseEditing(unittest.TestCase):
             manage.trash_course(self.tmp, self.tmp, self.tmp, "fixture")
 
     def test_open_questions_from_marks(self):
-        from studio import server
         state = {"marks": {"M02": [
             {"id": "k1", "sec": 1, "text": "a passage", "q": "why?", "status": "open", "ts": 5},
             {"id": "k2", "sec": 0, "text": "plain highlight", "status": "hl", "ts": 9},
             {"id": "k3", "sec": 2, "text": "answered one", "status": "answered", "ts": 7},
         ], "M09": "junk"}}
         mods = [{"id": "M02", "title": "Water"}]
-        qs = server.open_questions(state, mods)
+        qs = catalog.open_questions(state, mods)
         self.assertEqual([q["id"] for q in qs], ["k3", "k1"], "newest first, highlights excluded")
         self.assertEqual(qs[1]["title"], "Water")
-        self.assertEqual(server.open_questions({}, mods), [])
+        self.assertEqual(catalog.open_questions({}, mods), [])
 
     # ---- resuming a run that died ----
 
@@ -974,9 +974,9 @@ class TestCourseEditing(unittest.TestCase):
         shutil.rmtree(data_dir)
         os.makedirs(os.path.join(data_dir, "assessments"))
         os.makedirs(os.path.join(data_dir, "suggestions"))
-        generator._write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
-        generator._write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
-        self.assertFalse(os.path.isfile(os.path.join(self.fixture.root, generator.PLAN_FILE)))
+        files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
+        files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
+        self.assertFalse(os.path.isfile(os.path.join(self.fixture.root, curriculum.PLAN_FILE)))
 
         calls = []
         original = claude_cli.ask
@@ -993,39 +993,34 @@ class TestCourseEditing(unittest.TestCase):
         self.assertEqual(len(written), 1, "only the missing module was written")
         self.assertIn("Write module M07", written[0])
         self.assertEqual(sum(1 for c in calls if "study data for module" in c), 1)
-        self.assertTrue(os.path.isfile(os.path.join(self.fixture.root, generator.PLAN_FILE)),
+        self.assertTrue(os.path.isfile(os.path.join(self.fixture.root, curriculum.PLAN_FILE)),
                         "the curriculum is saved for the next resume")
         self.assertEqual(self.fixture.problems(), [])
         kinds = [e["kind"] for e in job.events]
         self.assertNotIn("await", kinds, "a resume never asks for approval again")
         # Reference docs that were stubs got written; a second resume would keep them.
-        self.assertTrue(generator._real_file(os.path.join(self.fixture.root, "reference/glossary.md")))
+        self.assertTrue(generator.is_real_file(os.path.join(self.fixture.root, "reference/glossary.md")))
 
     def test_reconstruct_plan_orders_and_fills(self):
         self.fixture.edit_manifest(shortTitles=dict(
             {mid: "Lesson " + mid for mid in self.fixture.ids}, M09="Nine", M08="Eight"))
-        plan = generator.reconstruct_plan(self.fixture.root)
+        plan = curriculum.reconstruct_plan(self.fixture.root)
         self.assertEqual([m["id"] for m in plan["modules"]], ["M01", "M02", "M03", "M04", "M05", "M06", "M08", "M09"])
         self.assertEqual(plan["modules"][-1]["title"], "Nine")
         self.assertEqual(plan["modules"][0]["sections"], ["Why this matters", "Core concepts", "Exercise"])
 
     def test_resolve_course_file_stays_inside_the_course(self):
-        from studio import server
-        saved = server.COURSES_DIR
-        server.COURSES_DIR = self.tmp
-        try:
-            ok = server.resolve_course_file("fixture", "modules/01-foundations/M01-lesson.md")
-            self.assertTrue(ok.startswith(os.path.abspath(self.fixture.root)))
-            for bad in ("../other/course.json", "course.py", "", "modules/../../x.md"):
-                with self.subTest(bad=bad):
-                    try:
-                        full = server.resolve_course_file("fixture", bad)
-                    except ValueError:
-                        continue
-                    self.assertTrue(full.startswith(os.path.abspath(self.fixture.root)),
-                                    "%r resolved outside the course" % bad)
-        finally:
-            server.COURSES_DIR = saved
+        root = self.fixture.root
+        ok = catalog.resolve_course_file(root, "modules/01-foundations/M01-lesson.md")
+        self.assertTrue(ok.startswith(os.path.abspath(root)))
+        for bad in ("../other/course.json", "course.py", "", "modules/../../x.md"):
+            with self.subTest(bad=bad):
+                try:
+                    full = catalog.resolve_course_file(root, bad)
+                except ValueError:
+                    continue
+                self.assertTrue(full.startswith(os.path.abspath(root)),
+                                "%r resolved outside the course" % bad)
 
 
 class TestPhase3(unittest.TestCase):
@@ -1054,7 +1049,7 @@ class TestPhase3(unittest.TestCase):
         cfg = config.load(self.fixture.root)
         self.assertEqual(self._ids(), ["M02", "M01", "M04", "M03", "M05", "M06"],
                          "listed ids first in that sequence, unknown ids ignored, the rest by filename")
-        self.assertEqual(server._module_ids(cfg), self._ids())
+        self.assertEqual(catalog.module_ids(cfg), self._ids())
         self.assertEqual(self.fixture.problems(), [])
 
     def test_move_module_within_and_between_parts(self):
@@ -1112,14 +1107,14 @@ class TestPhase3(unittest.TestCase):
         today = int(time.time() // 86400)
         summary = progress.summarise({"streak": {"seen": [today, today - 1, today - 5]}}, ["M01"])
         self.assertEqual(summary["seen"], [today - 5, today - 1, today])
-        cal = server.calendar([
+        cal = catalog.calendar([
             {"id": "a", "progress": {"seen": [today - 1, today - 2]}},
             {"id": "b", "progress": {"seen": [today - 2, today - 9]}},
         ])
         self.assertEqual(cal["streak"], 2, "yesterday and the day before, today not yet studied")
         self.assertEqual(sorted(cal["days"][str(today - 2)]), ["a", "b"])
         self.assertEqual(cal["total"], 3)
-        self.assertEqual(server.calendar([])["streak"], 0)
+        self.assertEqual(catalog.calendar([])["streak"], 0)
 
     # ---- P3.2 search ----
 
@@ -1200,14 +1195,14 @@ class TestPhase3(unittest.TestCase):
         from coursekit import loader as ck_loader
         cfg = config.load(self.fixture.root)
         mods = ck_loader.load_modules(cfg)
-        plan = generator.plan_from_course(cfg, mods)
+        plan = curriculum.plan_from_course(cfg, mods)
         spec = plan["modules"][2]
         text = prompts.review(plan, plan["modules"], spec, "# M03 — Lesson 3\n\n## Why", {"quiz": [{"type": "tf", "q": "Is it?"}]})
         for needle in ("M03", "Lesson 3", "[tf] Is it?", '"verdict"', "rewriteBrief", "Do not list what is fine",
                        "publishable as it stands", "do not lower"):
             self.assertIn(needle, text)
 
-        fixed = generator._fix_review({
+        fixed = coerce.fix_review({
             "verdict": "Needs Work", "summary": "  ok  ",
             "gaps": [{"where": "Core concepts", "issue": "no numbers", "fix": "add two"}, "loose string", {"issue": ""}, 7],
             "errors": "not a list", "quiz": [{"item": "Q2", "issue": "key wrong"}],
@@ -1218,16 +1213,16 @@ class TestPhase3(unittest.TestCase):
         self.assertEqual([g["issue"] for g in fixed["gaps"]], ["no numbers", "loose string"])
         self.assertEqual(fixed["errors"], [])
         self.assertEqual(fixed["quiz"][0]["item"], "Q2")
-        self.assertEqual(generator._fix_review("garbage")["verdict"], "needs work")
-        self.assertEqual(generator._fix_review({"verdict": "solid"})["verdict"], "solid")
+        self.assertEqual(coerce.fix_review("garbage")["verdict"], "needs work")
+        self.assertEqual(coerce.fix_review({"verdict": "solid"})["verdict"], "solid")
 
         state_root = os.path.join(self.tmp, "state")
-        d = generator.reviews_dir(state_root, "fixture")
+        d = reviews.reviews_dir(state_root, "fixture")
         os.makedirs(d)
         with open(os.path.join(d, "M03.json"), "w", encoding="utf-8") as fh:
             json.dump(dict(fixed, module="M03", at=1), fh)
-        self.assertEqual(list(generator.load_reviews(state_root, "fixture")), ["M03"])
-        self.assertEqual(generator.load_reviews(state_root, "nothing"), {})
+        self.assertEqual(list(reviews.load_reviews(state_root, "fixture")), ["M03"])
+        self.assertEqual(reviews.load_reviews(state_root, "nothing"), {})
 
 
 class TestStaleReviews(unittest.TestCase):
@@ -1241,19 +1236,19 @@ class TestStaleReviews(unittest.TestCase):
             module = os.path.join(tmp, "M01.md")
             with open(module, "w", encoding="utf-8") as fh:
                 fh.write("# M01 - x\n\n## A\n\ntext\n")
-            directory = generator.reviews_dir(tmp, "c")
+            directory = reviews.reviews_dir(tmp, "c")
             os.makedirs(directory)
             written = os.path.getmtime(module) * 1000
             with open(os.path.join(directory, "M01.json"), "w", encoding="utf-8") as fh:
                 json.dump({"verdict": "needs work", "at": int(written - 60_000)}, fh)
             with open(os.path.join(directory, "M02.json"), "w", encoding="utf-8") as fh:
                 json.dump({"verdict": "solid", "at": int(written + 60_000)}, fh)
-            reviews = generator.load_reviews(tmp, "c", {"M01": module, "M02": module})
-            self.assertTrue(reviews["M01"].get("stale"))
-            self.assertEqual(reviews["M01"]["moduleChangedAt"], int(written))
-            self.assertNotIn("stale", reviews["M02"])
+            loaded = reviews.load_reviews(tmp, "c", {"M01": module, "M02": module})
+            self.assertTrue(loaded["M01"].get("stale"))
+            self.assertEqual(loaded["M01"]["moduleChangedAt"], int(written))
+            self.assertNotIn("stale", loaded["M02"])
             # Without sources nothing can be judged, and nothing is claimed.
-            self.assertNotIn("stale", generator.load_reviews(tmp, "c")["M01"])
+            self.assertNotIn("stale", reviews.load_reviews(tmp, "c")["M01"])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1265,23 +1260,23 @@ class TestStaleReviews(unittest.TestCase):
             module = os.path.join(tmp, "M01.md")
             with open(module, "w", encoding="utf-8") as fh:
                 fh.write("# M01 - x")
-            path = os.path.join(generator.reviews_dir(tmp, "c"), "M01.json")
+            path = os.path.join(reviews.reviews_dir(tmp, "c"), "M01.json")
 
             # Without a review: a record of its own, gone again when withdrawn.
-            generator.accept_module(tmp, "c", "M01", True)
-            rv = generator.load_reviews(tmp, "c", {"M01": module})["M01"]
+            reviews.accept_module(tmp, "c", "M01", True)
+            rv = reviews.load_reviews(tmp, "c", {"M01": module})["M01"]
             self.assertTrue(rv["accepted"] and rv["ownerOnly"])
             self.assertEqual(rv["verdict"], "solid")
             self.assertNotIn("stale", rv)
-            generator.accept_module(tmp, "c", "M01", False)
+            reviews.accept_module(tmp, "c", "M01", False)
             self.assertFalse(os.path.exists(path))
 
             # Over a review: the findings stay, the mark comes and goes.
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump({"verdict": "needs work", "gaps": [{"issue": "x"}], "at": 1}, fh)
-            generator.accept_module(tmp, "c", "M01", True)
-            rv = generator.load_reviews(tmp, "c", {"M01": module})["M01"]
+            reviews.accept_module(tmp, "c", "M01", True)
+            rv = reviews.load_reviews(tmp, "c", {"M01": module})["M01"]
             self.assertEqual(rv["verdict"], "needs work", "the review is kept; the UI shows the mark")
             self.assertTrue(rv["accepted"])
             self.assertNotIn("ownerOnly", rv)
@@ -1290,15 +1285,55 @@ class TestStaleReviews(unittest.TestCase):
             # The module changes after the mark: the mark is stale like a review would be.
             future = time.time() + 120
             os.utime(module, (future, future))
-            rv = generator.load_reviews(tmp, "c", {"M01": module})["M01"]
+            rv = reviews.load_reviews(tmp, "c", {"M01": module})["M01"]
             self.assertTrue(rv.get("stale"))
 
-            generator.accept_module(tmp, "c", "M01", False)
-            rv = generator.load_reviews(tmp, "c")["M01"]
+            reviews.accept_module(tmp, "c", "M01", False)
+            rv = reviews.load_reviews(tmp, "c")["M01"]
             self.assertNotIn("accepted", rv)
             self.assertEqual(rv["gaps"], [{"issue": "x"}])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+
+class TestServerConventions(unittest.TestCase):
+    """The route table and the Studio UI, checked without starting a server."""
+
+    def test_every_route_is_registered_once(self):
+        from studio import server
+        seen = {}
+        for method, pattern, fn in server.ROUTES:
+            key = (method, pattern.pattern)
+            self.assertNotIn(key, seen, "%s %s is registered by %s and %s"
+                             % (method, pattern.pattern, seen.get(key), fn.__name__))
+            seen[key] = fn.__name__
+        self.assertGreater(len(seen), 30)
+
+    def test_every_documented_route_has_a_handler(self):
+        """The table in the server docstring is the API reference; it must not drift."""
+        import re
+        from studio import server
+        documented = re.findall(r"^\s+(GET|PUT|POST)\s+(/\S*)", server.__doc__, re.M)
+        self.assertGreater(len(documented), 30)
+        for method, path in documented:
+            probe = re.sub(r"<[^>]+>", "x", path.split("?")[0]).replace("/x/x", "/x/M01")
+            probe = probe.replace("/modules/x/", "/modules/M01/")
+            hit = any(m == method and p.match(probe) for m, p, _ in server.ROUTES)
+            self.assertTrue(hit, "%s %s is documented but no route matches %s" % (method, path, probe))
+
+    @unittest.skipUnless(shutil.which("node"), "node not on PATH")
+    def test_studio_ui_boots_under_node(self):
+        """Every file in ui/js/, in load order, under the stub DOM: catches a name one file
+        uses that no file declares."""
+        import subprocess
+        ui = os.path.join(PLATFORM, "studio", "ui", "js")
+        files = [os.path.join(ui, n) for n in sorted(os.listdir(ui)) if n.endswith(".js")]
+        harness = os.path.join(HERE, "page_smoke.js")
+        proc = subprocess.run(["node", harness] + files, capture_output=True, text=True,
+                              encoding="utf-8", timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        self.assertIn("booted", proc.stdout)
 
 
 if __name__ == "__main__":

@@ -89,8 +89,9 @@ platform/                   the engine — knows nothing about any subject
   settings.json             every default of the platform; see "Settings" above
   coursekit/                the build package
   studio/                   the local web app: generate + build from a browser
-  web/                      front-end source: shell.html + css/ + js/
-  tests/                    test_build.py, test_studio.py, page_smoke.js (boots a built page under node)
+    ui/                     its front end: index.html + studio.css + js/ (one file per screen)
+  web/                      the course page's source: shell.html + css/ + js/ (one file per concern)
+  tests/                    test_build.py, test_studio.py, page_smoke.js (boots front-end code under node)
 courses/<id>/               one course = one separate git repository (gitignored here;
                             the directory itself moves with COURSES_DIR)
   course.json               the manifest that makes a folder a course
@@ -130,11 +131,13 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      49 tests — engine (one boots the page under node, skipped without it)
-python platform/tests/test_studio.py     97 tests — Studio
+python platform/tests/test_build.py      53 tests — engine, and the code conventions below
+python platform/tests/test_studio.py     100 tests — Studio
+npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
 
-Requires Python 3 and the `markdown` package (`pip install markdown`). Nothing else.
+Requires Python 3 and the `markdown` package (`pip install markdown`). Nothing else - `npm
+install` adds prettier for the front end, and the formatting test skips when it is absent.
 
 ## Running in Docker
 
@@ -269,6 +272,14 @@ opt-in sit under `S.ui` and stay on the device.
 There is no module system and no build step for the JS. Everything is top-level in one
 scope. Adding a global means adding it to that shared scope — check the name is free.
 
+The names to know: `STATE` is the reader's whole saved state (`01-state.js`, shape in
+`blank()`); `progressOf(mid)` is one module's slice of it; `route` is the parsed hash
+(`view`, `id`, `step`); `MODS` and `byId` are the course; `QUIZ` is the quiz being drawn
+(`08-quiz.js`); `rail` is everything the chat rail keeps between renders (`17-rail.js`),
+and the conversations it shows live in `STATE.convos` (`17-convos.js`, which documents the
+message shape). Keys stored in `STATE` are a contract with every existing save - rename a
+function freely, never a stored key.
+
 ### Two outputs, deliberately
 
 | File | Purpose |
@@ -286,7 +297,7 @@ Always point a user at the `-local.html` copy.
 - Every quiz item has the shape its `type` demands (`validate.QUIZ_TYPES`; `single` when
   absent), a `why`, and — if present — one `feedback` line per option and `hints` as a
   list. `validate.quiz_item_problems` is the single definition, and Studio's
-  `_fix_quiz_item` coerces towards it.
+  `coerce.fix_quiz_item` coerces towards it.
 - Every flashcard has both `front` and `back`.
 - A `roleplay`, when present, has `persona`, `situation`, `goal` and a non-empty `rubric`.
 - Every id in a module's `**Requires:**` line is a module in the course.
@@ -296,7 +307,7 @@ Always point a user at the `-local.html` copy.
 
 **Module order** is filename order within each part unless `course.json` carries an `order`
 list of ids; then listed ids come first in that sequence and the rest follow by filename.
-`loader.module_files` is the one place that rule lives, and `server._module_ids` calls it,
+`loader.module_files` is the one place that rule lives, and `catalog.module_ids` calls it,
 so the cheap listing and the build never disagree. Part membership is still the folder the
 file sits in; `manage.move_module` moves the file when the part changes and rewrites `order`.
 
@@ -317,15 +328,30 @@ reading validation errors next to the course they belong to.
 
 | Module | Job |
 |---|---|
-| `claude_cli` | talks to Claude through the `claude` CLI |
+| `claude_cli` | talks to Claude through the `claude` CLI; `timeout_for(step)` reads `generation.timeouts` |
 | `jobs` | background work with a replayable event log |
 | `prompts` | every prompt Studio sends |
-| `generator` | the pipeline: plan → approve → write → validate → build; plus `extend` and `rewrite` for an existing course |
+| `curriculum` | the plan a course is written from: `make_plan`, `normalise_plan`, `plan_from_course`, `load_plan` / `reconstruct_plan` for a resume |
+| `coerce` | model output into shapes the validator accepts: `fix_quiz_item`, `fix_assessment`, `fix_suggestions`, `fix_spec`, `fix_review` |
+| `generator` | the pipeline: plan → approve → write → validate → build; the writers (`write_module`, `write_study_data`) and `build_course` / `check_course` |
+| `editing` | one module of an existing course: `extend`, `rewrite`, patch mode, `store_module_data` |
+| `reviews` | what Claude or the owner thinks of a module, under `state/reviews/` |
+| `catalog` | what the API reports: `course_summary`, `course_detail`, `state`, `calendar`, `settings_view` |
+| `runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |
 | `progress` | the platform-side copy of reader state, one JSON file per course |
-| `manage` | course operations that need no model: settings form, remove a module, trash a course |
-| `prefs` | Studio-wide preferences in `state/studio.json` — today, the model |
+| `manage` | course operations that need no model: settings form, move or remove a module, trash a course |
+| `transfer` | a course in or out as a zip or a git clone |
+| `search` | every course searched at once, through the build's own loader |
+| `prefs` | Studio-wide preferences in `state/studio.json` — the model, the reader profile |
+| `files`, `ids`, `errors` | shared helpers: atomic `read_json` / `write_json` / `write_text`, the id patterns, `GenerationError` |
 | `log` | the `studio` logger: rotating file + in-memory ring, read by `/api/logs` |
-| `server` | HTTP, SSE, and the static UI in `ui/` |
+| `server` | HTTP: the route table, SSE, and the static UI in `ui/` |
+
+**Every route is one method on `Handler`, registered with `@route(METHOD, pattern)`.** The
+pattern's named groups become the method's arguments; a `course_id` group is resolved (400
+for a bad id, 404 for a missing course) and a `mid` group checked before the method runs.
+The docstring at the top of `server.py` lists every route and `test_studio.py` checks the
+two agree. To add a route: write the method, decorate it, add the line to the docstring.
 
 **It binds to 127.0.0.1, and that is a security boundary, not a default.** Studio writes
 files and spawns processes. Do not make it listen on another interface.
@@ -343,8 +369,8 @@ resort. `prefs.MODELS` is the only list the Settings page offers, and it is `mod
 from `settings.json`.
 
 **A run can be resumed.** `generate()` saves the approved curriculum to `plan/plan.json`;
-`brief["resume"]` reloads it (or `reconstruct_plan()` rebuilds one from `course.json` for
-courses made before that), skips the approval gate, keeps every module and study-data entry
+`brief["resume"]` reloads it through `curriculum.load_plan` (or `reconstruct_plan()` rebuilds
+one from `course.json` for courses made before that), skips the approval gate, keeps every module and study-data entry
 already on disk, and writes only what is missing. `POST /api/courses/<id>/resume`; the
 course page and the failed-job screen offer the button when `can_resume()` says so.
 
@@ -367,8 +393,8 @@ unhandled route error logs a traceback. Read it at **Settings & logs** (`#/setti
 `state/logs/studio.log`. `STUDIO_LOG_LEVEL=DEBUG` adds access lines. Rotation size and
 count are `logs.maxBytes` / `logs.backups`.
 
-**Model output is trusted for prose and distrusted for structure.** `generator._fix_assessment`
-and `_fix_suggestions` coerce replies into shapes the validator accepts — clamping quiz answer
+**Model output is trusted for prose and distrusted for structure.** `coerce.fix_assessment`
+and `fix_suggestions` coerce replies into shapes the validator accepts — clamping quiz answer
 indexes, dropping half-written flashcards, forcing the per-section question count. Everything
 is written to disk as it is produced, so a run that dies at module 14 leaves fourteen real
 modules behind.
@@ -386,8 +412,8 @@ Three routes, all on the Studio course page (`#/course/<id>`):
 
 | | |
 |---|---|
-| `POST /api/courses/<id>/extend` | one new module on a topic. `generator.extend` asks for a design that fits the existing curriculum (`prompts.module_spec`), writes it under the next free id — ids are never reused because progress is keyed by them — appends it to the chosen part, writes its study data to `data/*/<mid>.json`, adds the short title, rebuilds. |
-| `POST /api/courses/<id>/modules/<mid>/rewrite` | same id, same file, same position; the notes become `prompts.direction`. With `mode: "patch"` (`generator._patch`) the module as it is goes to `prompts.patch_module` and comes back with only the notes applied, the quiz is patched in place through `prompts.patch_assessment`, and the suggested questions are kept unless a `##` heading changed - a full rewrite regenerates every sentence, so each pass fixes the last review's findings and creates new ones. The Studio form defaults to patch when opened from a review. `_store_module_data` replaces the entry in whichever file already holds it, so the validator never sees two claims on one id. |
+| `POST /api/courses/<id>/extend` | one new module on a topic. `editing.extend` asks for a design that fits the existing curriculum (`prompts.module_spec`), writes it under the next free id — ids are never reused because progress is keyed by them — appends it to the chosen part, writes its study data to `data/*/<mid>.json`, adds the short title, rebuilds. |
+| `POST /api/courses/<id>/modules/<mid>/rewrite` | same id, same file, same position; the notes become `prompts.direction`. With `mode: "patch"` (`editing._patch`) the module as it is goes to `prompts.patch_module` and comes back with only the notes applied, the quiz is patched in place through `prompts.patch_assessment`, and the suggested questions are kept unless a `##` heading changed - a full rewrite regenerates every sentence, so each pass fixes the last review's findings and creates new ones. The Studio form defaults to patch when opened from a review. `editing.store_module_data` replaces the entry in whichever file already holds it, so the validator never sees two claims on one id. |
 | `GET/PUT /api/courses/<id>/files?path=` | raw editing of any `.md`/`.json` inside the course. `resolve_course_file` confines the path; JSON is parsed before it is written. |
 
 Both jobs stream events like a generation run and end with a build. A rewrite keeps the
@@ -401,8 +427,8 @@ Without a model (`studio/manage.py`):
 | `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
 | `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title and its `order` entry go; the reply carries the check result. |
 | `POST /api/courses/<id>/modules/<mid>/move` | `{part, index}`: reorder within a part or move to another; writes `order`, moves the file, never touches study data. |
-| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
-| `POST /api/courses/<id>/modules/<mid>/accept` | `{accepted: bool}`: the owner's own verdict, "this is good". `generator.accept_module` stores it in the same review file (`accepted`, and `ownerOnly` when there was no review), the row shows "good" over whatever Claude said, and it goes stale like a review when the module changes. |
+| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/` by `reviews.py`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
+| `POST /api/courses/<id>/modules/<mid>/accept` | `{accepted: bool}`: the owner's own verdict, "this is good". `reviews.accept_module` stores it in the same review file (`accepted`, and `ownerOnly` when there was no review), the row shows "good" over whatever Claude said, and it goes stale like a review when the module changes. |
 | `POST /api/courses/<id>/delete` | needs `{confirm: <id>}`; moves `courses/<id>` and `dist/<id>` to `state/trash/<id>-<stamp>/` and forgets the progress copy. |
 
 The reader's open questions (`state.marks` with status `open`/`answered`) come back in the
@@ -416,13 +442,17 @@ collide.
 
 ### The Studio UI
 
-`ui/studio.js` is hash-routed: `#/` library with a "today" strip and progress cards, `#/new`,
+`ui/js/` is one file per screen, loaded in name order by `ui/index.html` (`00-core.js` is
+the plumbing every screen uses, `90-router.js` boots the app and must stay last), and
+hash-routed: `#/` library with a "today" strip and progress cards, `#/new`,
 `#/course/<id>` (tabs: Modules, Add a module, Questions, Files, Settings),
 `#/course/<id>/edit?path=`, `#/job/<id>`, and `#/settings` — Studio-wide: the model, every
 resolved platform setting with the layer it came from, where things are, and a live log
 viewer polling `/api/logs`. The course
 page reads `GET /api/courses/<id>`, which parses modules and is therefore not used for the
-listing; `/api/state` counts module files instead (`server._module_ids`).
+listing; `/api/state` counts module files instead (`catalog.module_ids`). `test_studio.py`
+boots the whole UI under node with `page_smoke.js`, so a name one file uses and no file
+declares fails the suite.
 
 ## Authoring content
 
@@ -466,6 +496,78 @@ When the page is served by Studio the same object is also kept at
 read. A page opened off disk has no server; there, progress moves between machines through
 **Backup / restore** in the sidebar. Changing `storageKey` orphans existing progress, so do
 not change a course's `id` after anyone has started it.
+
+## Code conventions
+
+The rules below are what keeps the code readable. The ones a test can hold, a test holds
+(`TestCodeConventions` in `test_build.py`, `TestServerConventions` in `test_studio.py`).
+
+### Python (`platform/`, `tools/`)
+
+- **One module, one job, said in its docstring.** Every module starts with a docstring that
+  says what it is for and, when it is not obvious, why it is shaped the way it is. A test
+  fails on a module without one. A module past ~500 lines is two jobs; split it the way
+  `generator.py` became `curriculum` + `coerce` + `generator` + `editing` + `reviews`.
+- **`_name` is private to its module.** Nothing imports or calls another module's
+  underscore name (a test checks). Something two modules need is public, named for what it
+  is, and lives in one place: file helpers in `studio/files.py`, id patterns in
+  `studio/ids.py`, the plan in `curriculum.py`. Do not copy a helper into a second module.
+- **Every file write goes through `files.write_json` / `files.write_text`.** They create the
+  directory, write beside the target and rename over it, and end the file with one newline.
+  No `open(path, "w")` in Studio outside `files.py`.
+- **Every setting comes from `settings.json`** through `SETTINGS.get(...)`, read once at
+  import into a module constant with a name that says what it bounds (`MAX_BODY`,
+  `QUIZ_ITEMS`). See "Settings" above.
+- **Model output is trusted for prose and distrusted for structure.** Anything a model
+  returns as JSON passes through `coerce.py` before it is written, and the validator in
+  `coursekit.validate` is the authority on what is valid.
+- **A route is a decorated method.** `@route("POST", COURSE + r"/thing")` on `Handler`,
+  a line in the `server.py` docstring, and the guards it needs (`_idle`, `_claude`) at the
+  top. No path parsing inside a handler; no `if path ==` chains.
+- **Comments say why, names say what.** A function whose body needs a comment to follow is
+  two functions. `# noqa: BLE001` on a bare `except Exception` says why it is broad.
+- **Style:** `from __future__ import annotations`, type hints on public functions, 100
+  columns, `%`-formatting for log lines (lazy) and either for strings, no f-strings inside
+  prompts (they are `%`-templates). Standard library only in `coursekit.settings` and the
+  bridge, which import it from outside the package.
+
+### JavaScript and CSS (`platform/web/`, `platform/studio/ui/`)
+
+- **Prettier formats everything** (`npm run format`, config in `.prettierrc`). The test
+  runs `prettier --check` when it is installed. One statement per line: never
+  `a; b; c` on one line, never a `function f() { x; y }` one-liner with two statements.
+- **One file per concern, in load order.** The numeric prefix is the load order; a file is
+  a screen (`ui/js/20-course.js`) or a concern (`web/js/17-convos.js`). Past ~700 lines a
+  file is two concerns (a test fails on a page file over 700 lines). Insert a new file with
+  a free number or a letter suffix on its neighbour, not by renumbering.
+- **Globals are named for what they are, in full.** `STATE`, `progressOf`, `convos()`,
+  `rail.pinned` - never `S`, `P`, `CV`, `pi`. A file's own mutable state lives in one
+  object at its top with a comment per field (`rail` in `17-rail.js`), not in a row of
+  `let`s. Single letters are for lambda parameters and loop counters only, and only when
+  the noun is obvious from the line (`m => m.id`).
+- **Stored shapes are a contract.** Everything under `STATE` is in readers' localStorage
+  and in `state/progress/`; a message is `{r, t, ts}` because every save says so. Add a
+  field with a default in `blank()` and `upgrade()`; never rename or repurpose one.
+- **No literal that belongs to a setting or a course** (see "Settings" and "The two-layer
+  rule"): addresses, models, limits and layout sizes come from `CFG.platform`; every
+  subject-specific string comes from `CFG`. A test fails on both.
+- **A template literal is HTML, not logic.** Compute the values first, in named
+  `const`s, then interpolate them; a `${cond ? "..." : "..."}` inside markup is fine, a
+  nested one is not. Anything longer than a screen becomes a function that returns HTML.
+- **Behaviour goes through `save()`.** State changes call `save()` once at the end, which
+  writes localStorage and schedules the sync; nothing writes localStorage directly outside
+  `01-state.js`.
+- **Boot under node before you ship.** `node platform/tests/page_smoke.js <built page>`
+  and the same with `platform/studio/ui/js/*.js` catch an undeclared name; both run from
+  the test suites.
+
+### Tests
+
+- Every module in `studio/` has tests in `test_studio.py`; the engine in `test_build.py`.
+  A new route gets a line in the server docstring (the test checks it resolves) and, when
+  it does real work, a test through `Handler` with a stub `claude_cli.ask`.
+- Tests stub Claude by replacing `claude_cli.ask`; they never make a network call.
+- A test that guards a rule of this file names the rule in its docstring.
 
 ## Gotchas
 

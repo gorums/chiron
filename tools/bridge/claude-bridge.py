@@ -228,11 +228,8 @@ def verify_key(key):
         call_api("", [{"role": "user", "content": "hi"}], CFG.get("model"), 4, key=key)
         return True, "works"
     except urllib.error.HTTPError as e:
-        try:
-            msg = json.loads(e.read().decode("utf-8")).get("error", {}).get("message", "")[:200]
-        except Exception:
-            msg = ""
-        return False, msg or ("HTTP %s" % e.code)
+        msg, _ = api_error(e)
+        return False, msg[:200] or ("HTTP %s" % e.code)
     except Exception as e:
         return False, str(e)[:200]
 
@@ -339,22 +336,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # ---- routing: one method per path ----
+
     def do_GET(self):
-        if self.path.split("?")[0] == "/health":
-            mode = active_mode()
-            return self._send(200, {
-                "ok": True,
-                "version": VERSION,
-                "echo": ECHO,
-                "mode": mode,
-                "ready": mode not in ("none",),
-                "cli": bool(find_cli()),
-                "has_key": bool(active_key()),
-                "key_source": key_source(),
-                "key_hint": key_hint(),
-                "model": CFG.get("model", DEFAULT_MODEL),
-            })
-        return self._send(404, {"error": "Not found. This bridge serves /health, /ask, /configure and /testkey."})
+        path = self.path.split("?")[0]
+        if path == "/health":
+            return self.health()
+        self._send(404, {"error": "Not found. This bridge serves /health, /ask, /configure, /connect and /testkey."})
 
     def do_POST(self):
         path = self.path.split("?")[0]
@@ -363,86 +351,86 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._send(400, {"error": "Could not read the request body."})
-
-        if path == "/configure":
-            if body.get("use_cli"):
-                CFG["key"] = ""
-                CFG["prefer_cli"] = True
-            elif "key" in body:
-                CFG["key"] = str(body["key"] or "").strip()
-                CFG["prefer_cli"] = False
-            if body.get("model") in ALLOWED_MODELS:
-                CFG["model"] = body["model"]
-            save_config()
-            return self._send(200, {"ok": True, "mode": active_mode(),
-                                    "has_key": bool(active_key()),
-                                    "key_source": key_source(), "key_hint": key_hint()})
-
-        if path == "/connect":
-            """Find a working route to Claude without asking the user for anything."""
-            steps = []
-            if find_cli():
-                steps.append({"tried": "Claude Code on this machine", "ok": cli_works()})
-                if steps[-1]["ok"]:
-                    # Claude Code wins. Any stored key stays only as a silent fallback
-                    # for the rare case where the CLI fails mid-question.
-                    CFG["prefer_cli"] = True
-                    save_config()
-                    return self._send(200, {"ok": True, "mode": "cli", "steps": steps,
-                                            "source": "Claude Code on this machine",
-                                            "note": "No API key needed — this uses the Claude you are already signed in to."})
-            for key, src in candidate_keys():
-                ok, msg = verify_key(key)
-                steps.append({"tried": src, "ok": ok, "why": "" if ok else msg})
-                if ok:
-                    CFG["prefer_cli"] = False
-                    if src != "ANTHROPIC_API_KEY environment variable":
-                        CFG["key"] = key
-                    save_config()
-                    return self._send(200, {"ok": True, "mode": "api", "steps": steps,
-                                            "source": src, "key_hint": key_hint(),
-                                            "note": "Saved to tools/bridge/config.json — you will not be asked again."})
-            # nothing usable: clear a dead key so it stops poisoning every request
-            if (CFG.get("key") or "").strip():
-                CFG["key"] = ""
-                save_config()
-                steps.append({"tried": "removing the rejected key from config.json", "ok": True})
-            return self._send(200, {"ok": False, "need": "key", "steps": steps,
-                                    "cli": bool(find_cli())})
-
-        if path == "/testkey":
-            """Cheapest possible real call, so the raw failure is visible."""
-            if not active_key():
-                return self._send(200, {"ok": False, "reason": "No key configured.",
-                                        "mode": active_mode()})
-            try:
-                call_api("", [{"role": "user", "content": "hi"}], CFG.get("model"), 4)
-                return self._send(200, {"ok": True, "key_source": key_source(),
-                                        "key_hint": key_hint()})
-            except urllib.error.HTTPError as e:
-                try:
-                    raw = json.loads(e.read().decode("utf-8"))
-                    detail = raw.get("error", {}).get("message", "")[:300]
-                    etype = raw.get("error", {}).get("type", "")
-                except Exception:
-                    detail, etype = "", ""
-                return self._send(200, {"ok": False, "status": e.code, "type": etype,
-                                        "reason": detail or ("HTTP %s" % e.code),
-                                        "key_source": key_source(), "key_hint": key_hint()})
-            except Exception as e:
-                return self._send(200, {"ok": False, "reason": str(e)[:300],
-                                        "key_source": key_source(), "key_hint": key_hint()})
-
-        if path != "/ask":
+        handler = {"/configure": self.configure, "/connect": self.connect,
+                   "/testkey": self.testkey, "/ask": self.ask}.get(path)
+        if not handler:
             return self._send(404, {"error": "Not found. POST to /ask."})
+        handler(body)
 
+    def _key_status(self):
+        return {"has_key": bool(active_key()), "key_source": key_source(), "key_hint": key_hint()}
+
+    def health(self):
+        mode = active_mode()
+        self._send(200, dict(self._key_status(), ok=True, version=VERSION, echo=ECHO, mode=mode,
+                             ready=mode != "none", cli=bool(find_cli()),
+                             model=CFG.get("model", DEFAULT_MODEL)))
+
+    def configure(self, body):
+        """Store a key, or a preference for Claude Code, and the model."""
+        if body.get("use_cli"):
+            CFG["key"] = ""
+            CFG["prefer_cli"] = True
+        elif "key" in body:
+            CFG["key"] = str(body["key"] or "").strip()
+            CFG["prefer_cli"] = False
+        if body.get("model") in ALLOWED_MODELS:
+            CFG["model"] = body["model"]
+        save_config()
+        self._send(200, dict(self._key_status(), ok=True, mode=active_mode()))
+
+    def connect(self, body):
+        """Find a working route to Claude without asking the user for anything."""
+        steps = []
+        if find_cli():
+            steps.append({"tried": "Claude Code on this machine", "ok": cli_works()})
+            if steps[-1]["ok"]:
+                # Claude Code wins. Any stored key stays only as a silent fallback
+                # for the rare case where the CLI fails mid-question.
+                CFG["prefer_cli"] = True
+                save_config()
+                return self._send(200, {"ok": True, "mode": "cli", "steps": steps,
+                                        "source": "Claude Code on this machine",
+                                        "note": "No API key needed — this uses the Claude you are already signed in to."})
+        for key, src in candidate_keys():
+            ok, msg = verify_key(key)
+            steps.append({"tried": src, "ok": ok, "why": "" if ok else msg})
+            if ok:
+                CFG["prefer_cli"] = False
+                if src != "ANTHROPIC_API_KEY environment variable":
+                    CFG["key"] = key
+                save_config()
+                return self._send(200, {"ok": True, "mode": "api", "steps": steps,
+                                        "source": src, "key_hint": key_hint(),
+                                        "note": "Saved to tools/bridge/config.json — you will not be asked again."})
+        # nothing usable: clear a dead key so it stops poisoning every request
+        if (CFG.get("key") or "").strip():
+            CFG["key"] = ""
+            save_config()
+            steps.append({"tried": "removing the rejected key from config.json", "ok": True})
+        self._send(200, {"ok": False, "need": "key", "steps": steps, "cli": bool(find_cli())})
+
+    def testkey(self, body):
+        """Cheapest possible real call, so the raw failure is visible."""
+        if not active_key():
+            return self._send(200, {"ok": False, "reason": "No key configured.", "mode": active_mode()})
+        try:
+            call_api("", [{"role": "user", "content": "hi"}], CFG.get("model"), 4)
+            return self._send(200, dict(self._key_status(), ok=True))
+        except urllib.error.HTTPError as e:
+            detail, etype = api_error(e)
+            return self._send(200, dict(self._key_status(), ok=False, status=e.code, type=etype,
+                                        reason=detail or ("HTTP %s" % e.code)))
+        except Exception as e:
+            return self._send(200, dict(self._key_status(), ok=False, reason=str(e)[:300]))
+
+    def ask(self, body):
+        """The tutor: {system, messages, model, max_tokens, key?} -> {text, mode}."""
         messages = body.get("messages") or []
         if not messages:
             return self._send(400, {"error": "No messages to send."})
-
         if ECHO:
-            return self._send(200, {"text": "ECHO: " + messages[-1].get("content", ""),
-                                    "mode": "echo"})
+            return self._send(200, {"text": "ECHO: " + messages[-1].get("content", ""), "mode": "echo"})
 
         # A key sent by the page is only a fallback. The bridge's own key wins, so a stale
         # value left in a browser can never override what you configured here.
@@ -452,51 +440,65 @@ class Handler(BaseHTTPRequestHandler):
 
         mode = active_mode()
         system = body.get("system") or ""
+        if mode == "none":
+            return self._send(400, {"error": (
+                "Claude is not set up yet. Either paste an API key (the bridge asks for "
+                "one on first run, or use the Settings page), or install Claude Code so "
+                "the bridge can use it.")})
         try:
-            if mode == "api":
-                text = call_api(system, messages, body.get("model"), body.get("max_tokens"))
-            elif mode == "cli":
-                try:
-                    text = call_cli(system, messages, body.get("model"))
-                except Exception:
-                    if not active_key():
-                        raise
-                    text = call_api(system, messages, body.get("model"), body.get("max_tokens"))
-            else:
-                return self._send(400, {"error": (
-                    "Claude is not set up yet. Either paste an API key (the bridge asks for "
-                    "one on first run, or use the Settings page), or install Claude Code so "
-                    "the bridge can use it.")})
-            return self._send(200, {"text": text, "mode": mode})
+            text = self._answer(mode, system, messages, body.get("model"), body.get("max_tokens"))
+            self._send(200, {"text": text, "mode": mode})
         except urllib.error.HTTPError as e:
-            try:
-                msg = json.loads(e.read().decode("utf-8")).get("error", {}).get("message", "")[:400]
-            except Exception:
-                msg = ""
-            # If the key is bad but Claude Code is sitting right there, use it instead of failing.
-            if e.code in (401, 403) and find_cli():
-                try:
-                    text = call_cli(system, messages)
-                    return self._send(200, {"text": text, "mode": "cli", "notice": (
-                        "That API key was rejected, so this answer came from Claude Code instead. "
-                        "Clear the saved key in Settings to use Claude Code from now on.")})
-                except Exception:
-                    pass
-            friendly = {
-                401: ("The API key was rejected by Anthropic (%s). It is coming from %s%s. "
-                      "Check it in the Anthropic console, or clear it in Settings to use "
-                      "Claude Code instead." % (msg or "invalid key", key_source(),
-                                                (" — " + key_hint()) if key_hint() else "")),
-                400: "The API rejected the request. " + msg,
-                404: "That model is not available for this key.",
-                429: "Rate limited, or the key is out of credit.",
-            }.get(e.code, "Anthropic API error %s. %s" % (e.code, msg))
-            return self._send(e.code if e.code in (401, 429) else 502, {"error": friendly})
+            self._api_failed(e, system, messages)
         except subprocess.TimeoutExpired:
-            return self._send(504, {"error": "Claude Code took too long to answer."})
+            self._send(504, {"error": "Claude Code took too long to answer."})
         except Exception as e:
-            return self._send(502, {"error": str(e)[:400] or "Could not reach Claude."})
+            self._send(502, {"error": str(e)[:400] or "Could not reach Claude."})
 
+    @staticmethod
+    def _answer(mode, system, messages, model, max_tokens):
+        """One reply by the live route; the CLI falls back to a stored key if it fails."""
+        if mode == "api":
+            return call_api(system, messages, model, max_tokens)
+        try:
+            return call_cli(system, messages, model)
+        except Exception:
+            if not active_key():
+                raise
+            return call_api(system, messages, model, max_tokens)
+
+    def _api_failed(self, e, system, messages):
+        """An HTTP error from Anthropic, explained - or answered by Claude Code instead."""
+        msg, _ = api_error(e)
+        # If the key is bad but Claude Code is sitting right there, use it instead of failing.
+        if e.code in (401, 403) and find_cli():
+            try:
+                text = call_cli(system, messages)
+                return self._send(200, {"text": text, "mode": "cli", "notice": (
+                    "That API key was rejected, so this answer came from Claude Code instead. "
+                    "Clear the saved key in Settings to use Claude Code from now on.")})
+            except Exception:
+                pass
+        friendly = {
+            401: ("The API key was rejected by Anthropic (%s). It is coming from %s%s. "
+                  "Check it in the Anthropic console, or clear it in Settings to use "
+                  "Claude Code instead." % (msg or "invalid key", key_source(),
+                                            (" — " + key_hint()) if key_hint() else "")),
+            400: "The API rejected the request. " + msg,
+            404: "That model is not available for this key.",
+            429: "Rate limited, or the key is out of credit.",
+        }.get(e.code, "Anthropic API error %s. %s" % (e.code, msg))
+        self._send(e.code if e.code in (401, 429) else 502, {"error": friendly})
+
+
+def api_error(e):
+    """(message, type) out of an Anthropic error body, or ("", "") when it has none."""
+    try:
+        raw = json.loads(e.read().decode("utf-8"))
+        err = raw.get("error", {})
+        return str(err.get("message", ""))[:400], str(err.get("type", ""))
+    except Exception:
+        return "", ""
 
 def auto_configure():
     """Work out how to reach Claude without asking anything. Never blocks."""
