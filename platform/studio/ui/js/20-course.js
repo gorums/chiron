@@ -326,8 +326,9 @@ async function removeModule(id, mid) {
 
 function paintQuestions(c) {
   const qs = c.questions || [];
+  const gaps = paintGaps(c);
   if (!qs.length) {
-    $("#tabbody").innerHTML = `<div class="card"><p class="eyebrow">Open questions</p>
+    $("#tabbody").innerHTML = `${gaps}<div class="card"><p class="eyebrow">Open questions</p>
       <p class="sub" style="margin:0">Nothing marked yet. While reading, select a sentence and turn it into a question — every one collects here, where it can become a new module or a rewrite.</p></div>`;
     return;
   }
@@ -350,10 +351,34 @@ function paintQuestions(c) {
     </div>`;
     })
     .join("");
-  $("#tabbody").innerHTML = `<div class="card">
+  $("#tabbody").innerHTML = `${gaps}<div class="card">
     <p class="eyebrow">Open questions</p>
     <p class="sub" style="font-size:13.5px">The passages you marked with a question while reading. They are the most honest map of where this course stops short — turn one into a brief.</p>
     ${rows}</div>`;
+}
+/* the gaps the page's tutor is working on, each offered as a rewrite brief */
+function paintGaps(c) {
+  const L = c.learner || {};
+  const gaps = L.gaps || [];
+  if (!gaps.length && !L.brief) return "";
+  const rows = gaps
+    .map(g => {
+      const notes = encodeURIComponent(
+        `The reader keeps getting this wrong: ${g.topic}. ${g.why}${g.ask ? " A question that tests it: " + g.ask : ""}`
+      );
+      return `<div class="qrow">
+      <div class="qmeta"><span class="mid">${esc(g.mid)}</span> ${esc(g.title)}</div>
+      <p class="qask"><b>${esc(g.topic)}</b> — ${esc(g.why)}</p>
+      <div class="actions">
+        <a class="btn sm ghost" href="#/course/${encodeURIComponent(c.id)}?tab=modules&rewrite=${encodeURIComponent(g.mid)}&q=${notes}">Rewrite ${esc(g.mid)} for this</a>
+      </div></div>`;
+    })
+    .join("");
+  const when = L.at ? new Date(L.at).toLocaleDateString() : "";
+  return `<div class="card" style="margin-bottom:16px">
+    <p class="eyebrow">Knowledge gaps${when ? ` <span class="sub" style="font-weight:400">· written ${esc(when)}</span>` : ""}</p>
+    <p class="sub" style="font-size:13.5px">${esc(L.brief || "What the page's tutor has learned about this reader.")}</p>
+    ${rows || `<p class="sub" style="margin:0">No open gaps.</p>`}</div>`;
 }
 
 /* ---- settings: the presentation fields of course.json, as a form ---- */

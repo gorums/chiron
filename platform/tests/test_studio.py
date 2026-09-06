@@ -937,6 +937,30 @@ class TestCourseEditing(unittest.TestCase):
         self.assertEqual(qs[1]["title"], "Water")
         self.assertEqual(catalog.open_questions({}, mods), [])
 
+    def test_learner_view_keeps_open_gaps_only(self):
+        """The page's learner memory reaches Studio as the brief and the open gaps; a gap
+        closed by status or by the reader's `closed` map is left out."""
+        state = {"learner": {
+            "brief": "Guesses when unsure.", "strengths": ["Definitions"], "at": 5,
+            "closed": {"g3": 9},
+            "gaps": [
+                {"id": "g1", "mid": "M02", "topic": "Boiling", "why": "missed", "ask": "Why?",
+                 "status": "open"},
+                {"id": "g2", "mid": "M02", "topic": "Old", "why": "", "ask": "", "status": "closed"},
+                {"id": "g3", "mid": "M02", "topic": "Dismissed", "why": "", "ask": "",
+                 "status": "open"},
+                "junk",
+            ],
+        }}
+        mods = [{"id": "M02", "title": "Water"}]
+        view = catalog.learner_view(state, mods)
+        self.assertEqual([g["id"] for g in view["gaps"]], ["g1"])
+        self.assertEqual(view["gaps"][0]["title"], "Water")
+        self.assertEqual(view["brief"], "Guesses when unsure.")
+        self.assertEqual(view["at"], 5)
+        empty = catalog.learner_view({}, mods)
+        self.assertEqual(empty, {"brief": "", "strengths": [], "gaps": [], "at": None})
+
     # ---- resuming a run that died ----
 
     def _stub_claude(self, calls):

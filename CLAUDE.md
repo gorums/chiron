@@ -131,8 +131,8 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      53 tests — engine, and the code conventions below
-python platform/tests/test_studio.py     100 tests — Studio
+python platform/tests/test_build.py      54 tests — engine, and the code conventions below
+python platform/tests/test_studio.py     101 tests — Studio
 npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
 
@@ -252,7 +252,8 @@ new file by picking a free number, or a letter suffix on the neighbour it belong
 
 ### What the reader can do
 
-The page runs one learning cycle per module — Predict → Read → Retrieve → Elaborate → Apply —
+The page runs one learning cycle per module — Predict → Read → Retrieve → Elaborate → Apply →
+Close the gaps —
 and everything else exists to make the practice half of that honest:
 
 | | Where |
@@ -267,10 +268,59 @@ and everything else exists to make the practice half of that honest:
 | Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Claude | `11b-worksheets.js`; the inputs are made at build time by `library.fillable` |
 | Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `07-module.js`, `06-home.js` |
 | Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `07-module.js`, `15-marks-core.js`, `18-notes.js`, `19-settings.js`, `10b-plan.js` (`viewRecord`), `css/04-practice.css` |
+| The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `17c-learner.js`, `17d-learner-view.js` (`#/learner`), `06-home.js` (`renderGapCard`) |
 
 Everything above lives in `localStorage` with the rest of the reader's state, so it syncs
 to Studio and travels through Backup / restore. Reading preferences and the notification
 opt-in sit under `S.ui` and stay on the device.
+
+### The learner memory
+
+`STATE.learner` is one course's memory of one reader - what the tutor should know before
+it answers. It is built in three layers by `17c-learner.js`:
+
+- **Evidence** (`learnerEvidence`) is derived, never stored: one line per sign in the
+  state the page already keeps - a quiz miss with what was answered and how sure they
+  were (`qAnswer` stamps `at` on the answer for this), a grader's Missing / Wrong lines
+  (`graderFindings` parses the `verdictFormat` reply), a mistake card that keeps lapsing,
+  a checkpoint miss, a question asked in the rail, a passage marked as unclear. Each line
+  carries a `weight`; `weakSpots()` sums them per module, so the page can point at weak
+  modules without a model.
+- **The brief** is what Claude writes from the evidence (`refreshLearner`): a paragraph on
+  how this reader thinks and what keeps going wrong, up to `page.learner.maxGaps` gaps
+  `{id, mid, topic, why, ask, status}` - each with one question that would test whether
+  the gap has closed - and a few strengths. `parseLearnerReply` distrusts the structure
+  (a gap in an unknown module is dropped); `applyLearnerReply` keeps a gap the reader
+  closed closed, and treats a gap the model left out as closed rather than lost.
+  `maybeRefreshLearner()` runs after a quiz, a checkpoint or a verdict, and only when
+  enough new evidence has arrived (`refreshAfterEvents`) and enough time has passed
+  (`refreshMinutes`); `#/learner` has the button for an update on demand.
+- **Use.** `systemForRail()` appends `learnerContext(mid)`: the brief, the gaps that touch
+  this module and its prerequisites, and what went wrong here, capped at `promptChars`,
+  with the instruction to close a gap rather than only answer. `renderSuggest` puts
+  `gapChips(mid)` - the gaps' own questions, then the missed questions - ahead of the
+  section's suggestions, styled `.chip.gap`. The dashboard shows the top gaps
+  (`renderGapCard`); the sidebar counts them; "Ask the tutor" on a gap opens the module
+  with the question already sent (`askAbout`, through `rail.pendingAsk`).
+
+- **Close the gaps** is the sixth step of every module (`07b-gaps.js`). `gapItems(mid)`
+  turns the module's record into drill items with a stable key - the brief's gaps for this
+  module, each missed quiz question (`q:<index>`, carrying the right answer and its
+  `why`), each lapsing card (`l:<card>`), each exercise graded partial or wrong (its
+  grader key). The reader answers in writing; `checkGapAnswer` grades it with the module
+  text and the original miss and closes the item only on `correct` (a right answer with
+  wrong reasoning is `partial`); without Claude the reader scores themselves. Answers and
+  verdicts live in `progressOf(mid).gapWork[key]`, so a closed item stays closed, leaves
+  the chips and the tutor prompt, and `stepDone(m, 5)` is true once the step was opened
+  and nothing is left. The course record lists the modules with open items.
+
+It is part of the state, so it syncs to Studio, merges (`mergeLearner`: the later brief
+wins, a gap closed on either side stays closed) and travels through Backup / restore.
+Studio reads it back as `learner` in the course detail (`catalog.learner_view`) and the
+Questions tab lists the open gaps, each as a rewrite brief - a gap that keeps coming back
+is the best evidence that a module needs work. The knobs are `page.learner` in
+`settings.json`; `platform/tests/learner_checks.js` exercises the whole thing inside a
+booted page (`page_smoke.js --checks`).
 
 There is no module system and no build step for the JS. Everything is top-level in one
 scope. Adding a global means adding it to that shared scope — check the name is free.
@@ -436,7 +486,9 @@ Without a model (`studio/manage.py`):
 
 The reader's open questions (`state.marks` with status `open`/`answered`) come back in the
 course detail as `questions`; the Studio Questions tab turns any of them into an Add-a-module
-or Rewrite brief through query params (`?tab=add&q=…&notes=…`, `?rewrite=<mid>&q=…`).
+or Rewrite brief through query params (`?tab=add&q=…&notes=…`, `?rewrite=<mid>&q=…`). The
+same tab shows the reader's knowledge gaps (`learner` in the detail, see "The learner
+memory") with a Rewrite link each.
 
 **Jobs persist.** `jobs.Registry(store_dir)` writes a finished job's events and result to
 `state/jobs/<id>.json` and reads them back as `StoredJob`, so `/api/state` and
@@ -562,7 +614,8 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
   `01-state.js`.
 - **Boot under node before you ship.** `node platform/tests/page_smoke.js <built page>`
   and the same with `platform/studio/ui/js/*.js` catch an undeclared name; both run from
-  the test suites.
+  the test suites. `--checks <file.js>` runs a checks file inside the booted page, which
+  is how page logic that needs a real `STATE` is tested (`learner_checks.js`).
 
 ### Tests
 

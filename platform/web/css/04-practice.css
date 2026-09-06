@@ -608,3 +608,89 @@ body.nomotion *::after {
     color: inherit;
   }
 }
+
+/* ---- the learner memory page (#/learner) ---- */
+.brief {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.brief p {
+  margin: 0 0 8px;
+}
+.strengths {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.gaprow {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.gaprow.closed {
+  opacity: 0.6;
+}
+.gaphead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 15px;
+}
+.gaphead .tag {
+  cursor: pointer;
+}
+.gapwhy {
+  margin: 5px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.gapask {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  font-style: italic;
+  color: var(--muted);
+}
+.gapacts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+.spot {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 120px;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.spot ul {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.askedrow {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--text-2);
+}
+.askedrow .tag {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ---- the Close-the-gaps step ---- */
+.gapdrill.closed {
+  opacity: 0.7;
+}
+.gapdrill .quote {
+  margin-top: 8px;
+}

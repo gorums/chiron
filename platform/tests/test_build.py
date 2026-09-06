@@ -418,6 +418,20 @@ class TestRender(TempCourseTest):
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         self.assertIn("booted", proc.stdout)
 
+    def test_learner_memory_behaves(self):
+        """The learner memory (17c-learner.js): evidence, chips, the tutor context, a checked
+        model reply, and a closed gap that stays closed through a refresh and a merge."""
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        harness = os.path.join(HERE, "page_smoke.js")
+        checks = os.path.join(HERE, "learner_checks.js")
+        proc = subprocess.run([node, harness, self.result.local_path, "--checks", checks],
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
+        self.assertIn("learner checks passed", proc.stdout)
+
     def test_library_degrades_when_reference_files_are_absent(self):
         """A course with no glossary or worksheets must still build."""
         shutil.rmtree(os.path.join(self.course.root, "reference"))
@@ -555,7 +569,7 @@ class TestSettings(unittest.TestCase):
         for key in ("studio.host", "studio.port", "bridge.host", "bridge.port", "anthropic.apiUrl",
                     "anthropic.apiVersion", "models.default", "claude.timeout", "logs.maxBytes",
                     "generation.timeouts.module", "build.excerptChars", "page.tutor.maxTokens",
-                    "page.study.maxFreezes", "page.ui.railDefault"):
+                    "page.study.maxFreezes", "page.ui.railDefault", "page.learner.maxGaps"):
             self.assertIsNotNone(s.get(key), key)
         self.assertIn(s.default_model, s.model_aliases)
         self.assertTrue(s.model_id(s.default_model).startswith("claude-"))

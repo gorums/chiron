@@ -226,6 +226,11 @@ function viewRecord() {
       <div style="display:flex;gap:6px;flex-wrap:wrap">${ms.map(m => `<span class="chip lvl l${mastery(m).lvl}" title="${mastery(m).name}" onclick="go('#/m/${m.id}')">${m.id}</span>`).join("")}</div></div>`;
   });
   h += `<div class="legend" style="padding:8px 0 0">${[4, 3, 2, 1].map(l => `<span><i class="dot l${l}"></i>${MASTERY[l]} · ${dist[l]}</span>`).join("")}</div></div>`;
+  const openByModule = MODS.map(m => ({ m, n: openGapItems(m.id).length })).filter(x => x.n);
+  if (openByModule.length)
+    h += `<div class="card" style="margin-bottom:16px;border-color:var(--warm)"><p class="eyebrow" style="color:var(--warm)">Gaps still open</p>
+    <p class="sub" style="margin-bottom:10px">The course is not closed while these are. Each module's last step drills them.</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${openByModule.map(x => `<button class="btn sm" onclick="go('#/m/${x.m.id}/5')">${x.m.id} · ${x.n} open</button>`).join("")}</div></div>`;
   if (cap.answer)
     h += `<div class="card" style="margin-bottom:16px"><p class="eyebrow">Capstone · ${last.id} ${esc(last.title)}</p>
     <div class="quote" style="max-height:none;margin-bottom:10px">${esc(cap.answer)}</div>

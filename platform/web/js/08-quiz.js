@@ -323,6 +323,7 @@ function qAnswer(conf) {
   if (!st.committed || st.answered) return;
   st.conf = conf;
   st.answered = true;
+  st.at = Date.now();
   if (t === "short") {
     st.ok = null;
     save();
@@ -416,6 +417,7 @@ function quizResults(m) {
   });
   h += `</div>`;
   $("#stepbody").innerHTML = h;
+  maybeRefreshLearner();
 }
 function respText(it, resp) {
   const t = it.type || "single";

@@ -268,6 +268,16 @@ mark.hl.answered {
   opacity: 0.6;
   cursor: wait;
 }
+/* a question that comes from the learner memory: something missed or asked before */
+.suggest .chip.gap {
+  border-color: var(--warm);
+  background: var(--warm-soft, var(--surface));
+  color: var(--text);
+}
+.suggest .chip.gap::before {
+  content: "↻ ";
+  color: var(--warm);
+}
 @media (max-width: 1080px) {
   .prose .parask {
     left: auto;

@@ -143,6 +143,7 @@ function cpFinish() {
     cp.recorded = true;
     save();
     markDay();
+    maybeRefreshLearner();
   }
   cpResults();
 }

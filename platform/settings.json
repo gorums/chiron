@@ -123,6 +123,15 @@
       "sideWidth": 290,
       "readMin": 640,
       "readLine": 0.3
+    },
+    "learner": {
+      "maxGaps": 8,
+      "gapChips": 2,
+      "promptChars": 2600,
+      "evidenceChars": 9000,
+      "recentEvidence": 40,
+      "refreshAfterEvents": 4,
+      "refreshMinutes": 20
     }
   }
 }

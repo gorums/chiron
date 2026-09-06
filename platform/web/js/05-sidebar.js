@@ -19,6 +19,7 @@ function renderSidebar() {
     <button class="navlink ${route.view === "check" ? "active" : ""}" onclick="go('#/check')"><span class="ico">${ico("check")}</span>Checkpoints${checkOffers().length ? `<span class="pill">${checkOffers().length}</span>` : ""}</button>
     <button class="navlink ${route.view === "marks" ? "active" : ""}" onclick="go('#/marks')"><span class="ico">${ico("marks")}</span>Marks &amp; questions${openQs() ? `<span class="pill">${openQs()}</span>` : ""}</button>
     <button class="navlink ${route.view === "stats" || route.view === "record" ? "active" : ""}" onclick="go('#/stats')"><span class="ico">${ico("stats")}</span>Progress</button>
+    <button class="navlink ${route.view === "learner" ? "active" : ""}" onclick="go('#/learner')"><span class="ico">${ico("learner")}</span>Your gaps${openGaps().length ? `<span class="pill" title="Gaps the tutor is working on">${openGaps().length}</span>` : ""}</button>
     <button class="navlink ${route.view === "library" || route.view === "plan" ? "active" : ""}" onclick="go('#/library')"><span class="ico">${ico("library")}</span>Library</button>
   </div>
   <div class="legend">${[1, 2, 3, 4].map(l => `<span><i class="dot l${l}"></i>${MASTERY[l]}</span>`).join("")}</div>`;

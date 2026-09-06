@@ -12,7 +12,8 @@ const PLATFORM = CFG.platform;
 const TUTOR = PLATFORM.tutor,
   SYNC = PLATFORM.sync,
   STUDY = PLATFORM.study,
-  LAYOUT = PLATFORM.ui;
+  LAYOUT = PLATFORM.ui,
+  LEARNER = PLATFORM.learner;
 /* The connection block of a fresh state: where the bridge is expected and which model to
    ask for. Whatever the reader changes in Settings is kept on top of this. */
 const connDefaults = () => ({
@@ -41,6 +42,7 @@ const blank = () => ({
   bridge: connDefaults(),
   streak: { days: 0, last: null, seen: [], freezes: 0, frozen: [] },
   gone: {}, // id -> when, for conversations and marks deleted on purpose (see mergeStates)
+  learner: learnerBlank(), // what the tutor remembers about this reader (see 17c-learner.js)
   theme: null,
   v: 1,
 });
@@ -73,6 +75,7 @@ function upgrade(s) {
     if (!s[k] || typeof s[k] !== "object") s[k] = b[k];
   });
   s.plan = Object.assign({}, b.plan, s.plan || {});
+  s.learner = Object.assign(learnerBlank(), s.learner || {});
   s.streak = Object.assign({}, b.streak, s.streak || {});
   if (!Array.isArray(s.streak.frozen)) s.streak.frozen = [];
   if (!Array.isArray(s.streak.seen)) s.streak.seen = [];
@@ -145,6 +148,8 @@ function mergeStates(a, b) {
     p.secs = Object.assign({}, x.secs || {}, y.secs || {});
     p.elab = Object.assign({}, x.elab || {}, y.elab || {});
     p.elabFb = Object.assign({}, x.elabFb || {}, y.elabFb || {});
+    p.gapWork = Object.assign({}, x.gapWork || {}, y.gapWork || {});
+    p.gapsAt = Math.max(x.gapsAt || 0, y.gapsAt || 0) || null;
     p.time = Math.max(x.time || 0, y.time || 0);
     p.done = !!(x.done || y.done);
     p.doneAt = y.doneAt || x.doneAt || null;
@@ -152,6 +157,8 @@ function mergeStates(a, b) {
     p.transfer = y.transfer || x.transfer || null;
     if (x.quiz && x.quiz.finished && !(y.quiz && y.quiz.finished)) p.quiz = x.quiz;
   });
+
+  out.learner = mergeLearner(older.learner, newer.learner);
 
   const sa = older.streak || {},
     sb = newer.streak || {};
@@ -320,8 +327,11 @@ function progressOf(id) {
       doneAt: null,
       time: 0,
       step: 0,
+      gapWork: {}, // item key -> { answer, closed, verdict, text, at } (see 07b-gaps.js)
+      gapsAt: null, // when the Close-the-gaps step was first opened
     };
   if (!STATE.progress[id].elabFb) STATE.progress[id].elabFb = {};
+  if (!STATE.progress[id].gapWork) STATE.progress[id].gapWork = {};
   return STATE.progress[id];
 }
 /* A day counts once you have done one real thing: read a section, answered a question,

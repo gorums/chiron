@@ -2,6 +2,11 @@
 
    Usage: node page_smoke.js <built -local.html>
           node page_smoke.js <file.js> [<file.js> ...]      (the Studio UI, in load order)
+          node page_smoke.js <built -local.html> --checks <checks.js>
+
+   With --checks, the checks file runs in the booted page's own scope once the boot has
+   settled, so it can call the page's functions against a STATE it builds itself. It throws
+   on a failed check; anything it prints is passed through.
 
    Everything the page reaches for in the browser - document, localStorage, fetch, timers -
    is a permissive stub that swallows calls and returns itself, so the whole load sequence
@@ -13,7 +18,10 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const files = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const checksAt = argv.indexOf("--checks");
+const checksFile = checksAt >= 0 ? argv[checksAt + 1] : null;
+const files = checksAt >= 0 ? argv.slice(0, checksAt) : argv;
 if (!files.length) {
   console.error("usage: node page_smoke.js <built html> | <file.js> ...");
   process.exit(2);
@@ -143,8 +151,9 @@ sandbox.self = sandbox;
 
 const failures = [];
 process.on("unhandledRejection", err => failures.push(err));
+const context = vm.createContext(sandbox);
 try {
-  vm.runInNewContext(source, vm.createContext(sandbox), { filename: files[0], timeout: 20000 });
+  vm.runInContext(source, context, { filename: files[0], timeout: 20000 });
 } catch (err) {
   failures.push(err);
 }
@@ -154,6 +163,14 @@ setImmediate(() => {
   if (real.length) {
     for (const e of real) console.error((e && e.stack) || e);
     process.exit(1);
+  }
+  if (checksFile) {
+    try {
+      vm.runInContext(fs.readFileSync(checksFile, "utf8"), context, { filename: checksFile });
+    } catch (err) {
+      console.error((err && err.stack) || err);
+      process.exit(1);
+    }
   }
   console.log("booted");
 });

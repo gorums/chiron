@@ -100,6 +100,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
     state_obj = record["state"] if record else {}
     info["moduleProgress"] = module_progress(state_obj)
     info["questions"] = open_questions(state_obj, info["moduleList"])
+    info["learner"] = learner_view(state_obj, info["moduleList"])
     info["settings"] = manage.settings(root)
     info["order"] = cfg.order
     info["reviews"] = reviews.load_reviews(STATE_ROOT, course_id, sources)
@@ -127,6 +128,34 @@ def open_questions(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> 
                 "status": m.get("status"), "ts": m.get("ts") or 0,
             })
     return sorted(out, key=lambda q: q["ts"], reverse=True)
+
+
+def learner_view(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """What the page's tutor remembers about this reader: the brief and the open gaps.
+
+    The page writes it (see web/js/17c-learner.js); Studio only shows it, because a gap that
+    keeps coming back is the best evidence that a module needs rewriting.
+    """
+    raw = state.get("learner")
+    mem = raw if isinstance(raw, dict) else {}
+    titles = {m["id"]: m["title"] for m in module_list}
+    closed = mem.get("closed") if isinstance(mem.get("closed"), dict) else {}
+    gaps = []
+    for g in mem.get("gaps") if isinstance(mem.get("gaps"), list) else []:
+        if not isinstance(g, dict) or g.get("status") == "closed" or g.get("id") in closed:
+            continue
+        gaps.append({
+            "id": str(g.get("id") or ""), "mid": str(g.get("mid") or ""),
+            "title": titles.get(g.get("mid"), str(g.get("mid") or "")),
+            "topic": str(g.get("topic") or "")[:120], "why": str(g.get("why") or "")[:400],
+            "ask": str(g.get("ask") or "")[:200],
+        })
+    return {
+        "brief": str(mem.get("brief") or "")[:2000],
+        "strengths": [str(s)[:200] for s in mem.get("strengths") or [] if isinstance(s, str)],
+        "gaps": gaps,
+        "at": mem.get("at") if isinstance(mem.get("at"), (int, float)) else None,
+    }
 
 
 def module_progress(state: Dict[str, Any]) -> Dict[str, Any]:

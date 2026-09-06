@@ -54,6 +54,7 @@ function viewHome() {
       <p class="sub" style="color:var(--text-2);margin-bottom:12px">You have <b>${openQs()}</b> passage${openQs() > 1 ? "s" : ""} marked with a question you have not answered yet. These are the edges of what you understand — the highest-value thing you can spend ten minutes on.</p>
       <button class="btn primary" onclick="markFilter='open';go('#/marks')">Open the question list</button></div>`;
   }
+  h += renderGapCard();
   if (weak.length || dropped.length) {
     h += `<div class="card" style="margin-bottom:18px;border-color:var(--warm)">
       <p class="eyebrow" style="color:var(--warm)">Worth revisiting</p>
@@ -91,6 +92,7 @@ function greeting() {
 /* Where a module was left: the furthest step with anything in it, and the last section read. */
 function resumeStep(m) {
   const p = progressOf(m.id);
+  if (p.gapsAt && openGapItems(m.id).length) return "/5";
   if (p.transfer && (p.transfer.answer || "").trim()) return "/4";
   if (Object.values(p.elab).some(v => (v || "").trim())) return "/3";
   if (p.quiz && !p.quiz.finished && p.quiz.a.length) return "/2";
@@ -105,5 +107,6 @@ function resumeLabel(m) {
   if (s === "/2") return " · in the quiz";
   if (s === "/3") return " · elaborating";
   if (s === "/4") return " · applying";
+  if (s === "/5") return " · closing gaps";
   return "";
 }

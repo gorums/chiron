@@ -5,6 +5,7 @@ const STEPS = [
   { k: "quiz", n: "Retrieve", d: "Test yourself" },
   { k: "elab", n: "Elaborate", d: "Put it in your own words" },
   { k: "apply", n: "Apply", d: "Transfer to a real case" },
+  { k: "gaps", n: "Close gaps", d: "Drill what went wrong" },
 ];
 let timer = null,
   tickCount = 0,
@@ -46,7 +47,7 @@ function viewModule() {
   const m = byId(route.id);
   if (!m) return go("#/home");
   const p = progressOf(m.id),
-    step = Math.max(0, Math.min(4, route.step || 0));
+    step = Math.max(0, Math.min(STEPS.length - 1, route.step || 0));
   markDay();
   startTimer(m.id);
   const idx = moduleIndex(m.id);
@@ -101,7 +102,8 @@ function stepDone(m, i) {
   if (i === 1) return secDone(m) === secTotal(m);
   if (i === 2) return !!(p.quiz && p.quiz.finished);
   if (i === 3) return Object.values(p.elab).some(v => (v || "").trim());
-  return !!(p.transfer && (p.transfer.score != null || p.transfer.fb));
+  if (i === 4) return !!(p.transfer && (p.transfer.score != null || p.transfer.fb));
+  return !!p.gapsAt && !openGapItems(m.id).length;
 }
 function toggleDone(id) {
   const p = progressOf(id);
@@ -122,6 +124,7 @@ function toggleDone(id) {
 function renderStep(m, step) {
   const p = progressOf(m.id),
     b = $("#stepbody");
+  if (step === 5) return renderGapStep(m);
   if (step === 0) {
     b.innerHTML = `<div class="card">
       <p class="eyebrow">Step 1 · Predict</p>
@@ -230,8 +233,11 @@ function renderStep(m, step) {
         <p class="sub" style="margin-bottom:10px">The exercise produces something. Fill it in here; it stays with your progress.</p>
         ${sheets.map(x => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="go('#/library/t-${x.slug}')">${esc(x.title)}${sheetFilled(x.slug) ? ` · ${sheetFilled(x.slug)}/${x.fields}` : ""}</button>`).join("")}</div>`;
     }
-    if (!isDone(m))
-      s += `<div class="card" style="margin-top:16px;text-align:center"><p class="sub" style="margin-bottom:12px">Finished all five steps?</p><button class="btn primary" onclick="toggleDone('${m.id}')">Mark ${m.id} complete and unlock its flashcards</button></div>`;
+    const openGaps = openGapItems(m.id).length;
+    const gapLine = openGaps
+      ? `One step left: ${openGaps} gap${openGaps > 1 ? "s" : ""} from this module's quiz, exercises and questions to close.`
+      : "One step left: check whether anything in this module is still a gap.";
+    s += `<div class="card" style="margin-top:16px;text-align:center"><p class="sub" style="margin-bottom:12px">${gapLine}</p><button class="btn primary" onclick="go('#/m/${m.id}/5')">Close the gaps →</button></div>`;
     b.innerHTML = s;
   }
 }

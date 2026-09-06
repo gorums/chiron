@@ -13,6 +13,7 @@ function render() {
   else if (v === "check") viewCheck();
   else if (v === "stats") viewStats();
   else if (v === "record") viewRecord();
+  else if (v === "learner") viewLearner();
   else if (v === "marks") viewMarks();
   else if (v === "settings") viewSettings();
   else if (v === "library") viewLibrary();

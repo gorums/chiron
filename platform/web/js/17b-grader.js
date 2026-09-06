@@ -92,6 +92,7 @@ async function checkElab(mid, i) {
     p.elabFb[i] = fb;
     save();
     markDay();
+    maybeRefreshLearner();
     if (box)
       box.innerHTML = `<div class="fb ${fb.verdict}"><b>What Claude saw</b>${mdLite(fb.text)}</div>`;
   } catch (e) {
@@ -143,6 +144,7 @@ async function checkTransfer(mid) {
     p.transfer.fb = fb;
     save();
     markDay();
+    maybeRefreshLearner();
     if (box)
       box.innerHTML = `<div class="fb ${fb.verdict}"><b>Claude's read · ${fb.verdict}</b>${mdLite(fb.text)}</div>`;
     renderSidebar();
@@ -210,6 +212,7 @@ async function finishRoleplay(mid) {
     c.updated = Date.now();
     c.finished = true;
     save();
+    maybeRefreshLearner();
     renderRail();
     if (route.view === "m" && route.step === 4) renderStep(m, 4);
   } catch (e) {
@@ -246,6 +249,7 @@ async function reviewSheet(slug) {
     sheetVals(slug)._fb = fb;
     save();
     markDay();
+    maybeRefreshLearner();
     if (box)
       box.innerHTML = `<div class="fb ${fb.verdict}"><b>Claude's review</b>${mdLite(fb.text)}</div>`;
   } catch (e) {

@@ -123,10 +123,7 @@ async function checkBridge(quiet) {
     b.mode = "studio";
     bridgeChecking = false;
     save();
-    renderSidebar();
-    if (route.view === "settings") viewSettings();
-    if (route.view === "home") viewHome();
-    if (route.view === "m" && railOpen()) renderRail();
+    redrawForConnection();
     return true;
   }
   if (b.key && b.route !== "bridge") {
@@ -135,10 +132,7 @@ async function checkBridge(quiet) {
     b.mode = "direct";
     bridgeChecking = false;
     save();
-    renderSidebar();
-    if (route.view === "settings") viewSettings();
-    if (route.view === "home") viewHome();
-    if (route.view === "m" && railOpen()) renderRail();
+    redrawForConnection();
     return true;
   }
   try {
@@ -164,11 +158,17 @@ async function checkBridge(quiet) {
   }
   bridgeChecking = false;
   save();
+  redrawForConnection();
+  return bridgeOk;
+}
+/* The screens that say whether Claude is connected, redrawn once the answer is known. */
+function redrawForConnection() {
   renderSidebar();
   if (route.view === "settings") viewSettings();
   if (route.view === "home") viewHome();
+  if (route.view === "learner") viewLearner();
+  if (route.view === "m" && route.step === 5) renderStep(byId(route.id), 5);
   if (route.view === "m" && railOpen()) renderRail();
-  return bridgeOk;
 }
 
 async function askBridge(system, messages) {

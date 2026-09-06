@@ -11,6 +11,7 @@ const rail = {
   sending: false, // a reply is on its way
   sectionLockUntil: 0, // no section-following until this time (a jump scrolls past sections)
   compacting: false, // a conversation is being summarised into a fresh one
+  pendingAsk: null, // a question to send as soon as the rail is drawn (see askAbout)
 };
 
 function railOpen() {
@@ -325,7 +326,8 @@ How to answer:
 - Be concrete: real numbers, real examples, a real first step.
 - Tie it back to what they are reading.
 - If the course text is a simplification, or you disagree with it, say so and explain where it breaks down.
-- No preamble, no flattery. Answer the question.`;
+- No preamble, no flattery. Answer the question.
+${learnerContext(m.id)}`;
 }
 
 /* ---------- render ---------- */
@@ -364,6 +366,11 @@ function renderRail() {
     inp.style.height = "auto";
     inp.style.height = Math.min(120, inp.scrollHeight) + "px";
   });
+  if (rail.pendingAsk) {
+    inp.value = rail.pendingAsk;
+    rail.pendingAsk = null;
+    railSend();
+  }
 }
 function renderRailHead() {
   const h = document.getElementById("railhead");
@@ -483,7 +490,14 @@ function renderRailBody() {
 function renderSuggest() {
   const box = document.getElementById("railsuggest");
   if (box) {
+    const gaps = rail.pinned ? [] : gapChips(route.id);
     box.innerHTML =
+      gaps
+        .map(
+          q =>
+            `<button class="chip gap" onclick="askThis(this)" data-q="${esc(q)}" title="From what you missed or asked before">${esc(q)}</button>`
+        )
+        .join("") +
       railSuggestions()
         .map(
           q => `<button class="chip" onclick="askThis(this)" data-q="${esc(q)}">${esc(q)}</button>`
