@@ -27,6 +27,15 @@
     "systemChars": 8000,
     "maxTokensCap": 4000
   },
+  "jupyter": {
+    "host": "127.0.0.1",
+    "port": 8888,
+    "url": "",
+    "internalUrl": "",
+    "token": "course-platform",
+    "probeTimeout": 2,
+    "probeCacheSeconds": 15
+  },
   "anthropic": {
     "apiUrl": "https://api.anthropic.com/v1/messages",
     "apiVersion": "2023-06-01"
@@ -80,15 +89,21 @@
       "worksheet": 600,
       "moduleSpec": 420,
       "review": 600,
-      "figures": 600
-    }
+      "figures": 600,
+      "notebooks": 600
+    },
+    "notebooksPerModule": 1,
+    "notebookCells": 12
   },
   "build": {
     "excerptChars": 2200,
     "blurbChars": 95,
     "minutesPerModule": 60,
     "minModules": 3,
-    "figureMaxBytes": 40000
+    "figureMaxBytes": 40000,
+    "notebookMaxBytes": 400000,
+    "notebookOutputChars": 4000,
+    "notebookPromptChars": 1600
   },
   "logs": {
     "level": "INFO",
@@ -130,6 +145,9 @@
     },
     "figures": {
       "playMs": 1600
+    },
+    "notebooks": {
+      "height": 560
     },
     "audio": {
       "rate": 1,

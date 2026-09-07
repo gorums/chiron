@@ -60,7 +60,7 @@ Resolution, later layers winning:
 |---|---|
 | `platform/settings.json` | the committed defaults |
 | `SETTINGS_FILE` | an optional JSON overlay, deep-merged: a different model list, longer timeouts |
-| `.env` at the repo root | the scalar knobs in `settings.ENV_KEYS` (`STUDIO_PORT`, `BRIDGE_HOST`, `STUDIO_MODEL`, ...) |
+| `.env` at the repo root | the scalar knobs in `settings.ENV_KEYS` (`STUDIO_PORT`, `BRIDGE_HOST`, `STUDIO_MODEL`, `JUPYTER_TOKEN`, ...) |
 | the environment | the same names, winning over `.env` |
 
 An environment value is coerced to the type of the default it replaces, so `STUDIO_PORT`
@@ -97,6 +97,8 @@ courses/<id>/               one course = one separate git repository (gitignored
   course.json               the manifest that makes a folder a course
   modules/<part>/M01-*.md   the teaching
   figures/<mid>-<n>.svg     diagrams a module refers to; inlined by the build (see "Figures")
+  notebooks/<mid>-<n>.ipynb Jupyter notebooks a module refers to; rendered by the build, run in
+                            the page when Jupyter is up (see "Notebooks")
   plan/ reference/ templates/
   data/assessments/ data/suggestions/
 dist/<id>/                  build output (generated — do not edit)
@@ -109,6 +111,7 @@ state/                      generated, gitignored, personal:
   logs/studio.log           every Claude call and job event, rotating (2 MB × 3)
   studio.json               Studio-wide preferences: the model
 tools/bridge/               local proxy so a course page can reach Claude
+tools/jupyter/              the Jupyter server's configuration, shared by compose and `build.py jupyter`
 docker/Dockerfile           one image; Studio and the bridge differ only by command
 compose.yaml                both services, restart: unless-stopped
 .claude/skills/course-author/   the skill that writes a course from a brief
@@ -123,6 +126,7 @@ python platform/build.py new --theme "X" --hours 30      scaffold an empty cours
 python platform/build.py check <id>                      validate; reports everything at once
 python platform/build.py build <id>                      validate, then write dist/<id>/
 python platform/build.py studio                          open Course Studio in a browser
+python platform/build.py jupyter                         start the Jupyter server for a course's notebooks
 ```
 
 Or double-click `start-studio.bat`. Studio is the UI route: it generates a course from a
@@ -132,8 +136,8 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      62 tests — engine, and the code conventions below
-python platform/tests/test_studio.py     107 tests — Studio
+python platform/tests/test_build.py      68 tests — engine, and the code conventions below
+python platform/tests/test_studio.py     117 tests — Studio
 npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
 
@@ -143,19 +147,21 @@ install` adds prettier for the front end, and the formatting test skips when it 
 ## Running in Docker
 
 ```
-docker compose up -d --build     start both, and on every boot from now on
+docker compose up -d --build     start all three, and on every boot from now on
 docker compose logs -f studio    watch a generation run
 docker compose down              stop them
 ```
 
 Needs a `.env` holding `CLAUDE_HOME` — the path to the host's `~/.claude`. Copy `.env.example`.
-The same file may set `COURSES_DIR`; compose mounts it at `/work/courses`. `STUDIO_PORT` and
-`BRIDGE_PORT` there are read by compose *and* by the code, so the published port and the
-one the service binds always agree.
+The same file may set `COURSES_DIR`; compose mounts it at `/work/courses`. `STUDIO_PORT`,
+`BRIDGE_PORT`, `JUPYTER_PORT` and `JUPYTER_TOKEN` there are read by compose *and* by the
+code, so the published port and the one the service binds always agree.
 
-**One image, two services.** Studio and the bridge need the same things — Python, and the
-Claude Code CLI — so they share a build and differ only in the command. Two Dockerfiles would
-be two things to keep in step.
+**One image, three services.** Studio, the bridge and Jupyter need the same things — Python,
+and the Claude Code CLI for the first two — so they share a build and differ only in the
+command and the mounts. Two Dockerfiles would be two things to keep in step. The `jupyter`
+service is the one that runs code a model wrote, so it gets the courses and the platform's
+configuration and nothing else: no `~/.claude` (see "Notebooks").
 
 **Nothing is COPYed into the image.** The repo arrives as a bind mount, so a course written
 inside the container is a real file in the user's folder and editing `platform/` needs only a
@@ -167,8 +173,8 @@ a single-file bind mount. The mount is read-write because that refresh has to pe
 container then behaves like any other Claude Code session on the account.
 
 **Services bind `0.0.0.0` inside the container, and compose publishes to `127.0.0.1`.**
-`STUDIO_HOST` and `BRIDGE_HOST` default to loopback in the code and are overridden only in the
-image. Dropping the `127.0.0.1:` prefix from a `ports:` entry would expose a service that
+`STUDIO_HOST`, `BRIDGE_HOST` and `JUPYTER_HOST` default to loopback in the code and are
+overridden only in the image. Dropping the `127.0.0.1:` prefix from a `ports:` entry would expose a service that
 writes files and spawns processes to the whole network. Do not.
 
 **Claude Code runs from an empty scratch directory** (`claude_cli._SCRATCH`), not the repo.
@@ -219,8 +225,9 @@ grep -rniE "marketing|marketer" platform/web/
 
 must return nothing.
 
-The mirror of that rule: `courses/<id>/` contains no code. A course is markdown, JSON and
-SVG figures, nothing else.
+The mirror of that rule: `courses/<id>/` contains no code the platform runs. A course is
+markdown, JSON, SVG figures and, where the subject calls for them, Jupyter notebooks (JSON
+too), nothing else.
 
 ## How the build works
 
@@ -232,7 +239,8 @@ SVG figures, nothing else.
 | `config` | `course.json` → `CourseConfig`; builds the `CFG` the page receives |
 | `markdown_render` | markdown → HTML; HTML → plain text for search and chat context |
 | `figures` | SVG figures: sanitise, check, inline into a section's HTML, count the build-up steps |
-| `loader` | module markdown → `Module`/`Section` objects; reads the optional `**Requires:**` line; inlines the figures |
+| `notebooks` | Jupyter notebooks: check the `.ipynb`, render its cells read-only into a section's HTML, refuse one in a course without the runtime |
+| `loader` | module markdown → `Module`/`Section` objects; reads the optional `**Requires:**` line; inlines the figures and the notebooks |
 | `assessments` | quizzes, flashcards, suggested questions; merges the per-part files |
 | `library` | glossary, mental models, worksheets, plan pages — all optional. `fillable` turns a worksheet's blanks into numbered inputs |
 | `validate` | every cross-file check, collected into one report |
@@ -271,6 +279,7 @@ and everything else exists to make the practice half of that honest:
 | Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `07-module.js`, `06-home.js` |
 | Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `07c-figures.js`, `css/02-content.css` |
 | Listening: the Read step read aloud by the browser's own speech engine, block by block with the spoken block highlighted; a section heard to its end is ticked read; voice and speed under `S.ui` (see "Listening") | `07d-audio.js`, `css/02-content.css` |
+| Notebooks: a Jupyter notebook rendered read-only in the Read step and, when served by Studio with Jupyter running, run and edited right there (see "Notebooks") | `07e-notebooks.js`, `css/02b-notebooks.css` |
 | Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `07-module.js`, `15-marks-core.js`, `18-notes.js`, `19-settings.js`, `10b-plan.js` (`viewRecord`), `css/04-practice.css` |
 | The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `17c-learner.js`, `17d-learner-view.js` (`#/learner`), `06-home.js` (`renderGapCard`) |
 
@@ -394,6 +403,8 @@ Always point a user at the `-local.html` copy.
 - Every id in a module's `**Requires:**` line is a module in the course.
 - Every figure a module refers to is on disk, well-formed, has a `viewBox` and is under
   `build.figureMaxBytes`; any other `<img>` is refused (see "Figures").
+- Every notebook a module refers to is on disk, nbformat 4, under `build.notebookMaxBytes`,
+  and the manifest declares `notebooks` (see "Notebooks").
 - **A module's suggestion list has exactly one entry per `##` section.** They are matched by
   position. This is the most common authoring failure.
 - No duplicate module ids; no assessment or suggestion entry that matches no module.
@@ -476,6 +487,83 @@ module without any (`{all: true}` redraws them all) and
 offer both. `remove_module` trashes a module's figures with its file, and the Files tab
 can edit an `.svg` by hand (the PUT sanitises and checks it).
 
+### Notebooks
+
+A course that teaches something the reader learns by running code - a language, data
+analysis, statistics, a numerical method - carries **Jupyter notebooks** next to the prose,
+and the reader runs them inside the module. It is a per-course decision: `notebooks` in
+`course.json` (`{"kernel": "python3", "packages": ["numpy", "pandas"]}`;
+`config.notebooks_setting` normalises it) turns them on, reaches the page as
+`CFG.notebooks`, and is what the planner sets when a theme is one that is learned by
+running code (`PLAN_SCHEMA`; the `#/new` form can overrule it either way). A marketing
+course has none, and a notebook reference in a course without the field is a `check`
+failure. The Settings tab of a course switches it.
+
+A notebook is `courses/<id>/notebooks/<mid>-<n>.ipynb`, referenced from the module on a
+paragraph of its own as an ordinary link - the one relative link `markdown_render` leaves
+alone:
+
+```
+[Try it: fit the line yourself](notebooks/M03-1.ipynb)
+```
+
+`coursekit/notebooks.py` owns the contract. `loader.parse_sections(raw, figures_dir,
+notebooks_dir, notebooks_on)` replaces the paragraph with `<div class="notebook" data-nb=...>`
+holding a **read-only rendering of every cell**: the markdown through the module's own
+renderer, the code escaped, the outputs saved in the file (text, errors, and a `png` or
+`jpeg` as a data URI; `text/html` and anything else that could run is dropped, because a
+notebook is model output that would render inside the reader's page). The file must be
+nbformat 4, under `build.notebookMaxBytes`, with at least one cell; a missing or broken one
+is a `check` failure like a figure. The section's `text` excerpt is taken before the swap,
+and the section's `public()` carries the code of its notebooks (`build.notebookPromptChars`)
+so `placeText` on the Read step can hand it to the tutor.
+
+The page (`07e-notebooks.js`) shows that rendering everywhere - off disk, published, and
+when Jupyter is down - and, when served by Studio, asks `GET /api/jupyter` once per Read
+step. If a Jupyter server answers, each block gains **Run it here**, which swaps the
+rendering for the live notebook in a frame (`page.notebooks.height`), and **Open in a tab**.
+The frame's URL is `<jupyter>/notebooks/<id>/notebooks/<file>?token=...`: the server serves
+the courses directory, so the file the reader edits and saves is the one the course
+carries. Nothing about a notebook is stored in the reader's state.
+
+**The Jupyter server is a third service, never Studio itself.** `studio/jupyter.py` only
+probes it (`/api/`, cached for `jupyter.probeCacheSeconds` because `/api/state` is polled)
+and tells the page where it is. Both ways of running it read one configuration,
+`tools/jupyter/jupyter_server_config.py`, which reads `jupyter.*` and `studio.*` from
+settings.json like everything else (`JUPYTER_HOST`, `JUPYTER_PORT`, `JUPYTER_TOKEN`,
+`JUPYTER_URL`, `JUPYTER_INTERNAL_URL` override): the root directory is the courses
+directory, the token is fixed, and `frame-ancestors` in the Content-Security-Policy names
+Studio's origin, because Jupyter's default refuses to be framed.
+
+- `docker compose up` starts it as the `jupyter` service from the same image (Notebook 7,
+  ipykernel, numpy, pandas, matplotlib; the pip line in the Dockerfile is where a course's
+  packages go). It mounts the courses read-write and `platform/` and `tools/` read-only,
+  and **not** `~/.claude`: it runs code a model wrote, and a kernel with the OAuth
+  directory in reach is one `open()` from the token. Studio reaches it as
+  `JUPYTER_INTERNAL_URL=http://jupyter:<port>`; the browser at the published loopback port.
+- `python platform/build.py jupyter` runs the same thing on the host (`pip install
+  notebook` first).
+
+The token reaches the page through `GET /api/jupyter` on Studio's loopback origin and is
+never in the built HTML (`SETTINGS.page()` does not carry it; a test checks). The published
+loopback port is the boundary, as for Studio: do not drop the `127.0.0.1:` prefix.
+
+Studio writes them (`studio/notebooks.py`), the twin of `figures.py`: `prompts.notebooks`
+asks for up to `generation.notebooksPerModule` notebooks of at most
+`generation.notebookCells` cells in a delimited text format (`=== NOTEBOOK`, then
+`--- markdown` / `--- code` cells; code inside a JSON string is a parse failure waiting to
+happen), `coerce.fix_notebooks` keeps the ones naming a real section with at least one code
+cell, `make_notebook` assembles the nbformat 4 file with no outputs, and `write_notebooks`
+replaces the module's old notebook files and reference lines. A generation run writes them
+right after each module's text and figures when the plan declares the runtime; `extend`
+and a full `rewrite` do the same for a course that declares it; a patch keeps the reference
+lines. `POST /api/courses/<id>/notebooks` writes for every module without any
+(`{all: true}` replaces them all) and `POST /api/courses/<id>/modules/<mid>/notebooks` for
+one; both are refused for a course without the runtime. The Modules tab and the row menu
+offer them; `remove_module` trashes a module's notebooks with its file; the Files tab can
+edit an `.ipynb` by hand (the PUT checks it). `TestNotebooks` and `TestJupyterSettings` in
+`test_build.py` and `TestNotebookWriting` and `TestJupyter` in `test_studio.py` cover it.
+
 ## Course Studio
 
 `platform/studio/` is a second front end onto `coursekit`, for what is awkward in a terminal:
@@ -492,6 +580,8 @@ reading validation errors next to the course they belong to.
 | `generator` | the pipeline: plan → approve → write → validate → build; the writers (`write_module`, `write_study_data`) and `build_course` / `check_course` |
 | `editing` | one module of an existing course: `extend`, `rewrite`, patch mode, `draw` (figures), `store_module_data` |
 | `figures` | figures for one module: parse the delimited reply, write `figures/<mid>-<n>.svg`, put the references in the text |
+| `notebooks` | notebooks for one module: parse the delimited cells, write `notebooks/<mid>-<n>.ipynb`, put the references in the text |
+| `jupyter` | the Jupyter server: is it reachable, and what a served page is told (`GET /api/jupyter`); `build.py jupyter` |
 | `reviews` | what Claude or the owner thinks of a module, under `state/reviews/` |
 | `catalog` | what the API reports: `course_summary`, `course_detail`, `state`, `calendar`, `settings_view` |
 | `runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |
@@ -528,8 +618,17 @@ from `settings.json`.
 **A run can be resumed.** `generate()` saves the approved curriculum to `plan/plan.json`;
 `brief["resume"]` reloads it through `curriculum.load_plan` (or `reconstruct_plan()` rebuilds
 one from `course.json` for courses made before that), skips the approval gate, keeps every module and study-data entry
-already on disk, and writes only what is missing. `POST /api/courses/<id>/resume`; the
-course page and the failed-job screen offer the button when `can_resume()` says so.
+already on disk, and writes only what is missing. `POST /api/courses/<id>/resume` takes
+`{figures, notebooks}`; the course page and the failed-job screen offer the button, with
+both switches, when `can_resume()` says so.
+
+**Every form that writes module text shows the same two switches** - draw figures, write
+notebooks - and sends them as `figures` and `notebooks` in the request (`ui/js/26-media.js`:
+`mediaChoices`, `mediaBrief`). A new course lets the planner decide about notebooks
+(`notebooks: "auto" | "yes" | "no"`, see "Notebooks"); a resume, an added module and a
+rewrite take booleans, and the notebooks switch is offered only when the course declares
+them. The generator, `editing.extend` and `editing.rewrite` honour both; a patch never
+touches either.
 
 **What a job is doing is visible while it runs.** `jobs.current()` returns the job on the
 calling thread, so `claude_cli.ask` needs no job in hand: it emits a `call` event when a
@@ -581,7 +680,7 @@ Without a model (`studio/manage.py`):
 
 | | |
 |---|---|
-| `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
+| `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, the notebooks runtime (off, or a kernel and packages), part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
 | `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title and its `order` entry go; the reply carries the check result. |
 | `POST /api/courses/<id>/modules/<mid>/move` | `{part, index}`: reorder within a part or move to another; writes `order`, moves the file, never touches study data. |
 | `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/` by `reviews.py`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
@@ -605,9 +704,9 @@ collide.
 the plumbing every screen uses, `90-router.js` boots the app and must stay last), and
 hash-routed: `#/` library with a "today" strip and progress cards, `#/new`,
 `#/course/<id>` (tabs: Modules, Add a module, Questions, Files, Settings),
-`#/course/<id>/edit?path=`, `#/job/<id>`, and `#/settings` — Studio-wide: the model, every
-resolved platform setting with the layer it came from, where things are, and a live log
-viewer polling `/api/logs`. The course
+`#/course/<id>/edit?path=`, `#/job/<id>`, and `#/settings` — Studio-wide: the model, whether
+Jupyter is up, every resolved platform setting with the layer it came from, where things
+are, and a live log viewer polling `/api/logs`. The course
 page reads `GET /api/courses/<id>`, which parses modules and is therefore not used for the
 listing; `/api/state` counts module files instead (`catalog.module_ids`). `test_studio.py`
 boots the whole UI under node with `page_smoke.js`, so a name one file uses and no file

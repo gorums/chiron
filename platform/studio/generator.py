@@ -32,9 +32,10 @@ from coursekit import scaffold as ck_scaffold
 from coursekit import validate as ck_validate
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, figures, prompts
+from . import claude_cli, figures, notebooks, prompts
 from .coerce import fix_assessment, fix_suggestions
-from .curriculum import PLAN_FILE, load_plan, make_plan, normalise_plan, plan_to_manifest
+from .curriculum import (PLAN_FILE, load_plan, make_plan, normalise_plan, plan_to_manifest,
+                         wants_notebooks)
 from .errors import GenerationError
 from .files import read_json, read_text, slug, write_json, write_text
 from .ids import is_course_id
@@ -165,6 +166,17 @@ def draw_figures(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
         return body
 
 
+def draw_notebooks(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any], body: str,
+                   path: str, model: str) -> str:
+    """Notebooks for a module just written. Optional, like figures: a failure is logged
+    and the module ships without them."""
+    try:
+        return notebooks.write_notebooks(job, root, plan, mod, body, path, model)
+    except Exception as exc:  # noqa: BLE001 - any failure of an optional step is reported, not raised
+        job.log("Could not write notebooks for %s (%s); continuing without them." % (mod["id"], exc))
+        return body
+
+
 def existing_study_data(root: str):
     """Study data a previous run already wrote, keyed by module id: (assessments, suggestions)."""
     assess, suggest = {}, {}
@@ -210,9 +222,13 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
 
     modules = plan["modules"]
     with_figures = figures.enabled() and brief.get("figures", True) is not False
-    per_module = 3 if with_figures else 2                  # text, figures, study data
+    # The plan says whether the course has notebooks; the request (a resume's switch) can
+    # still leave them out of this run.
+    with_notebooks = (notebooks.enabled() and bool(plan.get("notebooks"))
+                      and wants_notebooks(brief) != "no")
+    per_module = 2 + int(with_figures) + int(with_notebooks)   # text, figures, notebooks, study data
     steps = _Steps(job, total=len(modules) * per_module + 6)   # + reference + build
-    bodies = _write_modules(job, root, plan, model, resume, steps, with_figures)
+    bodies = _write_modules(job, root, plan, model, resume, steps, with_figures, with_notebooks)
     _write_reference(job, root, plan, bodies, model, resume, steps)
 
     steps.next("Validating and building")
@@ -258,6 +274,8 @@ def _lay_down_tree(root: str, course_id: str, plan: Dict[str, Any], resume: bool
         os.makedirs(os.path.join(root, "modules", part["dir"]), exist_ok=True)
     for sub in ("plan", "reference", "templates", "figures", "data/assessments", "data/suggestions"):
         os.makedirs(os.path.join(root, sub), exist_ok=True)
+    if plan.get("notebooks"):
+        os.makedirs(os.path.join(root, notebooks.ck_notebooks.NOTEBOOKS_DIR), exist_ok=True)
     if not resume:
         write_json(os.path.join(root, "course.json"), plan_to_manifest(plan, course_id))
     ck_scaffold.write_readme(root, course_id, plan["title"])
@@ -265,9 +283,10 @@ def _lay_down_tree(root: str, course_id: str, plan: Dict[str, Any], resume: bool
 
 
 def _write_modules(job: Job, root: str, plan: Dict[str, Any], model: str, resume: bool,
-                   steps: _Steps, with_figures: bool = False) -> Dict[str, str]:
-    """Every module with its figures and its study data written immediately after.
-    Returns the bodies."""
+                   steps: _Steps, with_figures: bool = False,
+                   with_notebooks: bool = False) -> Dict[str, str]:
+    """Every module with its figures, its notebooks and its study data written
+    immediately after. Returns the bodies."""
     had_assess, had_suggest = existing_study_data(root) if resume else ({}, {})
     bodies: Dict[str, str] = {}
     assess_rows: List[Dict[str, Any]] = []
@@ -290,6 +309,14 @@ def _write_modules(job: Job, root: str, plan: Dict[str, Any], model: str, resume
             else:
                 steps.next("Figures for %s" % mid)
                 bodies[mid] = draw_figures(job, root, plan, mod, bodies[mid], path, model)
+
+        if with_notebooks:
+            path = existing_module_path(root, plan, mod) or module_path(root, plan, mod)
+            if kept and notebooks.references_in(kept, mid):
+                steps.next("Keeping the notebooks of %s" % mid)
+            else:
+                steps.next("Notebooks for %s" % mid)
+                bodies[mid] = draw_notebooks(job, root, plan, mod, bodies[mid], path, model)
 
         if kept and mid in had_assess and mid in had_suggest:
             steps.next("Keeping study data for %s" % mid)
@@ -396,7 +423,7 @@ def build_course(root: str, dist_dir: str) -> Dict[str, Any]:
                             os.path.join(dist_dir, cfg.id))
     return {
         "modules": out.modules, "sections": out.sections, "figures": out.figures,
-        "quiz": out.quiz_items,
+        "notebooks": out.notebooks, "quiz": out.quiz_items,
         "cards": out.cards, "glossary": out.glossary, "models": out.models,
         "templates": out.templates, "kb": round(out.kb),
         "web": out.web_path, "local": out.local_path,

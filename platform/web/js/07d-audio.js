@@ -17,7 +17,7 @@ const audio = {
 };
 /* The blocks a section is read in, in document order. A loose list item holds paragraphs,
    which are read in its place; a figure's drawing is skipped and its caption read. */
-const SPEECH_BLOCKS = "p, li, h3, h4, h5, h6, figcaption, tr, pre";
+const SPEECH_BLOCKS = "p, li, h3, h4, h5, h6, figcaption, tr, pre, .nb-title";
 
 function audioSupported() {
   return "speechSynthesis" in window && typeof SpeechSynthesisUtterance === "function";
@@ -40,6 +40,8 @@ function blockText(el) {
 function speechBlocks(root) {
   return [...root.querySelectorAll(SPEECH_BLOCKS)].filter(el => {
     if (el.tagName === "LI" && el.querySelector("p")) return false;
+    // a notebook's cells are code and output, not prose: its title is read, the rest skipped
+    if (el.closest(".nb-static")) return false;
     return blockText(el) !== "";
   });
 }

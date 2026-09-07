@@ -19,6 +19,11 @@ RUN apt-get update \
 # The build engine's only third-party dependency.
 RUN pip install --no-cache-dir markdown==3.10.3
 
+# Jupyter, for the courses that carry notebooks: the `jupyter` service in compose.yaml runs
+# Notebook 7 from this same image, and a data course expects the usual scientific stack to
+# be importable. Add what your courses need to this line and rebuild.
+RUN pip install --no-cache-dir "notebook>=7.2,<8" ipykernel numpy pandas matplotlib
+
 # Claude Code keeps two things in $HOME: the ~/.claude directory (OAuth tokens, mounted from
 # the host) and a separate ~/.claude.json holding UI state. Only the first is mounted, so the
 # CLI warns on every call that the second is missing. The warning goes to stderr and does not
@@ -42,10 +47,11 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     STUDIO_HOST=0.0.0.0 \
     BRIDGE_HOST=0.0.0.0 \
+    JUPYTER_HOST=0.0.0.0 \
     COURSES_DIR=/work/courses \
     DIST_DIR=/work/dist
 
-# Documentation only; the real ports are STUDIO_PORT / BRIDGE_PORT (see compose.yaml).
-EXPOSE 8790 8787
+# Documentation only; the real ports are STUDIO_PORT / BRIDGE_PORT / JUPYTER_PORT (see compose.yaml).
+EXPOSE 8790 8787 8888
 
 CMD ["python", "platform/build.py", "studio", "--no-open"]

@@ -1352,7 +1352,9 @@ class TestFigureWriting(unittest.TestCase):
         events = [e for e in job.since(0) if e["kind"] == "figures"]
         self.assertEqual(events[0]["count"], 2)
         text = prompts_seen[0]
-        for needle in ("=== FIGURE", "fig-soft", "data-step", "SINGLE quotes", "- Core concepts", "M01"):
+        for needle in ("=== FIGURE", "fig-soft", "data-step", "SINGLE quotes", "- Core concepts", "M01",
+                       "what to notice", "guess the next stage", '"Common mistakes": a wrong/right',
+                       'Never "Why this matters"'):
             self.assertIn(needle, text)
         self.assertIn("Draw up to %d figures" % figures.FIGURES_PER_MODULE, text)
         # a rebuild carries them into the page
@@ -1555,6 +1557,293 @@ class TestServerConventions(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         self.assertIn("booted", proc.stdout)
 
+
+
+NOTEBOOK_REPLY = """Here you go.
+=== NOTEBOOK
+section: core concepts
+caption: Double a [number] and watch the output
+--- markdown
+Change **n** and rerun.
+--- code
+n = 3
+print(n * 2)  # your turn
+--- code
+assert n * 2 == 6
+=== NOTEBOOK
+section: Exercise
+caption: Only prose
+--- markdown
+No code here, so this one is dropped.
+=== NOTEBOOK
+section: No such section
+caption: Orphan
+--- code
+print(1)
+"""
+
+
+class TestNotebookWriting(unittest.TestCase):
+    """Notebooks for a module: the reply parsed notebook by notebook and cell by cell,
+    coerced towards what the build accepts, written under notebooks/ as nbformat 4 and
+    referenced from the named section; only for a course whose manifest declares them
+    (CLAUDE.md "Notebooks")."""
+
+    def setUp(self):
+        import tempfile
+        sys.path.insert(0, HERE)
+        from test_build import CourseFixture
+        from coursekit import loader as ck_loader
+        self.tmp = tempfile.mkdtemp(prefix="studio-nb-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.fixture = CourseFixture(self.tmp)
+        self.fixture.edit_manifest(notebooks={"kernel": "python3", "packages": ["numpy"]})
+        self.cfg = config.load(self.fixture.root)
+        self.modules = ck_loader.load_modules(self.cfg)
+        self.headings = ["Why this matters", "Core concepts", "Exercise"]
+
+    def test_reply_parsing_and_coercion(self):
+        from coursekit import notebooks as ck_notebooks
+        from studio import notebooks
+        raw = notebooks.parse_reply(NOTEBOOK_REPLY)
+        self.assertEqual([nb["section"] for nb in raw], ["core concepts", "Exercise", "No such section"])
+        self.assertEqual([c["type"] for c in raw[0]["cells"]], ["markdown", "code", "code"])
+        self.assertEqual(raw[0]["cells"][1]["source"], "n = 3\nprint(n * 2)  # your turn")
+        fixed = coerce.fix_notebooks(raw, self.headings, 3, 12)
+        self.assertEqual(len(fixed), 1, "no code cell, or no such section: dropped")
+        self.assertEqual(fixed[0]["section"], "Core concepts")
+        self.assertEqual(fixed[0]["caption"], "Double a (number) and watch the output")
+        self.assertEqual(len(coerce.fix_notebooks(raw, self.headings, 3, 2)[0]["cells"]), 2, "cells capped")
+        self.assertEqual(coerce.fix_notebooks("junk", self.headings, 2, 12), [])
+        self.assertEqual(notebooks.parse_reply("nothing here"), [])
+        nb = notebooks.make_notebook(fixed[0]["cells"], "python3")
+        self.assertEqual(nb["nbformat"], 4)
+        self.assertEqual(nb["metadata"]["kernelspec"]["language"], "python")
+        self.assertEqual([c["cell_type"] for c in nb["cells"]], ["markdown", "code", "code"])
+        self.assertEqual(nb["cells"][1]["outputs"], [])
+        self.assertEqual(ck_notebooks.problems(json.dumps(nb)), [])
+
+    def test_write_notebooks_replaces_files_and_references_then_builds(self):
+        from studio import notebooks
+        plan = curriculum.plan_from_course(self.cfg, self.modules)
+        self.assertEqual(plan["notebooks"], {"kernel": "python3", "packages": ["numpy"]})
+        spec = plan["modules"][0]
+        path = self.modules[0].source
+        nb_dir = os.path.join(self.fixture.root, "notebooks")
+        files.write_json(os.path.join(nb_dir, "M01-7.ipynb"), {"nbformat": 4, "cells": []})
+        prompts_seen = []
+
+        def fake_ask(prompt, **kw):
+            prompts_seen.append(prompt)
+            return NOTEBOOK_REPLY
+
+        original = claude_cli.ask
+        claude_cli.ask = fake_ask
+        try:
+            job = jobs.Job("notebooks")
+            body = notebooks.write_notebooks(job, self.fixture.root, plan, spec,
+                                             files.read_text(path), path)
+        finally:
+            claude_cli.ask = original
+
+        self.assertFalse(os.path.exists(os.path.join(nb_dir, "M01-7.ipynb")), "old notebooks go")
+        self.assertEqual(os.listdir(nb_dir), ["M01-1.ipynb"])
+        self.assertEqual(notebooks.references_in(body, "M01"), ["M01-1.ipynb"])
+        self.assertIn("[Double a (number) and watch the output](notebooks/M01-1.ipynb)", body)
+        self.assertEqual(files.read_text(path), body)
+        self.assertEqual(self.fixture.problems(), [])
+        self.assertNotIn("notebooks/", notebooks.strip_references(body, "M01"))
+        events = [e for e in job.since(0) if e["kind"] == "notebooks"]
+        self.assertEqual((events[0]["count"], events[0]["cells"]), (1, 3))
+        text = prompts_seen[0]
+        for needle in ("=== NOTEBOOK", "--- code", "python3", "numpy", "- Core concepts", "M01",
+                       "# your turn", '"Exercise" is the home', "predict what the first code cell",
+                       "a cell that raises", 'Never "Why this matters"'):
+            self.assertIn(needle, text)
+        self.assertIn("up to %d Jupyter notebooks" % notebooks.NOTEBOOKS_PER_MODULE, text)
+        _, result = self.fixture.build(os.path.join(self.tmp, "dist"))
+        self.assertEqual(result.notebooks, 1)
+
+    def test_notebooks_job_needs_the_manifest_and_targets_modules_without_any(self):
+        original = claude_cli.ask
+        claude_cli.ask = lambda prompt, **kw: NOTEBOOK_REPLY
+        dist = os.path.join(self.tmp, "dist")
+        try:
+            result = editing.notebooks_job(jobs.Job("notebooks"), self.tmp, dist, "fixture", {"module": "M02"})
+            self.assertEqual(result["written"], ["M02"])
+            result = editing.notebooks_job(jobs.Job("notebooks"), self.tmp, dist, "fixture", {})
+            self.assertEqual(result["written"], ["M01", "M03", "M04", "M05", "M06"], "M02 already had one")
+            with self.assertRaises(GenerationError):
+                editing.notebooks_job(jobs.Job("notebooks"), self.tmp, dist, "fixture", {})
+            self.fixture.edit_manifest(notebooks=None)
+            with self.assertRaisesRegex(GenerationError, "declares no notebooks"):
+                editing.notebooks_job(jobs.Job("notebooks"), self.tmp, dist, "fixture", {"module": "M01"})
+        finally:
+            claude_cli.ask = original
+
+    def test_settings_form_turns_notebooks_on_and_off(self):
+        from studio import manage
+        root = self.fixture.root
+        self.assertEqual(manage.settings(root)["notebooks"], {"kernel": "python3", "packages": ["numpy"]})
+        out = manage.update_settings(root, {"notebooks": {"kernel": "", "packages": "pandas, matplotlib scipy"}})
+        self.assertEqual(out["notebooks"], {"kernel": "python3", "packages": ["pandas", "matplotlib", "scipy"]})
+        out = manage.update_settings(root, {"notebooks": None})
+        self.assertIsNone(out["notebooks"])
+        self.assertNotIn("notebooks", files.read_json(os.path.join(root, "course.json")))
+
+    def test_remove_module_takes_its_notebooks_to_the_trash(self):
+        from studio import manage
+        nb_dir = os.path.join(self.fixture.root, "notebooks")
+        files.write_json(os.path.join(nb_dir, "M01-1.ipynb"), {"nbformat": 4, "cells": []})
+        removed = manage.remove_module(self.fixture.root, "M01", os.path.join(self.tmp, "trash"))
+        self.assertEqual(removed["notebooks"], 1)
+        self.assertFalse(os.path.exists(os.path.join(nb_dir, "M01-1.ipynb")))
+
+    def test_plan_decides_notebooks_and_the_person_can_overrule(self):
+        from studio import prompts
+        base = {"title": "Data", "parts": [{"id": "p1", "name": "P", "hours": 3, "dir": "d"}],
+                "modules": [{"id": "M01", "part": "p1", "title": "A"}],
+                "notebooks": {"kernel": "python3", "packages": ["pandas", 3, " "]}}
+        fresh = lambda **over: dict(json.loads(json.dumps(base)), **over)  # noqa: E731
+        out = curriculum.normalise_plan(fresh(), "data", 3, {})
+        self.assertEqual(out["notebooks"], {"kernel": "python3", "packages": ["pandas"]})
+        self.assertEqual(curriculum.plan_to_manifest(out, "data")["notebooks"], out["notebooks"])
+        out = curriculum.normalise_plan(fresh(), "data", 3, {"notebooks": "no"})
+        self.assertEqual(out["notebooks"], {})
+        self.assertNotIn("notebooks", curriculum.plan_to_manifest(out, "data"))
+        out = curriculum.normalise_plan(fresh(notebooks=None), "data", 3, {"notebooks": True})
+        self.assertEqual(out["notebooks"], {"kernel": "python3", "packages": []})
+        self.assertEqual(curriculum.wants_notebooks({}), "auto")
+        self.assertIn('"notebooks" is null', prompts.plan("x", 3, "a", "p", [], notebooks="no"))
+        self.assertIn('"notebooks": null |', prompts.plan("x", 3, "a", "p", []))
+
+    def test_a_generation_run_writes_notebooks_after_each_module(self):
+        """With the manifest declaring notebooks, the pipeline asks for them right after a
+        module's text (and its figures) and keeps them on a resume."""
+        asked = []
+
+        def fake_ask(prompt, **kw):
+            asked.append(kw.get("what", ""))
+            if kw.get("what", "").startswith("the notebooks for"):
+                return NOTEBOOK_REPLY
+            if kw.get("what", "").startswith("the figures for"):
+                return FIGURE_REPLY
+            if "study data for module" in prompt:
+                return json.dumps({"predict": "p",
+                                   "quiz": [{"q": "Q", "options": ["a", "b", "c", "d"], "answer": 2, "why": "w"}],
+                                   "cards": [{"front": "f", "back": "b"}], "elaborate": ["e"],
+                                   "transfer": {"scenario": "s", "prompt": "p", "model": "m"}})
+            if "one-tap questions" in prompt:
+                return json.dumps([["a", "b", "c"]] * 3)
+            return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
+
+        from coursekit import assessments as ck_assess
+        assess = ck_assess.load_assessments(self.cfg)
+        sugg = ck_assess.load_suggestions(self.cfg)
+        data_dir = os.path.join(self.fixture.root, "data")
+        shutil.rmtree(data_dir)
+        files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
+        files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
+        original = claude_cli.ask
+        claude_cli.ask = fake_ask
+        try:
+            os.remove(self.modules[-1].source)
+            job = jobs.Job("generate")
+            result = generator.generate(job, self.tmp, os.path.join(self.tmp, "dist"),
+                                        {"id": "fixture", "resume": True})
+        finally:
+            claude_cli.ask = original
+        self.assertEqual(result["modules"], 6)
+        self.assertEqual(result["notebooks"], 6)
+        self.assertEqual([w for w in asked if w.startswith("the notebooks for")],
+                         ["the notebooks for M0%d" % n for n in range(1, 7)],
+                         "kept modules without notebooks get theirs too")
+        progress = [e for e in job.since(0) if e["kind"] == "progress"]
+        self.assertTrue(any("Notebooks for M06" in e.get("label", "") for e in progress), progress)
+        self.assertTrue(os.path.isfile(os.path.join(self.fixture.root, "notebooks", "M06-1.ipynb")))
+
+    def test_a_resume_can_leave_figures_and_notebooks_out(self):
+        """The Resume form's two switches reach the run as `figures` and `notebooks`; off
+        means no call for either, even in a course that declares notebooks."""
+        asked = []
+
+        def fake_ask(prompt, **kw):
+            asked.append(kw.get("what", ""))
+            if "study data for module" in prompt:
+                return json.dumps({"predict": "p",
+                                   "quiz": [{"q": "Q", "options": ["a", "b", "c", "d"], "answer": 2, "why": "w"}],
+                                   "cards": [{"front": "f", "back": "b"}], "elaborate": ["e"],
+                                   "transfer": {"scenario": "s", "prompt": "p", "model": "m"}})
+            if "one-tap questions" in prompt:
+                return json.dumps([["a", "b", "c"]] * 3)
+            return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
+
+        from coursekit import assessments as ck_assess
+        assess = ck_assess.load_assessments(self.cfg)
+        sugg = ck_assess.load_suggestions(self.cfg)
+        data_dir = os.path.join(self.fixture.root, "data")
+        shutil.rmtree(data_dir)
+        files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
+        files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
+        original = claude_cli.ask
+        claude_cli.ask = fake_ask
+        try:
+            os.remove(self.modules[-1].source)
+            result = generator.generate(jobs.Job("generate"), self.tmp, os.path.join(self.tmp, "dist"),
+                                        {"id": "fixture", "resume": True, "figures": False,
+                                         "notebooks": False})
+        finally:
+            claude_cli.ask = original
+        self.assertEqual(result["modules"], 6)
+        self.assertEqual([w for w in asked if w.startswith(("the figures for", "the notebooks for"))], [])
+        self.assertEqual(result["notebooks"], 0)
+
+
+class TestJupyter(unittest.TestCase):
+    """Studio only asks whether the Jupyter server is up and tells a served page where it
+    is; the token goes to the page through /api/jupyter and to nothing else, and a dead
+    server is not probed on every poll (CLAUDE.md "Notebooks")."""
+
+    def test_view_and_the_public_view(self):
+        from coursekit.settings import SETTINGS
+        from studio import jupyter
+        original = jupyter.probe
+        jupyter.probe = lambda force=False: "2.14.0"
+        try:
+            view = jupyter.view()
+            self.assertTrue(view["available"])
+            self.assertEqual(view["url"], SETTINGS.jupyter_url)
+            self.assertEqual(view["token"], SETTINGS.get("jupyter.token"))
+            self.assertTrue(view["config"].endswith("jupyter_server_config.py"))
+            self.assertTrue(os.path.isfile(view["config"]))
+            public = catalog.jupyter_public()
+            self.assertNotIn("token", public)
+            self.assertTrue(public["available"])
+            jupyter.probe = lambda force=False: None
+            self.assertFalse(jupyter.view()["available"])
+        finally:
+            jupyter.probe = original
+
+    def test_a_dead_server_is_probed_once_per_cache_window(self):
+        import urllib.request
+        from coursekit.settings import SETTINGS
+        from studio import jupyter
+        calls = []
+
+        def down(url, timeout=0):
+            calls.append(url)
+            raise OSError("connection refused")
+
+        original = urllib.request.urlopen
+        urllib.request.urlopen = down
+        try:
+            self.assertIsNone(jupyter.probe(force=True))
+            self.assertIsNone(jupyter.probe())
+            self.assertFalse(jupyter.available())
+        finally:
+            urllib.request.urlopen = original
+        self.assertEqual(len(calls), 1, "cached")
+        self.assertEqual(calls[0], SETTINGS.jupyter_internal_url + "/api/")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

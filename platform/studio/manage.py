@@ -14,12 +14,14 @@ Two rules carried over from the rest of the platform:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from typing import Any, Dict, List
 
 from coursekit import config as ck_config
 from coursekit import figures as ck_figures
 from coursekit import loader as ck_loader
+from coursekit import notebooks as ck_notebooks
 from coursekit.errors import CourseError
 
 from .files import read_json, stamp, write_json
@@ -48,6 +50,7 @@ def settings(root: str) -> Dict[str, Any]:
     out["hours"] = manifest.get("hours", 0)
     anchor = manifest.get("anchor") if isinstance(manifest.get("anchor"), dict) else {}
     out["anchor"] = {k: str(anchor.get(k, "") or "") for k in ANCHOR_KEYS}
+    out["notebooks"] = ck_config.notebooks_setting(manifest.get("notebooks")) or None
     out["milestones"] = [m for m in (manifest.get("milestones") or [])
                          if isinstance(m, dict) and "text" in m]
     out["parts"] = [{"id": p.get("id"), "name": p.get("name"), "hours": p.get("hours"),
@@ -77,6 +80,17 @@ def update_settings(root: str, changes: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(changes.get("anchor"), dict):
         anchor = {k: _TEXT(changes["anchor"].get(k), 300) for k in ANCHOR_KEYS}
         manifest["anchor"] = {k: v for k, v in anchor.items() if v}
+
+    # Notebooks: null turns them off; the form sends the packages as one comma-separated line.
+    if "notebooks" in changes:
+        raw = changes["notebooks"]
+        if isinstance(raw, dict) and isinstance(raw.get("packages"), str):
+            raw = dict(raw, packages=[p for p in re.split(r"[,\s]+", raw["packages"]) if p])
+        runtime = ck_config.notebooks_setting(raw)
+        if runtime:
+            manifest["notebooks"] = runtime
+        else:
+            manifest.pop("notebooks", None)
 
     if "parts" in changes:
         by_id = {p.get("id"): p for p in (changes["parts"] or []) if isinstance(p, dict)}
@@ -202,11 +216,14 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
         shutil.move(path, os.path.join(dest, os.path.basename(path)))
 
     removed = {"file": [os.path.relpath(p, root).replace(os.sep, "/") for p in found],
-               "assessment": False, "suggestions": False, "figures": 0, "trash": dest}
+               "assessment": False, "suggestions": False, "figures": 0, "notebooks": 0, "trash": dest}
 
     for name in ck_figures.names_for(cfg.figures_dir, mid):
         shutil.move(os.path.join(cfg.figures_dir, name), os.path.join(dest, name))
         removed["figures"] += 1
+    for name in ck_notebooks.names_for(cfg.notebooks_dir, mid):
+        shutil.move(os.path.join(cfg.notebooks_dir, name), os.path.join(dest, name))
+        removed["notebooks"] += 1
 
     assess_dir = cfg.path(cfg.data["assessments"])
     if os.path.isdir(assess_dir):

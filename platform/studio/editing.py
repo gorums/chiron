@@ -23,12 +23,13 @@ from coursekit import assessments as ck_assess
 from coursekit import config as ck_config
 from coursekit import loader as ck_loader
 
-from . import claude_cli, figures, prompts
+from . import claude_cli, figures, notebooks, prompts
 from .coerce import fix_assessment, fix_spec, fix_suggestions
 from .curriculum import next_module_id, plan_from_course
 from .errors import GenerationError
 from .files import read_json, read_text, write_json, write_text
-from .generator import (build_course, draw_figures, headings_of, module_path, repair_head,
+from .generator import (build_course, draw_figures, draw_notebooks, headings_of, module_path,
+                        repair_head,
                         write_module, write_study_data)
 from .jobs import Job
 
@@ -54,8 +55,9 @@ def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
         minutes = 60
     notes = brief.get("notes", "")
     with_figures = _wants_figures(brief)
+    with_notebooks = _wants_notebooks(cfg, brief)
     mid = next_module_id(modules)
-    total = 6 if with_figures else 5
+    total = 5 + int(with_figures) + int(with_notebooks)
 
     job.progress(1, total, "Designing %s · %s" % (mid, topic))
     spec = fix_spec(
@@ -76,6 +78,11 @@ def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
         job.check_cancelled()
         job.progress(step, total, "Figures for %s" % mid)
         body = draw_figures(job, root, plan, spec, body, module_path(root, plan, spec), model)
+        step += 1
+    if with_notebooks:
+        job.check_cancelled()
+        job.progress(step, total, "Notebooks for %s" % mid)
+        body = draw_notebooks(job, root, plan, spec, body, module_path(root, plan, spec), model)
         step += 1
 
     job.check_cancelled()
@@ -117,7 +124,8 @@ def rewrite(job: Job, courses_dir: str, dist_dir: str, course_id: str, mid: str,
     spec["summary"] = "A rewrite of the existing module." + (
         " The person asked for: " + notes if notes else "")
     with_figures = _wants_figures(brief)
-    total = 5 if with_figures else 4
+    with_notebooks = _wants_notebooks(cfg, brief)
+    total = 4 + int(with_figures) + int(with_notebooks)
 
     job.progress(1, total, "Rewriting %s · %s" % (mid, current.title))
     body = write_module(job, root, plan, spec, model, path=current.source, notes=notes)
@@ -126,6 +134,11 @@ def rewrite(job: Job, courses_dir: str, dist_dir: str, course_id: str, mid: str,
         job.check_cancelled()
         job.progress(step, total, "Figures for %s" % mid)
         body = draw_figures(job, root, plan, spec, body, current.source, model)
+        step += 1
+    if with_notebooks:
+        job.check_cancelled()
+        job.progress(step, total, "Notebooks for %s" % mid)
+        body = draw_notebooks(job, root, plan, spec, body, current.source, model)
         step += 1
 
     job.check_cancelled()
@@ -145,6 +158,12 @@ def _wants_figures(brief: Dict[str, Any]) -> bool:
     return figures.enabled() and brief.get("figures", True) is not False
 
 
+def _wants_notebooks(cfg, brief: Dict[str, Any]) -> bool:
+    """Notebooks are written only for a course whose manifest declares them, and then
+    unless settings turn them off or the request says `notebooks: false`."""
+    return notebooks.enabled() and bool(cfg.notebooks) and brief.get("notebooks", True) is not False
+
+
 def draw(job: Job, courses_dir: str, dist_dir: str, course_id: str,
          brief: Dict[str, Any]) -> Dict[str, Any]:
     """Figures for one module (`brief["module"]`), or for every module without any
@@ -160,7 +179,7 @@ def draw(job: Job, courses_dir: str, dist_dir: str, course_id: str,
     model = brief.get("model", "")
     job.meta["course"] = course_id
 
-    wanted = _figure_targets(modules, brief)
+    wanted = _targets(modules, brief, lambda m: not m.figures)
     if not wanted:
         raise GenerationError("Every module already has figures. Ask for one module to redraw it.")
     total = len(wanted) + 2
@@ -182,7 +201,49 @@ def draw(job: Job, courses_dir: str, dist_dir: str, course_id: str,
     return dict(result, course=course_id, root=root, module=single, drawn=drawn)
 
 
-def _figure_targets(modules, brief: Dict[str, Any]) -> List[Any]:
+def notebooks_job(job: Job, courses_dir: str, dist_dir: str, course_id: str,
+                  brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Notebooks for one module (`brief["module"]`), or for every module without any
+    (`brief["all"]` replaces them all), then rebuild. Refused for a course whose manifest
+    declares no notebooks: the Settings tab is where they are turned on.
+
+    A module's old notebooks are replaced, not added to. The text changes only by the
+    reference lines, so the reader's section ticks stay where they were.
+    """
+    root = os.path.join(courses_dir, course_id)
+    cfg = ck_config.load(root)
+    if not cfg.notebooks:
+        raise GenerationError("This course declares no notebooks. Turn them on in its Settings first.")
+    modules = ck_loader.load_modules(cfg)
+    plan = plan_from_course(cfg, modules)
+    model = brief.get("model", "")
+    job.meta["course"] = course_id
+
+    wanted = _targets(modules, brief, lambda m: not m.notebooks)
+    if not wanted:
+        raise GenerationError("Every module already has notebooks. Ask for one module to replace them.")
+    total = len(wanted) + 2
+    written: List[str] = []
+    for i, current in enumerate(wanted, start=1):
+        job.check_cancelled()
+        job.progress(i, total, "Notebooks for %s · %s" % (current.id, current.title))
+        spec = next(m for m in plan["modules"] if m["id"] == current.id)
+        body = read_text(current.source)
+        after = notebooks.write_notebooks(job, root, plan, spec, body, current.source, model)
+        if notebooks.references_in(after, current.id):
+            written.append(current.id)
+
+    job.check_cancelled()
+    job.progress(total - 1, total, "Validating and building")
+    result = _finish(job, root, dist_dir)
+    job.progress(total, total, "Done")
+    single = wanted[0].id if len(wanted) == 1 else ""
+    return dict(result, course=course_id, root=root, module=single, written=written)
+
+
+def _targets(modules, brief: Dict[str, Any], lacking) -> List[Any]:
+    """The modules a figures or notebooks job works on: the one named, every one with
+    `all`, else those `lacking` says have none yet."""
     mid = str(brief.get("module") or "").strip()
     if mid:
         current = next((m for m in modules if m.id == mid), None)
@@ -191,7 +252,7 @@ def _figure_targets(modules, brief: Dict[str, Any]) -> List[Any]:
         return [current]
     if brief.get("all"):
         return list(modules)
-    return [m for m in modules if not m.figures]
+    return [m for m in modules if lacking(m)]
 
 
 def _patch(job: Job, root: str, dist_dir: str, cfg, course_id: str, current, plan: Dict[str, Any],

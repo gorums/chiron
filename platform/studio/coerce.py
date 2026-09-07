@@ -280,6 +280,35 @@ def fix_figures(raw: Any, headings: List[str], cap: int) -> List[Dict[str, Any]]
     return out
 
 
+def fix_notebooks(raw: Any, headings: List[str], cap: int, max_cells: int) -> List[Dict[str, Any]]:
+    """The notebooks a model returned, kept only when the build would accept them.
+
+    Each comes back as `{section, caption, cells}` with `cells` as `{type, source}`. A
+    notebook is dropped when it names no section of the module (matched
+    case-insensitively), when it has no code cell, or when it would be one more than
+    `cap`; cells past `max_cells` are dropped. Nothing here raises: a module without
+    notebooks is a valid module.
+    """
+    by_lower = {h.strip().lower(): h for h in headings}
+    out: List[Dict[str, Any]] = []
+    for nb in raw if isinstance(raw, list) else []:
+        if not isinstance(nb, dict):
+            continue
+        section = by_lower.get(str(nb.get("section") or "").strip().lower())
+        cells = [{"type": c["type"], "source": str(c.get("source") or "").rstrip()}
+                 for c in (nb.get("cells") or []) if isinstance(c, dict)
+                 and c.get("type") in ("markdown", "code") and str(c.get("source") or "").strip()]
+        cells = cells[:max_cells]
+        if not section or not any(c["type"] == "code" for c in cells):
+            continue
+        caption = " ".join(str(nb.get("caption") or "").split())[:300]
+        caption = caption.replace("[", "(").replace("]", ")") or "Try it in the notebook"
+        out.append({"section": section, "caption": caption, "cells": cells})
+        if len(out) >= cap:
+            break
+    return out
+
+
 def fix_review(raw: Any) -> Dict[str, Any]:
     """A review reply into the shape the UI renders."""
     raw = raw if isinstance(raw, dict) else {}

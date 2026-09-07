@@ -91,6 +91,56 @@ cannot be answered by remembering which module you are in.
 - **Not a lookup.** If it can be answered by re-reading the section, it is a quiz question,
   not an exercise.
 
+## Figures and notebooks: where they earn retention
+
+A figure or a notebook is a claim on the reader's attention. Each earns it only in the
+place where it does something the prose cannot, and each place maps to a mechanism. The
+section names below are the seven every module has.
+
+**Figures** (SVG diagrams; `module-format.md`, "Figures")
+
+- **Core concepts: one figure of the module's mental model.** Words and a picture of the
+  same structure are stored twice and recalled either way (dual coding). Put the reference
+  right after the paragraph that introduces the structure, never a screen away from it: a
+  picture the reader has to scroll back to is not read with the text.
+- **How it works in practice: a build-up for a sequence.** Reveal one stage per step. The
+  reader who guesses what comes next before pressing Next is generating, not reading, and
+  the reveal corrects the guess on the spot. The caption should tell them to guess.
+- **Common mistakes: a wrong/right or before/after contrast in one frame.** The contrast
+  is what is remembered; two separate pictures lose it.
+- **Never in "Why this matters", the reality check, or "If you remember one thing".** The
+  first is a hook, the second is dated prose, the last is retrieval, and a picture there
+  hands the reader the answer they should be recalling.
+- **The caption says what to notice, or asks it.** "Where most of the loss happens" or
+  "Which stage would you cut?", not the title again. A figure that restates its paragraph
+  in boxes is redundancy, and redundant material is read less carefully, not more.
+- One figure per idea, one or two per module. Every extra picture splits attention.
+
+**Notebooks** (Jupyter; `module-format.md`, "Notebooks")
+
+- **Exercise is the home.** An exercise that produces a number, a plot or a working
+  function is the deliverable this file asks for, and the kernel checks it in a way no
+  worksheet can. Set the data up; leave the part that matters as `# your turn`.
+- **Core concepts, only as the worked example made live.** A novice learns a method from a
+  complete working example before from a problem. Show the whole thing running, then fade
+  it: the next cell is the same with one step removed for the reader to fill in.
+- **Open with a prediction.** The first markdown cell asks what the reader expects the
+  next cell to print or plot, before they run it. Predict, run, compare is the module's own
+  Predict step in miniature, and the surprise is what sticks.
+- **Common mistakes, as a cell that fails.** A cell that raises, or gives the plausible
+  wrong number, and a line asking why. Fixing a broken thing is remembered longer than
+  reading about the mistake.
+- **Close with the question the run answered**, to be answered in words: the reader
+  writes a sentence in a markdown cell. Explaining the result is what turns a run into
+  knowledge.
+- **Never in "Why this matters", the reality check, or "If you remember one thing"**, for
+  the same reasons as figures. One notebook per module; a second is the sign that the
+  exercise should have been longer, not that the module needs two.
+
+The later steps should lean on them: a quiz question asks for the number the notebook
+produced or the stage the build-up revealed, and an Elaborate prompt asks the reader to
+explain the figure without looking at it.
+
 ## The capstone
 
 The final module puts it all together into one end-to-end deliverable — the thing the reader

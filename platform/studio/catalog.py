@@ -21,12 +21,12 @@ from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, curriculum, generator, manage, prefs, progress, reviews
+from . import claude_cli, curriculum, generator, jupyter, manage, prefs, progress, reviews
 from . import log as logmod
 from .errors import GenerationError
 from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, store
 
-EDITABLE = (".md", ".json", ".svg")
+EDITABLE = (".md", ".json", ".svg", ".ipynb")
 RECENT_JOBS = int(SETTINGS.get("studio.recentJobs"))
 
 
@@ -60,6 +60,7 @@ def course_summary(course_id: str) -> Dict[str, Any]:
         info.update(ok=True, title=cfg.title, hours=cfg.hours, tagline=cfg.tagline,
                     subject=cfg.subject, parts=len(cfg.parts), modules=len(ids),
                     localFile=cfg.local_file, webFile=cfg.web_file,
+                    notebooks=cfg.notebooks or None,
                     progress=store().summary(course_id, ids))
         built = os.path.join(DIST_DIR, cfg.id, cfg.local_file)
         if os.path.isfile(built):
@@ -91,6 +92,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
             info["moduleList"].append({
                 "id": m.id, "num": m.num, "part": m.part, "title": m.title, "short": m.short,
                 "minutes": m.minutes, "sections": len(m.sections), "figures": len(m.figures),
+                "notebooks": len(m.notebooks),
                 "path": os.path.relpath(m.source, root).replace(os.sep, "/"),
             })
     except CourseError as exc:
@@ -102,6 +104,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
     info["questions"] = open_questions(state_obj, info["moduleList"])
     info["learner"] = learner_view(state_obj, info["moduleList"])
     info["settings"] = manage.settings(root)
+    info["notebooks"] = cfg.notebooks or None
     info["order"] = cfg.order
     info["reviews"] = reviews.load_reviews(STATE_ROOT, course_id, sources)
     info["profile"] = PREFS.profile
@@ -176,7 +179,7 @@ def module_progress(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def course_files(root: str) -> List[str]:
-    """Every markdown, JSON and SVG file in the course, as course-relative posix paths."""
+    """Every markdown, JSON, SVG and notebook file in the course, as course-relative posix paths."""
     out = []
     for base, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if not d.startswith("."))
@@ -201,14 +204,15 @@ def can_resume(course_id: str) -> bool:
 
 
 def resolve_course_file(root: str, relative: str) -> str:
-    """A path inside the course folder, or a ValueError. Only markdown, JSON and SVG qualify.
+    """A path inside the course folder, or a ValueError. Only markdown, JSON, SVG and
+    notebook files qualify.
 
     The relative path comes from the browser, so it is normalised and checked to stay
     inside the course.
     """
     clean = posixpath.normpath("/" + (relative or "").replace("\\", "/").lstrip("/")).lstrip("/")
     if not clean or clean == "." or not clean.endswith(EDITABLE):
-        raise ValueError("Only .md, .json and .svg files inside the course can be edited.")
+        raise ValueError("Only .md, .json, .svg and .ipynb files inside the course can be edited.")
     full = os.path.normpath(os.path.join(root, clean))
     if os.path.commonpath([os.path.abspath(root), os.path.abspath(full)]) != os.path.abspath(root):
         raise ValueError("That path is outside the course.")
@@ -254,12 +258,19 @@ def state() -> Dict[str, Any]:
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or "",
                    "model": PREFS.model},
         "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
+        "jupyter": jupyter_public(),
         "root": REPO_ROOT,
         "profile": PREFS.profile,
         "profiles": progress.profiles(PROGRESS_DIR),
         "calendar": calendar(courses),
         "git": bool(shutil.which("git")),
     }
+
+
+def jupyter_public() -> Dict[str, Any]:
+    """The Jupyter server as the UI sees it: everything but the token, which only a served
+    course page needs (`GET /api/jupyter`)."""
+    return {k: v for k, v in jupyter.view().items() if k != "token"}
 
 
 def profiles_view() -> Dict[str, Any]:
@@ -274,6 +285,7 @@ def settings_view() -> Dict[str, Any]:
         "profile": PREFS.profile,
         "models": [{"id": m[0], "name": m[1], "note": m[2]} for m in prefs.MODELS],
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or ""},
+        "jupyter": jupyter_public(),
         "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,
                   "state": STATE_ROOT, "log": LOG_FILE, "settings": SETTINGS.path,
                   "overlay": SETTINGS.overlay},

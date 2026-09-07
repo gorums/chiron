@@ -53,7 +53,7 @@ function placeText(m, place) {
   let text = "";
   if (place.step === "read") {
     const s = m.sections[place.sec];
-    text = s ? s.text.slice(0, 1200) : "";
+    text = s ? s.text.slice(0, 1200) + notebookPlaceText(s) : "";
   } else if (place.step === "predict") {
     text = `The question they were asked to guess at before reading: ${a.predict}\nTheir guess so far: ${(p.predict || "").trim() || "(nothing written yet)"}`;
   } else if (place.step === "quiz") {

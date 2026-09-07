@@ -13,7 +13,8 @@ trust both. The table at the bottom of the class lists every route in one place.
 
     GET  /                                  the UI
     GET  /api/state                         courses (with progress), Claude availability, jobs,
-                                            the active profile, the study calendar
+                                            the active profile, the study calendar, Jupyter
+    GET  /api/jupyter                       the Jupyter server: reachable?, its address, the token a served page uses
     GET  /api/search?q=                     every course: modules, sections, passages, glossary terms
     GET  /api/profile                       the active reader profile (a served page asks on boot)
     GET  /api/profiles                      every profile, and which is active
@@ -36,14 +37,16 @@ trust both. The table at the bottom of the class lists every route in one place.
     GET  /api/courses/<id>/reviews          every stored "review this module" result
     POST /api/courses/<id>/settings         change it (id is locked)
     POST /api/courses/<id>/delete           move the course and its build to state/trash/
-    POST /api/courses/<id>/resume           finish a generation run that died  -> {job}
+    POST /api/courses/<id>/resume           finish a generation run that died  {figures, notebooks} -> {job}
     POST /api/courses/<id>/extend           add a module  {topic, part, minutes, notes} -> {job}
     POST /api/courses/<id>/figures          draw figures for every module without any  {all} -> {job}
+    POST /api/courses/<id>/notebooks        write notebooks for every module without any  {all} -> {job}
     POST /api/courses/<id>/modules/<mid>/rewrite   rewrite one module  {notes} -> {job}
     POST /api/courses/<id>/modules/<mid>/remove    take one module out (file to state/trash/)
     POST /api/courses/<id>/modules/<mid>/move      reorder, or move to another part  {part, index}
     POST /api/courses/<id>/modules/<mid>/review    have Claude read it critically  -> {job}
     POST /api/courses/<id>/modules/<mid>/figures   draw (or redraw) its figures  -> {job}
+    POST /api/courses/<id>/modules/<mid>/notebooks write (or replace) its notebooks  -> {job}
     POST /api/courses/<id>/modules/<mid>/accept    the owner's own verdict  {accepted: bool}
     POST /api/generate                      start a generation job  -> {job}
     POST /api/jobs/<id>/answer              supply the approved curriculum
@@ -71,11 +74,13 @@ from urllib.parse import parse_qs, urlparse
 from coursekit import config as ck_config
 from coursekit import figures as ck_figures
 from coursekit import loader as ck_loader
+from coursekit import notebooks as ck_notebooks
 from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
-from . import catalog, claude_cli, curriculum, editing, generator, jobs, manage, progress, reviews, search, transfer
+from . import (catalog, claude_cli, curriculum, editing, generator, jobs, jupyter, manage, progress,
+               reviews, search, transfer)
 from . import log as logmod
 from .errors import GenerationError
 from .files import write_text
@@ -294,6 +299,10 @@ class Handler(BaseHTTPRequestHandler):
     def state(self):
         self._json(catalog.state())
 
+    @route("GET", r"/api/jupyter")
+    def jupyter_get(self):
+        self._json(jupyter.view())
+
     @route("GET", r"/api/search")
     def search(self):
         self._json(search.search(COURSES_DIR, self._param("q"), SEARCH_LIMIT))
@@ -486,6 +495,10 @@ class Handler(BaseHTTPRequestHandler):
             if problem:
                 return self._fail("That figure %s." % problem)
             text = ck_figures.sanitize(text)
+        if full.endswith(".ipynb"):
+            problem = ck_notebooks.first_problem(text)
+            if problem:
+                return self._fail("That notebook %s." % problem)
         write_text(full, text)
         self._json({"ok": True, "path": relative})
 
@@ -593,9 +606,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self._claude() or not self._idle(course_id):
             return
         cfg = ck_config.load(root)
+        asked = self._body()
         brief = {"id": course_id, "theme": cfg.subject, "hours": cfg.hours, "resume": True,
-                 "model": self._model(self._body())}
-        log.info("resume: course=%s model=%s", course_id, brief["model"])
+                 "model": self._model(asked), "figures": asked.get("figures", True) is not False,
+                 "notebooks": asked.get("notebooks", True) is not False}
+        log.info("resume: course=%s model=%s figures=%s notebooks=%s", course_id, brief["model"],
+                 brief["figures"], brief["notebooks"])
         job = jobs.Job("generate", {"theme": cfg.subject, "hours": cfg.hours, "course": course_id,
                                     "resume": True, "model": brief["model"]})
         self._start_job(job, lambda j: generator.generate(j, COURSES_DIR, DIST_DIR, brief))
@@ -648,6 +664,32 @@ class Handler(BaseHTTPRequestHandler):
         log.info("figures: course=%s module=%s model=%s", course_id, mid, brief["model"])
         job = jobs.Job("figures", {"course": course_id, "module": mid})
         self._start_job(job, lambda j: editing.draw(j, COURSES_DIR, DIST_DIR, course_id, brief))
+
+    @route("POST", COURSE + r"/notebooks")
+    def notebooks_course(self, course_id: str):
+        brief = self._body()
+        if not self._claude("Claude Code is not on this PATH, so nothing can be written."):
+            return
+        if not self._idle(course_id):
+            return
+        brief["model"] = self._model(brief)
+        brief.pop("module", None)
+        log.info("notebooks: course=%s all=%s model=%s", course_id, bool(brief.get("all")), brief["model"])
+        job = jobs.Job("notebooks", {"course": course_id, "all": bool(brief.get("all"))})
+        self._start_job(job, lambda j: editing.notebooks_job(j, COURSES_DIR, DIST_DIR, course_id, brief))
+
+    @route("POST", MODULE + r"/notebooks")
+    def notebooks_module(self, course_id: str, mid: str):
+        brief = self._body()
+        if not self._claude("Claude Code is not on this PATH, so nothing can be written."):
+            return
+        if not self._idle(course_id):
+            return
+        brief["model"] = self._model(brief)
+        brief["module"] = mid
+        log.info("notebooks: course=%s module=%s model=%s", course_id, mid, brief["model"])
+        job = jobs.Job("notebooks", {"course": course_id, "module": mid})
+        self._start_job(job, lambda j: editing.notebooks_job(j, COURSES_DIR, DIST_DIR, course_id, brief))
 
     @route("POST", MODULE + r"/review")
     def review(self, course_id: str, mid: str):

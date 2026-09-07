@@ -42,6 +42,12 @@ async function viewSettingsPage() {
     </div>
 
     <div class="card">
+      <p class="eyebrow">Jupyter</p>
+      <p style="margin:0 0 6px">${jupyterStatusLine(s.jupyter || {})}</p>
+      <p class="sub" style="margin:0;font-size:12.5px">A course whose settings turn notebooks on carries Jupyter notebooks the reader runs inside each module. Studio looks for the server at <span class="mono">${esc((s.jupyter || {}).internalUrl || "")}</span> and tells the course page to use <span class="mono">${esc((s.jupyter || {}).url || "")}</span>; both sides read <span class="mono">${esc((s.jupyter || {}).config || "")}</span>.</p>
+    </div>
+
+    <div class="card">
       <p class="eyebrow">Platform settings</p>
       <p class="sub" style="font-size:13.5px">Every default the platform has - ports, the API endpoint, the model list, timeouts, generation counts, the page's study rules and layout - is in <span class="mono">${esc(s.paths.settings)}</span>. Per-machine overrides go in <span class="mono">.env</span> or the environment under these names: ${Object.entries(
         s.envKeys || {}
@@ -77,6 +83,13 @@ async function viewSettingsPage() {
     </div>`;
   loadLogs();
   followLogs();
+}
+
+function jupyterStatusLine(j) {
+  if (j.available)
+    return `<span class="pill on">running</span> <span class="mono">${esc(j.url)}</span> · Jupyter Server ${esc(j.version)}`;
+  const install = j.installed ? "" : ` after <span class="mono">pip install notebook</span>`;
+  return `<span class="pill off">not running</span> — notebooks show their saved runs only. Start it with <span class="mono">docker compose up</span>, or <span class="mono">python platform/build.py jupyter</span>${install}.`;
 }
 
 async function saveStudioSettings() {

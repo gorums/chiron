@@ -55,6 +55,7 @@ def make_plan(job: Job, brief: Dict[str, Any], model: str = "") -> Dict[str, Any
             brief.get("practitioner") or "practitioner",
             hint,
             brief.get("notes", ""),
+            wants_notebooks(brief),
         ),
         model=model,
         timeout=claude_cli.timeout_for("plan"),
@@ -92,7 +93,27 @@ def normalise_plan(plan: Dict[str, Any], theme: str, hours: float,
     anchor = plan.get("anchor") if isinstance(plan.get("anchor"), dict) else {}
     plan["anchor"] = {k: str(anchor[k]).strip() for k in ck_config.DEFAULT_ANCHOR
                       if anchor.get(k) and str(anchor[k]).strip()}
+    # The planner decides whether the subject is learned by running code; the person can
+    # overrule it either way from the form.
+    wanted = wants_notebooks(brief)
+    runtime = ck_config.notebooks_setting(plan.get("notebooks"))
+    if wanted == "no":
+        runtime = {}
+    elif wanted == "yes" and not runtime:
+        runtime = ck_config.notebooks_setting(True)
+    plan["notebooks"] = runtime
     return plan
+
+
+def wants_notebooks(brief: Dict[str, Any]) -> str:
+    """What the request said about notebooks: "yes", "no", or "auto" (the planner's call).
+    The form sends a word; an older caller may send a bool."""
+    raw = brief.get("notebooks", "auto")
+    if raw is True or str(raw).strip().lower() in ("yes", "true", "on"):
+        return "yes"
+    if raw is False or str(raw).strip().lower() in ("no", "false", "off"):
+        return "no"
+    return "auto"
 
 
 def _normalise_parts(parts: List[Dict[str, Any]]) -> None:
@@ -155,6 +176,8 @@ def plan_to_manifest(plan: Dict[str, Any], course_id: str) -> Dict[str, Any]:
         "milestones": plan["milestones"],
         "folderLabel": course_id,
     })
+    if plan.get("notebooks"):
+        manifest["notebooks"] = plan["notebooks"]
     return manifest
 
 
@@ -171,6 +194,7 @@ def plan_from_course(cfg, modules) -> Dict[str, Any]:
         "audience": cfg.audience,
         "practitioner": cfg.practitioner,
         "tutorPersona": cfg.tutor_persona,
+        "notebooks": dict(cfg.notebooks),
         "parts": [{"id": p.id, "name": p.name, "hours": p.hours, "dir": p.dir, "blurb": p.blurb}
                   for p in cfg.parts],
         "modules": [{
@@ -202,6 +226,8 @@ def load_plan(root: str) -> Dict[str, Any]:
     plan = read_json(path)
     if not isinstance(plan, dict) or not plan.get("modules"):
         raise GenerationError("The saved curriculum is unreadable.")
+    # The manifest is where notebooks are turned on or off after the plan was saved.
+    plan["notebooks"] = dict(ck_config.load(root).notebooks)
     return plan
 
 

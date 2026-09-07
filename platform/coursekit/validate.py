@@ -30,6 +30,7 @@ def check(modules, assessments: Dict[str, Any], suggestions: Dict[str, Any]) -> 
     problems += _check_ids(modules)
     problems += _check_requires(modules)
     problems += _check_figures(modules)
+    problems += _check_notebooks(modules)
     problems += _check_assessments(modules, assessments)
     problems += _check_suggestions(modules, suggestions)
     return problems
@@ -62,6 +63,17 @@ def _check_figures(modules) -> List[str]:
         for fig in getattr(m, "figures", []) or []:
             if fig.get("problem"):
                 problems.append("%s: figure %s %s." % (m.id, fig["name"], fig["problem"]))
+    return problems
+
+
+def _check_notebooks(modules) -> List[str]:
+    """Every notebook a module refers to is on disk, usable, and allowed by the manifest
+    (see `notebooks.py`)."""
+    problems = []
+    for m in modules:
+        for nb in getattr(m, "notebooks", []) or []:
+            if nb.get("problem"):
+                problems.append("%s: notebook %s %s." % (m.id, nb["name"], nb["problem"]))
     return problems
 
 

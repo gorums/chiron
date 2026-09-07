@@ -122,6 +122,13 @@ def cmd_studio(args) -> int:
                  host=args.host)
 
 
+def cmd_jupyter(_args) -> int:
+    """The Jupyter server for a course's notebooks, on this machine. Imported lazily, like
+    Studio: the build path must not depend on it."""
+    from studio import jupyter
+    return jupyter.run()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="build.py", description="Build a self-contained study site from a course folder."
@@ -154,6 +161,9 @@ def build_parser() -> argparse.ArgumentParser:
     studio.add_argument("--host", default="",
                         help="bind address (default: %s)" % SETTINGS.get("studio.host"))
     studio.set_defaults(func=cmd_studio)
+
+    sub.add_parser("jupyter", help="start the Jupyter server that runs a course's notebooks"
+                   ).set_defaults(func=cmd_jupyter)
     return parser
 
 

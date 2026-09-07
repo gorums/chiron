@@ -66,6 +66,10 @@ Then edit the course's `course.json`:
   The page prints these four strings wherever it asks the reader to bring their own case, so
   make them fit the subject: a baking course says kitchen, a negotiation course says the next
   negotiation. Omit it and the page says "Your own case".
+- `notebooks` — only for a subject that is learned by running code (a language, data
+  analysis, statistics, machine learning): `{"kernel": "python3", "packages": ["numpy"]}`.
+  Then a module's exercise can be a Jupyter notebook the reader runs inside the page (see
+  `references/module-format.md`, "Notebooks"). Leave it out for every other subject.
 - `milestones` — leave until Phase 7.
 
 ## Phase 3 — the plan documents
@@ -104,7 +108,17 @@ Where a picture shows what the prose can only list — a flow, a funnel, a 2x2, 
 that builds up — draw it as an SVG in `figures/<ID>-<n>.svg` and refer to it from the
 section with `![caption](figures/<ID>-<n>.svg)`. The rules (colour classes, steps, size)
 are in `references/module-format.md` under "Figures"; the build enforces them. One or two
-per module where they earn their place; none where they do not.
+per module where they earn their place; none where they do not. Where it goes decides
+whether it is remembered: `references/pedagogy.md`, "Figures and notebooks: where they
+earn retention", names the section for each kind of figure and the caption that makes the
+reader look.
+
+Where the course declares `notebooks` in `course.json`, a module's exercise can be a
+Jupyter notebook in `notebooks/<ID>-<n>.ipynb`, referenced from the section with
+`[caption](notebooks/<ID>-<n>.ipynb)`. The rules are in `references/module-format.md`
+under "Notebooks", and where one goes (the exercise, a live worked example, a cell that
+fails) in `references/pedagogy.md`. A course without that field may not refer to one,
+and most subjects should not have it.
 
 The **one rule** that makes a course stick: every exercise applies to a single concrete
 thing the reader chooses in module 1 — their business, their team, their project. Establish

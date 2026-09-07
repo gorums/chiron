@@ -11,7 +11,8 @@ assert(audioSupported(), "the smoke harness stubs speechSynthesis");
 assert(AUDIO.rates.includes(AUDIO.rate), "the default speed is one of the offered speeds");
 
 /* what a block says */
-const el = (tagName, textContent, extra) => Object.assign({ tagName, textContent }, extra || {});
+const el = (tagName, textContent, extra) =>
+  Object.assign({ tagName, textContent, closest: () => null }, extra || {});
 assert(blockText(el("P", "  Two   words.\n")) === "Two words.", "whitespace is folded");
 const row = el("TR", "", { children: [el("TD", " Price "), el("TD", ""), el("TD", "high")] });
 assert(
@@ -23,11 +24,15 @@ assert(
 const loose = el("LI", "Inner.", { querySelector: () => el("P", "Inner.") });
 const tight = el("LI", "Alone.", { querySelector: () => null });
 const empty = el("P", "   ");
+const cell = el("PRE", "x = 1", { closest: sel => (sel === ".nb-static" ? {} : null) });
 const root = {
-  querySelectorAll: () => [el("P", "First."), loose, el("P", "Inner."), tight, empty],
+  querySelectorAll: () => [el("P", "First."), loose, el("P", "Inner."), tight, empty, cell],
 };
 const blocks = speechBlocks(root);
-assert(blocks.length === 3, "a loose item yields to its paragraph, an empty block is skipped");
+assert(
+  blocks.length === 3,
+  "a loose item yields to its paragraph, an empty block and a notebook cell are skipped"
+);
 assert(blocks[2] === tight, "a tight item is read itself");
 
 /* a long paragraph is said in sentence-sized pieces that lose nothing */

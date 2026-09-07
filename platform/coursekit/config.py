@@ -42,6 +42,22 @@ DEFAULT_ANCHOR: Dict[str, str] = {
     "noun": "my own case",
 }
 
+# The kernel a course's notebooks run on when `notebooks` in course.json names none.
+DEFAULT_KERNEL = "python3"
+
+
+def notebooks_setting(raw: Any) -> Dict[str, Any]:
+    """`notebooks` in course.json, normalised: `{}` when the course has none, otherwise
+    `{kernel, packages}`. `true` means the default kernel and no extra packages. Public
+    because Studio's settings form and the planner write the same shape."""
+    if raw is True:
+        return {"kernel": DEFAULT_KERNEL, "packages": []}
+    if not isinstance(raw, dict):
+        return {}
+    packages = [str(p).strip() for p in (raw.get("packages") or []) if isinstance(p, str) and p.strip()]
+    return {"kernel": str(raw.get("kernel") or DEFAULT_KERNEL).strip() or DEFAULT_KERNEL,
+            "packages": packages}
+
 
 @dataclass
 class Part:
@@ -78,6 +94,9 @@ class CourseConfig:
     short_titles: Dict[str, str] = field(default_factory=dict)
     milestones: List[Dict[str, Any]] = field(default_factory=list)
     anchor: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_ANCHOR))
+    # `{kernel, packages}` when the course carries Jupyter notebooks the reader runs in the
+    # page; `{}` for every other course, where a notebook reference is a check failure.
+    notebooks: Dict[str, Any] = field(default_factory=dict)
     # Module ids in reading order. Optional: a module not listed sorts after the listed ones,
     # by filename, so an untouched course still reads M01, M02, ... Studio writes this when
     # a module is moved; part membership is still the folder the file sits in.
@@ -98,6 +117,11 @@ class CourseConfig:
     def figures_dir(self) -> str:
         """Where a module's SVG figures live; absent in a course that has none."""
         return self.path("figures")
+
+    @property
+    def notebooks_dir(self) -> str:
+        """Where a module's Jupyter notebooks live; absent in a course that has none."""
+        return self.path("notebooks")
 
     @property
     def local_file(self) -> str:
@@ -132,6 +156,7 @@ class CourseConfig:
             "tutorPersona": self.tutor_persona,
             "milestones": self.milestones,
             "anchor": self.anchor,
+            "notebooks": self.notebooks or None,
         }
 
 
@@ -194,6 +219,7 @@ def load(root: str) -> CourseConfig:
         short_titles=raw.get("shortTitles") or {},
         milestones=raw.get("milestones") or [],
         anchor=anchor,
+        notebooks=notebooks_setting(raw.get("notebooks")),
         order=[str(x) for x in (raw.get("order") or []) if isinstance(x, str)],
         library=library,
         data=data,

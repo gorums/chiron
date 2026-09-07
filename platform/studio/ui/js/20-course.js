@@ -51,7 +51,7 @@ function paintCourse(c) {
         ${
           live
             ? `<a class="btn ghost" data-jobof="${esc(c.id)}" href="#/job/${c.job.id}">${esc(jobLabel(c.job))} — view</a>`
-            : `${c.resumable ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${c.id}')">Resume the run</button>` : ""}
+            : `${c.resumable ? `<button class="btn" style="background:var(--warm)" onclick="toggleResume('${c.id}')">Resume the run…</button>` : ""}
                   <button class="btn ghost" onclick="checkCourse('${c.id}')">Check</button>
                   <button class="btn ghost" onclick="buildCourse('${c.id}')">${c.built ? "Rebuild" : "Build"}</button>
                   <a class="btn ghost" href="/api/courses/${encodeURIComponent(c.id)}/export" download="${esc(c.id)}.zip" title="The course folder as a zip, without .git">Export .zip</a>`
@@ -136,7 +136,7 @@ function paintModules(c) {
           return `<div class="modrow" id="mod-${m.id}">
         <span class="order"><button title="Move up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">▲</button><button title="Move down" aria-label="Move ${esc(m.id)} down" ${i === mods.length - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">▼</button></span>
         <span class="mid">${esc(m.id)}</span>
-        <span class="title"><span class="dot ${dot}" title="${esc(state)}" style="margin-right:6px"></span>${esc(m.title)} ${verdict}<small>${m.minutes} min · ${m.sections} sections${m.figures ? ` · ${m.figures} figure${m.figures === 1 ? "" : "s"}` : ""}${state ? " · " + esc(state) : ""}</small></span>
+        <span class="title"><span class="dot ${dot}" title="${esc(state)}" style="margin-right:6px"></span>${esc(m.title)} ${verdict}<small>${m.minutes} min · ${m.sections} sections${m.figures ? ` · ${m.figures} figure${m.figures === 1 ? "" : "s"}` : ""}${m.notebooks ? ` · ${m.notebooks} notebook${m.notebooks === 1 ? "" : "s"}` : ""}${state ? " · " + esc(state) : ""}</small></span>
         <span class="rowtools">${open}
           <button class="btn sm ghost kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" title="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">⋯</button>
           <div class="menu hidden" id="menu-${m.id}" role="menu">
@@ -145,6 +145,7 @@ function paintModules(c) {
             <button role="menuitem" onclick="closeMenus();acceptModule('${c.id}','${m.id}',${isGood ? "false" : "true"})">${isGood ? "Withdraw “good”" : "Mark as good"}<small>${isGood ? "back to the review's verdict" : "your verdict outranks the review"}</small></button>
             <button role="menuitem" onclick="closeMenus();toggleRewrite('${m.id}')">Patch or rewrite…<small>with notes, by Claude</small></button>
             ${figuresMenuItem(c, m)}
+            ${notebooksMenuItem(c, m)}
             ${manyParts ? `<div class="sep"></div><label class="label" for="part-${m.id}">Move to part</label><select id="part-${m.id}" onchange="moveModule('${c.id}','${m.id}',this.value,-1)">${(c.parts || []).map(p => `<option value="${esc(p.id)}" ${p.id === part.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>` : ""}
             <div class="sep"></div>
             <button role="menuitem" class="danger" onclick="closeMenus();toggleRemove('${m.id}')">Remove…<small>moves the file to the trash</small></button>
@@ -154,6 +155,7 @@ function paintModules(c) {
       <div class="inlineform ${rewriting ? "" : "hidden"}" id="rw-${m.id}">
         <label for="rwn-${m.id}">What should change in ${esc(m.id)}?</label>
         <textarea id="rwn-${m.id}" rows="3" placeholder="Go much deeper on the worked example in Core concepts; the current version stops before the arithmetic. Keep the exercise.">${esc(route.query.rewrite === m.id && route.query.q ? route.query.q : "")}</textarea>
+        ${mediaChoices("rw-" + m.id, c, "for a full rewrite")}
         <div class="rwmodes">
           <label class="radio"><input type="radio" name="rwmode-${m.id}" value="patch" ${route.query.rewrite === m.id && route.query.q ? "checked" : ""}> <b>Patch</b> <span class="sub" style="margin:0">— change only what the notes say. Every other sentence, the cards and the untouched quiz items stay as they are. Right for a review's findings.</span></label>
           <label class="radio"><input type="radio" name="rwmode-${m.id}" value="rewrite" ${route.query.rewrite === m.id && route.query.q ? "" : "checked"}> <b>Rewrite</b> <span class="sub" style="margin:0">— write the module again from its design, with the notes as direction. New text, new quiz, new cards.</span></label>
@@ -182,7 +184,7 @@ function paintModules(c) {
     })
     .join("");
   $("#tabbody").innerHTML =
-    (parts && figuresBar(c) + parts) ||
+    (parts && figuresBar(c) + notebooksBar(c) + parts) ||
     `<div class="card"><p class="sub" style="margin:0">This course has no readable modules yet.</p></div>`;
   if (route.query.rewrite) {
     const el = document.getElementById("rwn-" + route.query.rewrite);
@@ -386,7 +388,8 @@ function paintGaps(c) {
 
 function paintSettings(c) {
   const s = c.settings || {},
-    a = s.anchor || {};
+    a = s.anchor || {},
+    nb = s.notebooks || null;
   const milestones = (s.milestones || []).map((m, i) => milestoneRow(m, i)).join("");
   const parts = (s.parts || [])
     .map(
@@ -409,6 +412,12 @@ function paintSettings(c) {
       <div class="field"><label for="s-practitioner">Practitioner <span class="hint">what one is called</span></label><input type="text" id="s-practitioner" value="${esc(s.practitioner)}"></div>
     </div>
     <div class="field"><label for="s-persona">Tutor persona <span class="hint">the system prompt fragment; ends with a period</span></label><textarea id="s-persona" rows="2">${esc(s.tutorPersona)}</textarea></div>
+    <label>Notebooks <span class="hint">Jupyter notebooks the reader runs inside each module — for a subject learned by running code</span></label>
+    <div class="row" style="grid-template-columns:auto 1fr 2fr;margin-bottom:16px;align-items:center">
+      <label class="radio" style="margin:0"><input type="checkbox" id="nb-on" ${nb ? "checked" : ""}> <b>This course has notebooks</b></label>
+      <input type="text" id="nb-kernel" value="${esc(nb ? nb.kernel : "")}" placeholder="Kernel, e.g. python3" aria-label="Kernel">
+      <input type="text" id="nb-packages" value="${esc(nb ? (nb.packages || []).join(", ") : "")}" placeholder="Packages the notebooks import: numpy, pandas" aria-label="Packages">
+    </div>
     <label>The reader's own case <span class="hint">the one real thing every exercise is applied to — a business, a kitchen, a next negotiation</span></label>
     <div class="row" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
       <input type="text" id="a-label" value="${esc(a.label)}" placeholder="Label, e.g. Your business" aria-label="Label">
@@ -479,6 +488,9 @@ async function saveSettings(id) {
       prompt: $("#a-prompt").value,
       placeholder: $("#a-placeholder").value,
     },
+    notebooks: $("#nb-on").checked
+      ? { kernel: $("#nb-kernel").value, packages: $("#nb-packages").value }
+      : null,
     milestones: [...document.querySelectorAll("[data-ms]")].map(el => ({
       after: Number(el.querySelector(".ms-after").value) || 0,
       text: el.querySelector(".ms-text").value,
@@ -576,7 +588,7 @@ async function rewriteModule(id, mid) {
   try {
     const { job: j } = await api(
       `/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/rewrite`,
-      { notes: notes.trim(), mode }
+      Object.assign({ notes: notes.trim(), mode }, mediaBrief("rw-" + mid))
     );
     location.hash = "#/job/" + j.id;
   } catch (err) {
@@ -622,6 +634,7 @@ function paintAdd(c) {
       <label for="x-notes">Direction <span class="hint">optional</span></label>
       <textarea id="x-notes" placeholder="What confused you, what you want it to assume you already know, what to avoid.">${esc(seedNotes)}</textarea>
     </div>
+    ${mediaChoices("x", c, "for the new module")}
     <div class="actions">
       <button class="btn" id="extendbtn" onclick="extendCourse('${c.id}')" ${STATE.claude.available ? "" : "disabled"}>Design and write it</button>
     </div>
@@ -640,12 +653,18 @@ async function extendCourse(id) {
   btn.disabled = true;
   btn.textContent = "Starting…";
   try {
-    const { job: j } = await api(`/api/courses/${encodeURIComponent(id)}/extend`, {
-      topic,
-      part: $("#x-part").value,
-      minutes: Number($("#x-min").value) || 60,
-      notes: $("#x-notes").value.trim(),
-    });
+    const { job: j } = await api(
+      `/api/courses/${encodeURIComponent(id)}/extend`,
+      Object.assign(
+        {
+          topic,
+          part: $("#x-part").value,
+          minutes: Number($("#x-min").value) || 60,
+          notes: $("#x-notes").value.trim(),
+        },
+        mediaBrief("x")
+      )
+    );
     location.hash = "#/job/" + j.id;
   } catch (err) {
     toast(err.message);
@@ -674,9 +693,31 @@ function paintFiles(c) {
     ${html}</div>`;
 }
 
-async function resumeCourse(id) {
+/* The Resume button opens the choices first: a resumed run writes only what is missing,
+   and figures and notebooks are one Claude call each per module it touches. */
+function toggleResume(id) {
+  const out = $("#courseout");
+  if (!out) return;
+  if (out.querySelector("#rs-figures")) {
+    out.innerHTML = "";
+    return;
+  }
+  const c = courseCache[id] || {};
+  out.innerHTML = `<div class="inlineform" style="margin-top:12px">
+    <b>Resume the run.</b> <span class="sub" style="margin:0;font-size:13px">Keeps every module already written and writes only what is missing.</span>
+    ${mediaChoices("rs", c, "for modules without any")}
+    <div class="actions">
+      <button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(id)}','rs')">Resume</button>
+      <button class="btn sm ghost" onclick="toggleResume('${esc(id)}')">Cancel</button>
+    </div></div>`;
+}
+
+async function resumeCourse(id, prefix) {
   try {
-    const { job: j } = await api(`/api/courses/${encodeURIComponent(id)}/resume`, {});
+    const { job: j } = await api(
+      `/api/courses/${encodeURIComponent(id)}/resume`,
+      mediaBrief(prefix || "rs")
+    );
     location.hash = "#/job/" + j.id;
   } catch (err) {
     toast(err.message);

@@ -38,6 +38,10 @@ PLAN_SCHEMA = """{
     "placeholder": str,       //   e.g. "e.g. my sister's physiotherapy clinic"
     "noun": str               //   how a question refers to it: "my business", "my kitchen"
   },
+  "notebooks": null | {       // ONLY for a subject the reader learns by running code; null otherwise
+    "kernel": "python3",      //   the Jupyter kernel: python3 unless the subject is another language
+    "packages": [str]         //   the packages the notebooks import beyond the standard library
+  },
   "parts": [
     { "id": "p1", "name": str, "hours": number, "dir": str, "blurb": str }
   ],
@@ -50,7 +54,12 @@ PLAN_SCHEMA = """{
 
 
 def plan(theme: str, hours: float, audience: str, practitioner: str,
-         part_hint: List[Dict[str, Any]], notes: str = "") -> str:
+         part_hint: List[Dict[str, Any]], notes: str = "", notebooks: str = "auto") -> str:
+    notebooks_rule = {
+        "yes": "The person asked for notebooks: set \"notebooks\" with the kernel and packages "
+               "this subject needs.",
+        "no": "The person asked for no notebooks: \"notebooks\" is null.",
+    }.get(notebooks, "")
     return f"""You are designing a complete study course on **{theme}** for {audience}, to be
 studied in {hours} focused hours. Design the whole curriculum before any of it is written.
 
@@ -87,6 +96,11 @@ Rules:
 - "requires" lists the 0-3 EARLIER modules this one genuinely builds on - the ones a reader
   must have understood, not merely read before. The page warns when a prerequisite is weak.
   Leave it empty for a module that stands alone.
+- "notebooks": a course carries Jupyter notebooks the reader runs and edits inside each
+  module ONLY when the subject is learned by running code - a programming language, data
+  analysis, statistics, machine learning, scientific computing, SQL through a driver. Then
+  name the kernel and the packages the notebooks will import. For every other subject -
+  and most subjects are every other subject - it is null. {notebooks_rule}
 {("- Additional direction from the person requesting the course: " + notes) if notes else ""}
 
 Return ONLY a JSON object of this shape, no prose and no code fence:
@@ -224,8 +238,9 @@ Rules:
   the reader's progress and the quiz mapping.
 - Where a note asks for a source you do not have, hedge the claim honestly rather than
   inventing a citation.
-- A line of the form `![...](figures/...)` is a figure the build inlines. Keep every one
-  exactly where it is unless a note names it.
+- A line of the form `![...](figures/...)` is a figure the build inlines, and one of the
+  form `[...](notebooks/...)` a notebook. Keep every one exactly where it is unless a note
+  names it.
 - A note about the quiz, the flashcards or the prompts is handled separately; ignore it here.
 
 The module as it stands:
@@ -573,6 +588,20 @@ they connect, a quantity that dwarfs another. Do not draw a decoration, a list i
 anything a sentence says just as well. Fewer good figures beat {count} weak ones; zero is a
 valid answer for a module that has nothing to draw.
 
+Where a figure goes is part of what makes it stick:
+- "Core concepts": one figure of the module's mental model - a picture and its words are
+  stored twice and recalled either way. It lands right after the paragraph that
+  introduces the structure.
+- "How it works in practice": a build-up (steps, below) for a sequence, with a caption
+  that tells the reader to guess the next stage before pressing Next - a guess corrected
+  on the spot is remembered; a diagram scanned is not.
+- "Common mistakes": a wrong/right or before/after contrast in ONE frame.
+- Never "Why this matters", "2026 reality check" or "If you remember one thing": the last
+  is retrieval, and a picture there hands over the answer the reader should be recalling.
+- The caption says what to notice, or asks it ("Which stage would you cut?") - never the
+  title again. A figure that restates its paragraph in boxes is redundancy, and redundant
+  material is read less carefully, not more.
+
 The module's sections, one of which each figure belongs to (spell the name exactly):
 {listing}
 
@@ -608,6 +637,79 @@ The module:
 Return the figures one after another in exactly this format, nothing before the first
 `=== FIGURE` and nothing after the last SVG. No code fence, no commentary:
 {FIGURES_FORMAT}"""
+
+
+NOTEBOOKS_FORMAT = """=== NOTEBOOK
+section: <the section heading, spelled exactly>
+caption: <one line: what the reader will do or find out, under 15 words>
+--- markdown
+<a short cell of markdown: what to do, what to look at>
+--- code
+<a code cell>
+--- code
+<another code cell>
+=== NOTEBOOK
+..."""
+
+
+def notebooks(cfg: Dict[str, Any], spec: Dict[str, Any], body: str, headings: List[str],
+              count: int, max_cells: int, kernel: str, packages: List[str]) -> str:
+    """Jupyter notebooks for a module, as delimited cells the writer assembles into
+    `.ipynb` files (see `studio/notebooks.py`).
+
+    A notebook earns its place where the reader learns by running and changing code: the
+    worked example made live, the exercise with its data set up, the claim the reader
+    can test. It is written cell by cell, never as JSON, so a stray quote costs nothing.
+    """
+    listing = "\n".join("  - " + h for h in headings)
+    stack = ", ".join(packages) if packages else "the standard library only"
+    return f"""Write up to {count} Jupyter notebooks for module {spec['id']}, "{spec['title']}", of
+"{cfg['title']}", a course on {cfg['subject']} for {cfg['audience']}. The reader runs and
+edits them inside the module, next to the prose, on the `{kernel}` kernel with {stack}
+available.
+
+A notebook earns its place where running the code teaches what reading cannot: the
+worked example made live, so the reader changes a number and sees what moves; the
+exercise with its data already set up, so the reader writes only the part that matters;
+a claim the module makes that the reader can test. Do not write a notebook that only
+prints what the prose already said. Fewer good notebooks beat {count} weak ones; zero is
+a valid answer for a module with nothing to run.
+
+Where a notebook goes is part of what makes it stick:
+- "Exercise" is the home: the exercise with its data set up and the part that matters left
+  as `# your turn`, producing a number, a plot or a working function the reader keeps.
+- "Core concepts" only as the worked example made live: the whole thing running, then the
+  same cell with one step removed for the reader to fill in.
+- "Common mistakes": a cell that raises, or returns the plausible wrong number, and a line
+  asking why - fixing a broken thing is remembered longer than reading about the mistake.
+- Never "Why this matters", "2026 reality check" or "If you remember one thing".
+
+The module's sections, one of which each notebook belongs to (spell the name exactly):
+{listing}
+
+Rules for each notebook:
+- At most {max_cells} cells. Open with one markdown cell saying what to do, what to
+  notice, and asking the reader to predict what the first code cell will print or plot
+  BEFORE they run it - predict, run, compare is what makes the result stick. Then code
+  cells that run top to bottom without input, each small enough to read at a glance, with
+  a comment where the reader should change something.
+- Every code cell must run as written on {kernel} with {stack}: no files that do not
+  exist, no network, no packages beyond those. Make the data inline or generate it.
+- Leave one clearly marked cell for the reader to complete (`# your turn`), with the
+  scaffolding around it already working.
+- End with a markdown cell that asks the question the run should have answered, to be
+  written down in a sentence - explaining the result is what turns a run into knowledge.
+- Plain Python (or the kernel's language), no notebook magics, no shell escapes.
+
+The module:
+\"\"\"
+{body[:20000]}
+\"\"\"
+
+Return the notebooks one after another in exactly this format, nothing before the first
+`=== NOTEBOOK` and nothing after the last cell. No code fence around the whole reply, no
+commentary:
+{NOTEBOOKS_FORMAT}"""
 
 
 REVIEW_SCHEMA = """{
@@ -647,6 +749,11 @@ Judge it against this standard, which is what every module in this course is wri
   and the quiz below tests understanding of the idea, not recall of the module's phrasing,
   with a defensible answer key.
 - Length: it fits its {spec.get('minutes', 60)}-minute budget - neither padded nor rushed.
+- Placement: a figure (`![...](figures/...)`) or notebook (`[...](notebooks/...)`) sits where
+  it aids retention - the mental model in Core concepts, a build-up or a live example where
+  the sequence is taught, a contrast or a failing cell under Common mistakes, the exercise
+  as a notebook - and never in Why this matters, the reality check or If you remember one
+  thing, where it hands over what the reader should recall.
 
 Be exact and brief. Every finding names WHERE (a section heading or a quoted phrase), WHAT is
 wrong, and the FIX. Do not list what is fine. An empty list is a valid answer for a category

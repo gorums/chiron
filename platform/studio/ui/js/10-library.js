@@ -321,6 +321,14 @@ function viewNew() {
         <textarea id="f-notes" placeholder="Weighted toward salary and contract talks. Skip hostage-negotiation material."></textarea>
       </div>
       <label class="radio" style="margin:0 0 4px"><input type="checkbox" id="f-figures" checked> <b>Draw figures</b> <span class="sub" style="margin:0">— one or two SVG diagrams per module where a picture beats a paragraph: a flow, a funnel, a 2x2, a build-up the reader steps through. Adds one Claude call per module.</span></label>
+      <div class="field" style="margin-top:10px">
+        <label>Notebooks <span class="hint">Jupyter notebooks the reader runs and edits inside each module; one Claude call per module</span></label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <label class="radio" style="margin:0"><input type="radio" name="f-notebooks" value="auto" checked> <b>Planner decides</b> <span class="sub" style="margin:0">— on for a subject learned by running code</span></label>
+          <label class="radio" style="margin:0"><input type="radio" name="f-notebooks" value="yes"> <b>Yes</b></label>
+          <label class="radio" style="margin:0"><input type="radio" name="f-notebooks" value="no"> <b>No</b></label>
+        </div>
+      </div>
       <div class="actions" style="margin-top:6px">
         <button class="btn" id="planbtn">Plan the course</button>
         <a class="btn ghost" href="#/">Cancel</a>
@@ -349,6 +357,8 @@ async function startGeneration() {
       audience: $("#f-audience").value.trim(),
       notes: $("#f-notes").value.trim(),
       figures: $("#f-figures").checked,
+      notebooks:
+        (document.querySelector('input[name="f-notebooks"]:checked') || {}).value || "auto",
     });
     location.hash = "#/job/" + j.id;
   } catch (err) {

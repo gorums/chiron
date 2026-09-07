@@ -851,5 +851,128 @@ class TestCodeConventions(unittest.TestCase):
         self.assertEqual(big, [], "\n".join(big))
 
 
+
+GOOD_NB = json.dumps({
+    "nbformat": 4, "nbformat_minor": 5, "metadata": {"kernelspec": {"name": "python3"}},
+    "cells": [
+        {"id": "a", "cell_type": "markdown", "metadata": {}, "source": "Change **n** and rerun."},
+        {"id": "b", "cell_type": "code", "metadata": {}, "execution_count": 2,
+         "source": ["n = 3\n", "print(n * 2)  # your turn"],
+         "outputs": [
+             {"output_type": "stream", "name": "stdout", "text": ["6\n"]},
+             {"output_type": "display_data",
+              "data": {"image/png": "iVBORw0KGgo=\n", "text/plain": "<Figure>"}},
+             {"output_type": "execute_result", "execution_count": 2,
+              "data": {"text/html": "<script>alert(1)</script>", "text/plain": "7"}},
+             {"output_type": "error", "ename": "ZeroDivisionError", "evalue": "division by zero",
+              "traceback": []}]},
+        {"id": "c", "cell_type": "raw", "metadata": {}, "source": "ignored"},
+    ],
+})
+
+
+class TestNotebooks(TempCourseTest):
+    """A notebook is an .ipynb under notebooks/, referenced as `[caption](notebooks/<name>.ipynb)`
+    and rendered read-only by the build; only a course whose manifest declares `notebooks`
+    may carry one (CLAUDE.md "Notebooks")."""
+
+    def _with_notebook(self, name, text, mid="M01", caption="Try it: double a number", declare=True):
+        nb_dir = os.path.join(self.course.root, "notebooks")
+        os.makedirs(nb_dir, exist_ok=True)
+        if text is not None:
+            with open(os.path.join(nb_dir, name), "w", encoding="utf-8") as fh:
+                fh.write(text)
+        if declare:
+            self.course.edit_manifest(notebooks={"kernel": "python3", "packages": ["numpy"]})
+        cfg = config.load(self.course.root)
+        path = next(m.source for m in loader.load_modules(cfg) if m.id == mid)
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+        body = body.replace("The idea, stated plainly.",
+                            "The idea, stated plainly.\n\n[%s](notebooks/%s)" % (caption, name))
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(body)
+
+    def test_a_notebook_is_rendered_read_only_with_its_cells_and_outputs(self):
+        self._with_notebook("M01-1.ipynb", GOOD_NB)
+        cfg = config.load(self.course.root)
+        self.assertEqual(cfg.notebooks, {"kernel": "python3", "packages": ["numpy"]})
+        self.assertEqual(cfg.runtime()["notebooks"], cfg.notebooks)
+        mods = loader.load_modules(cfg)
+        sec = mods[0].sections[1]
+        self.assertIn('<div class="notebook" data-nb="M01-1.ipynb" data-cells="2">', sec.html)
+        self.assertIn('<span class="nb-title">Try it: double a number</span>', sec.html)
+        self.assertIn("Change <strong>n</strong> and rerun.", sec.html)
+        self.assertIn("print(n * 2)  # your turn", sec.html)
+        self.assertIn('<pre class="nb-out">6\n</pre>', sec.html)
+        self.assertIn('src="data:image/png;base64,iVBORw0KGgo="', sec.html)
+        self.assertIn("ZeroDivisionError: division by zero", sec.html)
+        self.assertNotIn("<script>", sec.html, "an HTML output never reaches the page")
+        self.assertNotIn("ignored", sec.html, "an unknown cell type is skipped")
+        self.assertIn("Try it: double a number", sec.text, "the caption is words for search")
+        ref = mods[0].notebooks[0]
+        self.assertEqual((ref["name"], ref["cells"], ref["problem"]), ("M01-1.ipynb", 2, ""))
+        self.assertIn("n = 3", ref["code"])
+        self.assertEqual(sec.public()["notebooks"], [{"name": "M01-1.ipynb", "code": ref["code"]}])
+        self.assertNotIn("notebooks", mods[0].sections[0].public(), "only a section with one pays for the field")
+        self.assertEqual(self.course.problems(), [])
+        _, result = self.course.build(os.path.join(self.tmp, "out"))
+        self.assertEqual(result.notebooks, 1)
+        self.assertIn("notebooks 1", result.summary())
+
+    def test_a_notebook_needs_the_manifest_to_declare_the_runtime(self):
+        self._with_notebook("M01-1.ipynb", GOOD_NB, declare=False)
+        problems = self.course.problems()
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("M01: notebook M01-1.ipynb is referred to, but course.json declares no "
+                      "notebooks runtime", problems[0])
+        self.assertIsNone(config.load(self.course.root).runtime()["notebooks"])
+
+    def test_a_missing_or_broken_notebook_is_a_check_problem(self):
+        self._with_notebook("M01-1.ipynb", None)
+        problems = self.course.problems()
+        self.assertIn("M01: notebook M01-1.ipynb is missing from notebooks/", problems[0])
+        self._with_notebook("M02-1.ipynb", "{not json", mid="M02")
+        problems = self.course.problems()
+        self.assertTrue(any("M02: notebook M02-1.ipynb is not valid JSON" in p for p in problems), problems)
+        self._with_notebook("M03-1.ipynb", json.dumps({"nbformat": 3, "cells": []}), mid="M03")
+        problems = self.course.problems()
+        self.assertTrue(any("M03: notebook M03-1.ipynb is not an nbformat 4 notebook" in p
+                            for p in problems), problems)
+
+    def test_only_a_notebook_link_survives_as_a_link(self):
+        """Relative links lose their anchor in a one-file site; a notebook reference is the
+        one exception, because the build replaces it."""
+        from coursekit.markdown_render import to_html
+        self.assertEqual(to_html("[a](other.md)"), "<p><em>a</em></p>")
+        self.assertIn('<a href="notebooks/x.ipynb">a</a>', to_html("[a](notebooks/x.ipynb)"))
+
+    def test_names_for_lists_a_modules_notebooks_in_order(self):
+        from coursekit import notebooks
+        nb_dir = os.path.join(self.course.root, "notebooks")
+        os.makedirs(nb_dir)
+        for name in ("M01-2.ipynb", "M01-10.ipynb", "M01-1.ipynb", "M02-1.ipynb", "M01-x.ipynb"):
+            open(os.path.join(nb_dir, name), "w").close()
+        self.assertEqual(notebooks.names_for(nb_dir, "M01"), ["M01-1.ipynb", "M01-2.ipynb", "M01-10.ipynb"])
+        self.assertEqual(notebooks.first_problem(""), "is empty")
+        self.assertEqual(notebooks.first_problem(GOOD_NB), "")
+
+
+class TestJupyterSettings(unittest.TestCase):
+    """`jupyter.*` resolves like the bridge: an explicit URL wins, 0.0.0.0 is never told to a
+    browser, the internal URL falls back to the public one, and the token stays out of
+    CFG.platform (CLAUDE.md "Notebooks")."""
+
+    def test_urls_and_token(self):
+        s = settings.load(env={"JUPYTER_PORT": "9888", "JUPYTER_HOST": "0.0.0.0"}, dotenv={}, overlay="")
+        self.assertEqual(s.jupyter_url, "http://127.0.0.1:9888")
+        self.assertEqual(s.jupyter_internal_url, s.jupyter_url)
+        self.assertNotIn(s.get("jupyter.token"), json.dumps(s.page()), "the token never reaches a built page")
+        s = settings.load(env={"JUPYTER_URL": "http://jupyter.local:1234/",
+                               "JUPYTER_INTERNAL_URL": "http://jupyter:8888"}, dotenv={}, overlay="")
+        self.assertEqual(s.jupyter_url, "http://jupyter.local:1234")
+        self.assertEqual(s.jupyter_internal_url, "http://jupyter:8888")
+        self.assertIn("JUPYTER_TOKEN", settings.ENV_KEYS)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

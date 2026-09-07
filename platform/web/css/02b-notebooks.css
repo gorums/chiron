@@ -1,0 +1,124 @@
+/* ---- notebooks: a Jupyter notebook inlined by the build (coursekit/notebooks.py) ----
+   The saved run is rendered cell by cell; served by Studio with Jupyter up, the block
+   swaps it for the live notebook in a frame (web/js/07e-notebooks.js). */
+.notebook {
+  margin: 18px 0 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  overflow: hidden;
+}
+.nb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.nb-title {
+  font-weight: 600;
+  font-size: 14.5px;
+}
+.nb-title::before {
+  content: "Notebook · ";
+  font-weight: 500;
+  color: var(--muted);
+}
+.nb-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nb-note {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.nb-static {
+  padding: 8px 14px 12px;
+  max-height: 640px;
+  overflow: auto;
+}
+.nb-md {
+  padding: 8px 0;
+}
+.nb-md > :first-child {
+  margin-top: 0;
+}
+.nb-md > :last-child {
+  margin-bottom: 0;
+}
+.nb-cell {
+  position: relative;
+  margin: 8px 0;
+}
+.nb-n {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 3px;
+}
+.prose .nb-code {
+  margin: 0;
+  border-left: 3px solid var(--accent);
+}
+.prose .nb-out {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+.prose .nb-out.nb-err {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+.nb-img {
+  display: block;
+  max-width: 100%;
+  margin: 6px 0 0;
+  border-radius: 6px;
+  background: #fff;
+}
+.notebook.live .nb-static {
+  display: none;
+}
+.nb-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  resize: vertical;
+  background: var(--surface);
+}
+.notebook.missing {
+  border-style: dashed;
+  color: var(--bad);
+}
+.notebook.missing .nb-head {
+  border: 0;
+  background: transparent;
+}
+.notebook.missing .nb-title {
+  color: var(--bad);
+}
+.notebook.missing .nb-title::before {
+  content: "";
+}
+@media print {
+  .nb-tools,
+  .nb-frame {
+    display: none;
+  }
+  .notebook.live .nb-static {
+    display: block;
+  }
+  .nb-static {
+    max-height: none;
+    overflow: visible;
+  }
+}

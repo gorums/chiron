@@ -171,6 +171,7 @@ function renderStep(m, step) {
     b.innerHTML = s;
     setupToc();
     setupFigures();
+    setupNotebooks();
     applyMarks(m.id);
     attachParaButtons(m.id);
     landOn(m);

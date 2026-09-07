@@ -46,6 +46,11 @@ ENV_KEYS: Dict[str, str] = {
     "BRIDGE_HOST": "bridge.host",
     "BRIDGE_PORT": "bridge.port",
     "BRIDGE_URL": "bridge.url",
+    "JUPYTER_HOST": "jupyter.host",
+    "JUPYTER_PORT": "jupyter.port",
+    "JUPYTER_URL": "jupyter.url",
+    "JUPYTER_INTERNAL_URL": "jupyter.internalUrl",
+    "JUPYTER_TOKEN": "jupyter.token",
     "BRIDGE_API_URL": "anthropic.apiUrl",
     "ANTHROPIC_API_VERSION": "anthropic.apiVersion",
 }
@@ -218,6 +223,20 @@ class Settings:
         derived from the bridge's own host and port."""
         explicit = str(self.get("bridge.url") or "").strip().rstrip("/")
         return explicit or self.local_url(str(self.get("bridge.host")), int(self.get("bridge.port")))
+
+    @property
+    def jupyter_url(self) -> str:
+        """Where a browser on this machine finds the Jupyter server that runs a course's
+        notebooks. Explicit `jupyter.url` wins; otherwise host and port."""
+        explicit = str(self.get("jupyter.url") or "").strip().rstrip("/")
+        return explicit or self.local_url(str(self.get("jupyter.host")), int(self.get("jupyter.port")))
+
+    @property
+    def jupyter_internal_url(self) -> str:
+        """Where Studio itself reaches that server: the same address, unless the two run
+        in separate containers and `jupyter.internalUrl` names the service."""
+        explicit = str(self.get("jupyter.internalUrl") or "").strip().rstrip("/")
+        return explicit or self.jupyter_url
 
     # ---- for the browser ----
 

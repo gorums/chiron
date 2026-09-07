@@ -1,27 +1,33 @@
-# Course platform — Studio and the Claude bridge, always on.
+# Course platform — Studio, the Claude bridge and Jupyter, always on.
 #
-#   docker compose up -d --build     start both, and on every boot from now on
+#   docker compose up -d --build     start all three, and on every boot from now on
 #   docker compose logs -f studio    watch a generation run
 #   docker compose down              stop them
 #
-# Studio      http://127.0.0.1:${STUDIO_PORT}   write and build courses     (default 8790)
-# Bridge      http://127.0.0.1:${BRIDGE_PORT}   the tutor inside a course page (default 8787)
+# Studio      http://127.0.0.1:${STUDIO_PORT}    write and build courses            (default 8790)
+# Bridge      http://127.0.0.1:${BRIDGE_PORT}    the tutor inside a course page     (default 8787)
+# Jupyter     http://127.0.0.1:${JUPYTER_PORT}   runs a course's notebooks in the page (default 8888)
 #
-# The ports are STUDIO_PORT and BRIDGE_PORT from .env - the same names the code reads, so
-# the container and the published port always agree. The defaults here must match
-# `studio.port` and `bridge.port` in platform/settings.json.
+# The ports are STUDIO_PORT, BRIDGE_PORT and JUPYTER_PORT from .env - the same names the code
+# reads, so the container and the published port always agree. The defaults here must match
+# `studio.port`, `bridge.port` and `jupyter.port` in platform/settings.json.
 #
-# Both publish to 127.0.0.1 explicitly. Without that prefix Docker would bind 0.0.0.0 and
-# expose a service that writes files and spawns processes to the whole network.
+# All three publish to 127.0.0.1 explicitly. Without that prefix Docker would bind 0.0.0.0 and
+# expose a service that writes files and runs code to the whole network.
 
 name: course-platform
 
-x-common: &common
+# One image for every service (docker/Dockerfile); they differ only in command and mounts.
+x-image: &image
   build:
     context: .
     dockerfile: docker/Dockerfile
   image: course-platform:latest
   restart: unless-stopped
+
+# Studio and the bridge: the platform, the courses, and Claude Code's own directory.
+x-common: &common
+  <<: *image
   volumes:
     # The platform itself. Editing platform/ takes effect on restart without a rebuild.
     - ./:/work
@@ -45,6 +51,11 @@ services:
     <<: *common
     container_name: course-studio
     command: ["python", "platform/build.py", "studio", "--no-open"]
+    environment:
+      - TMPDIR=/tmp
+      # Where Studio looks for Jupyter: the service, on the compose network. What it tells
+      # a course page to open is JUPYTER_URL / the published port, resolved by the code.
+      - JUPYTER_INTERNAL_URL=http://jupyter:${JUPYTER_PORT:-8888}
     ports:
       - "127.0.0.1:${STUDIO_PORT:-8790}:${STUDIO_PORT:-8790}"
     healthcheck:
@@ -67,4 +78,33 @@ services:
       interval: 30s
       timeout: 10s
       start_period: 20s
+      retries: 3
+
+  # Jupyter Notebook, serving the courses directory: a course's notebooks/<mid>-<n>.ipynb
+  # opens at /notebooks/<id>/notebooks/<mid>-<n>.ipynb, which the course page embeds.
+  # It runs code a model wrote, so it gets the courses and the platform's configuration and
+  # nothing else: no ~/.claude (a kernel could read the OAuth token), no repo write access.
+  # tools/jupyter/jupyter_server_config.py reads the same settings as Studio - port, token,
+  # and the Studio origin it allows to frame it.
+  jupyter:
+    <<: *image
+    container_name: course-jupyter
+    command: ["python", "-m", "notebook", "--config=/work/tools/jupyter/jupyter_server_config.py"]
+    volumes:
+      - ./platform:/work/platform:ro
+      - ./tools:/work/tools:ro
+      - ${COURSES_DIR:-./courses}:/work/courses
+    environment:
+      - JUPYTER_PORT=${JUPYTER_PORT:-8888}
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-course-platform}
+      # The origin the course page is served from, which the server must allow to frame it.
+      - STUDIO_PORT=${STUDIO_PORT:-8790}
+    ports:
+      - "127.0.0.1:${JUPYTER_PORT:-8888}:${JUPYTER_PORT:-8888}"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:${JUPYTER_PORT:-8888}/api/',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
       retries: 3

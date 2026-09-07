@@ -116,7 +116,58 @@ appear; the page hides them and gives the reader Back, Next and Play. Everything
 a step group is always visible: put the frame and the axes there, the moving parts in the
 steps. Use steps only where the order itself teaches something.
 
+**Where to put one** (`pedagogy.md`, "Figures and notebooks: where they earn retention"):
+the module's mental model in "Core concepts", right after the paragraph that introduces
+it; a build-up in "How it works in practice", captioned so the reader guesses the next
+stage before revealing it; a wrong/right contrast in one frame in "Common mistakes".
+Never in "Why this matters", the reality check or "If you remember one thing". The caption
+says what to notice or asks it; it never repeats the title.
+
 One or two figures per module is plenty. Zero is right for a module with nothing to draw.
+
+## Notebooks
+
+A course whose subject is learned by running code - a language, data analysis, statistics,
+a numerical method - carries **Jupyter notebooks** the reader runs and edits inside the
+module. It is a course-level decision: `course.json` must declare the runtime,
+
+```json
+"notebooks": { "kernel": "python3", "packages": ["numpy", "pandas"] }
+```
+
+and a course without it may not refer to a notebook (the build refuses). Do not add it to
+a course whose subject is not learned by running code; most are not.
+
+Write the notebook to `notebooks/<ID>-<n>.ipynb` (nbformat 4; outputs are optional - the
+reader makes their own) and refer to it from the section on a paragraph of its own, as a
+link:
+
+```markdown
+[Try it: fit the line yourself, then change the noise](notebooks/M03-1.ipynb)
+```
+
+The build replaces the paragraph with a read-only rendering of the cells; a course page
+served by Studio with Jupyter running swaps it for the live notebook. Rules:
+
+- One markdown cell first: what to do and what to notice. Then code cells that run top to
+  bottom without input, small enough to read at a glance, with a comment where the reader
+  should change something and one `# your turn` cell to complete. End with a markdown
+  cell asking the question the run should have answered. About a dozen cells at most.
+- Every code cell runs as written on the declared kernel with the declared packages: no
+  files that do not exist, no network, no magics or shell escapes. Inline or generate the
+  data.
+- A notebook earns its place where running teaches what reading cannot: the worked example
+  made live, the exercise with its data set up, a claim the reader can test. One that only
+  prints what the prose said is not a notebook.
+
+**Where to put one** (`pedagogy.md`, "Figures and notebooks: where they earn retention"):
+"Exercise" is the home, with the data set up and the part that matters left as
+`# your turn`; "Core concepts" only as the worked example made live and then faded; a
+cell that fails, with a line asking why, in "Common mistakes". Never in "Why this
+matters", the reality check or "If you remember one thing". The first markdown cell asks
+for a prediction before the first run; the last asks for the answer in a sentence.
+
+One notebook per module is plenty; zero is right for a module with nothing to run.
 
 ## Section-by-section intent
 

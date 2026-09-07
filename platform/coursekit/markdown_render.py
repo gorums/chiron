@@ -9,8 +9,10 @@ import markdown
 _MD = markdown.Markdown(extensions=["tables", "fenced_code", "sane_lists", "attr_list"])
 
 # Relative links between markdown files cannot resolve inside a one-file site. Keep the
-# words, drop the anchor — a dead link is worse than plain text.
-_REL_LINK = re.compile(r'<a href="(?!http)[^"]*?"[^>]*>(.*?)</a>', re.S)
+# words, drop the anchor — a dead link is worse than plain text. The one relative link
+# that survives is a notebook reference, `notebooks/<name>.ipynb`, which the build turns
+# into the notebook itself (see `notebooks.py`).
+_REL_LINK = re.compile(r'<a href="(?!http)(?!notebooks/)[^"]*?"[^>]*>(.*?)</a>', re.S)
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
 

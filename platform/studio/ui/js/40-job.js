@@ -133,6 +133,13 @@ function stepLine(e) {
         : `${e.id} figures — nothing worth drawing, or nothing usable came back`,
       cls: e.count ? "ok" : "",
     };
+  if (e.kind === "notebooks")
+    return {
+      text: e.count
+        ? `${e.id} notebooks — ${e.count} written, ${e.cells} cells (${(e.sections || []).join(", ")})`
+        : `${e.id} notebooks — nothing worth running, or nothing usable came back`,
+      cls: e.count ? "ok" : "",
+    };
   if (e.kind === "review")
     return {
       text: `${e.id} reviewed — ${e.verdict}; ${e.gaps} gap${e.gaps === 1 ? "" : "s"}, ${e.errors} error${e.errors === 1 ? "" : "s"}, ${e.quiz} quiz issue${e.quiz === 1 ? "" : "s"}`,
@@ -157,6 +164,10 @@ function jobTitle() {
     return m.module
       ? `Drawing figures for ${m.module} in ${m.course || ""}`
       : `Drawing figures in ${m.course || ""}`;
+  if (job.kind === "notebooks")
+    return m.module
+      ? `Writing notebooks for ${m.module} in ${m.course || ""}`
+      : `Writing notebooks in ${m.course || ""}`;
   return m.theme ? `Writing ${m.theme}` : "Working";
 }
 
@@ -202,7 +213,16 @@ function paintJob(full) {
           .join(" ") || ""
       )}</p>
       <p class="sub" style="margin:10px 0 0">Anything written before this point is still on disk under <span class="mono">courses/</span>.${job.kind === "generate" && courseId ? " The curriculum is saved, so the run can be resumed: it keeps what is written and does only the rest." : ""} The <a href="#/settings">log</a> has the CLI's own error.</p>
-      <div class="actions">${job.kind === "generate" && courseId ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(courseId)}')">Resume the run</button>` : ""}${back}</div></div>`;
+      ${
+        job.kind === "generate" && courseId
+          ? mediaChoices(
+              "rsj",
+              (STATE.courses || []).find(c => c.id === courseId),
+              "for modules without any"
+            )
+          : ""
+      }
+      <div class="actions">${job.kind === "generate" && courseId ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(courseId)}','rsj')">Resume the run</button>` : ""}${back}</div></div>`;
   else
     head = `<div class="card">
       <p class="eyebrow">${esc(job.status)} · ${esc(jobTitle())}</p>
@@ -304,6 +324,7 @@ function doneHTML(back) {
       ? `<a class="btn" href="${courseUrl(c, target)}">${r.module ? "Read " + esc(r.module) : "Open the course"}</a>`
       : "";
   const drawn = r.drawn || [];
+  const written = r.written || [];
   const what =
     job.kind === "extend"
       ? `${esc(r.module || "A module")} was added to ${esc(id)}`
@@ -311,11 +332,13 @@ function doneHTML(back) {
         ? `${esc(r.module || "The module")} was ${r.mode === "patch" ? "patched" : "rewritten"}`
         : job.kind === "figures"
           ? `Figures drawn for ${drawn.length ? esc(drawn.join(", ")) : "no module"}`
-          : `${esc(id)} is built`;
+          : job.kind === "notebooks"
+            ? `Notebooks written for ${written.length ? esc(written.join(", ")) : "no module"}`
+            : `${esc(id)} is built`;
   return `<div class="card">
     <p class="eyebrow" style="color:var(--ok)">Finished</p>
     <h3>${what}</h3>
-    <p class="sub" style="margin:4px 0 0">${r.modules} modules · ${r.sections} sections${r.figures ? ` · ${r.figures} figures` : ""} · ${r.quiz} quiz items · ${r.cards} flashcards · ${r.glossary} glossary terms · ${r.kb} KB</p>
+    <p class="sub" style="margin:4px 0 0">${r.modules} modules · ${r.sections} sections${r.figures ? ` · ${r.figures} figures` : ""}${r.notebooks ? ` · ${r.notebooks} notebooks` : ""} · ${r.quiz} quiz items · ${r.cards} flashcards · ${r.glossary} glossary terms · ${r.kb} KB</p>
     <div class="actions" style="margin-top:14px">${open}${(job.kind === "rewrite" || job.kind === "extend") && r.module && STATE.claude.available ? `<button class="btn ghost" onclick="reviewModule('${esc(id)}','${esc(r.module)}')">Review ${esc(r.module)} now</button>` : ""}${back}</div>
     ${job.kind === "rewrite" ? `<p class="sub" style="margin:10px 0 0;font-size:13px">An earlier review of ${esc(r.module || "this module")} judged the old text, so the course page now shows it as "before edit". A new review reads what was just written.</p>` : ""}
     <p class="sub" style="margin:14px 0 0;font-size:13px">Opened from here, the course keeps its progress on the platform and asks its questions through Studio — no key, no bridge, no disk copy needed.</p>
