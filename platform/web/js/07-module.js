@@ -141,9 +141,10 @@ function renderStep(m, step) {
   } else if (step === 1) {
     let s = `<div class="readgrid"><div>`;
     s += `<div class="card tight" style="margin-bottom:18px;display:flex;align-items:center;gap:14px">
-      <div style="flex:1"><div style="font-size:12.5px;color:var(--muted);margin-bottom:5px">Reading progress · ${secDone(m)} of ${secTotal(m)} sections</div>
-      <div class="bar"><i style="width:${Math.round((secDone(m) / secTotal(m)) * 100)}%"></i></div></div>
+      <div style="flex:1"><div style="font-size:12.5px;color:var(--muted);margin-bottom:5px" id="readcount">${readCountText(m)}</div>
+      <div class="bar"><i id="readbar" style="width:${readPercent(m)}%"></i></div></div>
       <button class="btn sm" onclick="allSecs('${m.id}',${secDone(m) === secTotal(m) ? "false" : "true"})">${secDone(m) === secTotal(m) ? "Uncheck all" : "Check all"}</button></div>
+    <div class="audiobar" id="audiobar">${audioBarHtml(m)}</div>
     <div class="hint" style="margin-bottom:18px"><span class="i">Tip</span><span><b>Select any sentence</b> to highlight it, attach a note, or ask Claude about that exact passage. Everything you mark collects under <em>Marks &amp; questions</em>.</span></div>`;
     m.sections.forEach((sec, i) => {
       const on = !!p.secs[i],
@@ -155,6 +156,7 @@ function renderStep(m, step) {
           <h3>${esc(sec.h)}</h3>
           <button class="askbtn ${bk ? "has on" : ""}" title="${bk ? "Remove bookmark" : "Bookmark this section"}" aria-label="Bookmark this section" onclick="toggleBookmark('${m.id}',${i})">${ico("flag", 13)}</button>
           <button class="askbtn ${marksOf(m.id).some(k => k.sec === i) ? "has" : ""}" title="Ask Claude about this section" aria-label="Ask Claude about this section" onclick="askSection('${m.id}',${i})">${ico("ask", 14)}</button>
+          ${sectionSpeakButton(m.id, i)}
         </div>
         <div class="prose">${sec.html}</div>
       </div>`;
@@ -396,6 +398,20 @@ function revealModel(id) {
   save();
   $("#modelbox").classList.remove("hidden");
   $("#modelbox").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+/* The reading-progress line at the top of the Read step, redrawn without the step when a
+   section is ticked by the audio reader. */
+function readCountText(m) {
+  return `Reading progress · ${secDone(m)} of ${secTotal(m)} sections`;
+}
+function readPercent(m) {
+  return Math.round((secDone(m) / secTotal(m)) * 100);
+}
+function refreshReadProgress(m) {
+  const count = document.getElementById("readcount");
+  if (count) count.textContent = readCountText(m);
+  const bar = document.getElementById("readbar");
+  if (bar) bar.style.width = readPercent(m) + "%";
 }
 function tickSec(id, i) {
   const p = progressOf(id);

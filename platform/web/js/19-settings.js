@@ -132,6 +132,8 @@ function viewSettings() {
     <div class="setrow" style="border-bottom:0"><span class="lab">Motion</span><label style="display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer"><input type="checkbox" ${uiPrefs().nomotion ? "checked" : ""} onchange="setReading('nomotion',this.checked)"> Reduce animation</label></div>
   </div>
 
+  ${audioSettingsCard()}
+
   <div class="card" style="margin-bottom:20px">
     <p class="eyebrow">Chat panel</p>
     <p class="sub" style="margin-bottom:6px">Where the tutor sits while you read. Kept in this browser only. You can also drag the panel's edge to resize it, and double-click the edge to reset.</p>

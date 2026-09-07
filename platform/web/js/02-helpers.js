@@ -375,6 +375,8 @@ const ICON_PATHS = {
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   pencil: "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
   play: "M7 4v16l13-8z",
+  pause: "M8 5v14M16 5v14",
+  speak: "M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11",
   flag: "M5 21V4h11l-1 4 1 4H5",
   ask: "M9 9a3 3 0 1 1 4.5 2.6c-1 .6-1.5 1.2-1.5 2.4M12 18h.01",
   learner: "M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21a8 8 0 0 1 16 0M15 6h4M17 4v4",

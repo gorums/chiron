@@ -539,6 +539,20 @@ class TestRender(TempCourseTest):
         self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
         self.assertIn("rail checks passed", proc.stdout)
 
+    def test_reading_aloud_behaves(self):
+        """Reading aloud (07d-audio.js): what a section says, block by block; a section read
+        to its end is ticked and the next one follows; leaving the Read step stops it."""
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        harness = os.path.join(HERE, "page_smoke.js")
+        checks = os.path.join(HERE, "audio_checks.js")
+        proc = subprocess.run([node, harness, self.result.local_path, "--checks", checks],
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
+        self.assertIn("audio checks passed", proc.stdout)
+
     def test_library_degrades_when_reference_files_are_absent(self):
         """A course with no glossary or worksheets must still build."""
         shutil.rmtree(os.path.join(self.course.root, "reference"))
@@ -686,7 +700,8 @@ class TestSettings(unittest.TestCase):
         for key in ("studio.host", "studio.port", "bridge.host", "bridge.port", "anthropic.apiUrl",
                     "anthropic.apiVersion", "models.default", "claude.timeout", "logs.maxBytes",
                     "generation.timeouts.module", "build.excerptChars", "page.tutor.maxTokens",
-                    "page.study.maxFreezes", "page.ui.railDefault", "page.learner.maxGaps"):
+                    "page.study.maxFreezes", "page.ui.railDefault", "page.learner.maxGaps",
+                    "page.audio.rate"):
             self.assertIsNotNone(s.get(key), key)
         self.assertIn(s.default_model, s.model_aliases)
         self.assertTrue(s.model_id(s.default_model).startswith("claude-"))

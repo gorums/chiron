@@ -792,3 +792,36 @@ h2.big {
     display: none;
   }
 }
+
+/* ---- listening: the Read step read aloud (07d-audio.js) ---- */
+.audiobar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.audiobar:empty {
+  display: none;
+}
+.audiobar .where {
+  flex: 1;
+  min-width: 160px;
+}
+.prose .speaking,
+.sechead h3.speaking {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 6px var(--accent-soft);
+  border-radius: 4px;
+}
+.nomotion .speaking {
+  box-shadow: none;
+}
+@media print {
+  .audiobar,
+  .speakbtn {
+    display: none;
+  }
+}

@@ -69,6 +69,7 @@ class CourseConfig:
     hours: float
     parts: List[Part]
     tagline: str = ""
+    lang: str = "en"  # BCP 47 tag of the prose; picks the voice when the page reads aloud
     practitioner: str = "practitioner"
     audience: str = "a complete beginner"
     output: str = ""
@@ -120,6 +121,7 @@ class CourseConfig:
             "id": self.id,
             "title": self.title,
             "tagline": self.tagline,
+            "lang": self.lang,
             "subject": self.subject,
             "practitioner": self.practitioner,
             "audience": self.audience,
@@ -182,6 +184,7 @@ def load(root: str) -> CourseConfig:
         hours=raw["hours"],
         parts=parts,
         tagline=raw.get("tagline") or "%s hours" % raw["hours"],
+        lang=str(raw.get("lang") or "en"),
         practitioner=raw.get("practitioner", "practitioner"),
         audience=raw.get("audience", "a complete beginner"),
         output=raw.get("output") or "%s-course" % course_id,

@@ -14,7 +14,8 @@ const TUTOR = PLATFORM.tutor,
   STUDY = PLATFORM.study,
   LAYOUT = PLATFORM.ui,
   LEARNER = PLATFORM.learner,
-  FIGURES = PLATFORM.figures;
+  FIGURES = PLATFORM.figures,
+  AUDIO = PLATFORM.audio;
 /* The connection block of a fresh state: where the bridge is expected and which model to
    ask for. Whatever the reader changes in Settings is kept on top of this. */
 const connDefaults = () => ({

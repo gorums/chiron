@@ -1,6 +1,7 @@
 /* ---------- boot ---------- */
 function render() {
   if (route.view !== "m") stopTimer();
+  audioRouteChanged();
   closePanel();
   clearSel();
   if (!(route.view === "m" && route.step === 2) && !(route.view === "check" && route.id === "run"))

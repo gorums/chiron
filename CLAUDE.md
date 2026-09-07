@@ -132,7 +132,7 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      61 tests — engine, and the code conventions below
+python platform/tests/test_build.py      62 tests — engine, and the code conventions below
 python platform/tests/test_studio.py     107 tests — Studio
 npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
@@ -270,6 +270,7 @@ and everything else exists to make the practice half of that honest:
 | Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Claude | `11b-worksheets.js`; the inputs are made at build time by `library.fillable` |
 | Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `07-module.js`, `06-home.js` |
 | Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `07c-figures.js`, `css/02-content.css` |
+| Listening: the Read step read aloud by the browser's own speech engine, block by block with the spoken block highlighted; a section heard to its end is ticked read; voice and speed under `S.ui` (see "Listening") | `07d-audio.js`, `css/02-content.css` |
 | Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `07-module.js`, `15-marks-core.js`, `18-notes.js`, `19-settings.js`, `10b-plan.js` (`viewRecord`), `css/04-practice.css` |
 | The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `17c-learner.js`, `17d-learner-view.js` (`#/learner`), `06-home.js` (`renderGapCard`) |
 
@@ -436,6 +437,31 @@ A figure whose groups carry `<g data-step="1">`, `<g data-step="2">`, ... is a *
 `07c-figures.js` hides the steps and adds Back / Next / Play (`page.figures.playMs`
 between steps). That is the animated GIF a course cannot carry, with the reader in charge
 of the pace. Everything outside a step group is always visible.
+
+### Listening
+
+A course cannot ship audio either - no model makes any, and an mp3 per module would not
+fit in one file - so the Read step is read aloud by the **Web Speech API**, the voice the
+operating system or the browser provides. `07d-audio.js` owns it: `sectionSpeech` turns a
+section into chunks - the heading, then each block under `SPEECH_BLOCKS` (a paragraph, a
+list item, a table row read as its cells, a figure's caption; the drawing is skipped),
+long paragraphs split at sentence ends under `page.audio.chunkChars` because some engines
+fall silent partway through a long utterance. The block being spoken carries `.speaking`
+and is scrolled into view; a chunk's element is looked up when it is spoken
+(`chunkEl`), so a Read step redrawn mid-listen does not lose its place. A section heard to
+its end is ticked like one scrolled through (`audioSectionDone`, which also updates the
+progress line without redrawing the step), and reading runs on into the next section after
+`page.audio.sectionPauseMs`. Pause is a cancel that remembers the chunk, because
+`speechSynthesis.pause()` does not resume with every voice. `render()` calls
+`audioRouteChanged()`, so leaving the module's Read step stops it; `pagehide` does too.
+
+The voice and speed sit in `S.ui` (device-side, never synced) and are set on the Settings
+page (`audioSettingsCard`), which lists the voices for the course's language - `lang` in
+`course.json`, default `en`, reaching the page as `CFG.lang` - and every voice when none
+matches. `page.audio` in `settings.json` holds the default rate, the offered rates, the
+chunk size and the pause. Browsers refuse speech without a user gesture, so nothing starts
+on its own; the Listen button on the Read step and the speaker button on each section are
+the only ways in. `platform/tests/audio_checks.js` exercises it inside a booted page.
 
 Studio draws them (`studio/figures.py`): `prompts.figures` asks for up to
 `generation.figuresPerModule` diagrams in a delimited text format (an SVG inside a JSON

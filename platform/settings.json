@@ -131,6 +131,12 @@
     "figures": {
       "playMs": 1600
     },
+    "audio": {
+      "rate": 1,
+      "rates": [0.8, 1, 1.2, 1.5, 2],
+      "chunkChars": 320,
+      "sectionPauseMs": 700
+    },
     "learner": {
       "maxGaps": 8,
       "gapChips": 2,
