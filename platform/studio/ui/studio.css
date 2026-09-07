@@ -1424,3 +1424,15 @@ table.paths td:first-child {
   font-size: 13px;
   border-radius: 6px;
 }
+
+/* the figures summary above the module list */
+.figbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.figbar > div:first-child {
+  flex: 1;
+  font-size: 13.5px;
+}

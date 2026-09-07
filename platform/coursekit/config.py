@@ -94,6 +94,11 @@ class CourseConfig:
         return self.path("modules")
 
     @property
+    def figures_dir(self) -> str:
+        """Where a module's SVG figures live; absent in a course that has none."""
+        return self.path("figures")
+
+    @property
     def local_file(self) -> str:
         """Filename of the offline copy — the only one allowed to reach Anthropic."""
         return self.output + "-local.html"

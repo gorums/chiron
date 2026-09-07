@@ -168,6 +168,7 @@ function renderStep(m, step) {
     s += `</div><div><div class="toc" id="toc">${m.sections.map((sec, i) => `<a href="#sec${i}" onclick="jump(event,${i})">${esc(sec.h)}</a>`).join("")}</div></div></div>`;
     b.innerHTML = s;
     setupToc();
+    setupFigures();
     applyMarks(m.id);
     attachParaButtons(m.id);
     landOn(m);

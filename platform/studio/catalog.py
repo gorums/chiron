@@ -26,7 +26,7 @@ from . import log as logmod
 from .errors import GenerationError
 from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, store
 
-EDITABLE = (".md", ".json")
+EDITABLE = (".md", ".json", ".svg")
 RECENT_JOBS = int(SETTINGS.get("studio.recentJobs"))
 
 
@@ -90,7 +90,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
             sources[m.id] = m.source
             info["moduleList"].append({
                 "id": m.id, "num": m.num, "part": m.part, "title": m.title, "short": m.short,
-                "minutes": m.minutes, "sections": len(m.sections),
+                "minutes": m.minutes, "sections": len(m.sections), "figures": len(m.figures),
                 "path": os.path.relpath(m.source, root).replace(os.sep, "/"),
             })
     except CourseError as exc:
@@ -176,7 +176,7 @@ def module_progress(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def course_files(root: str) -> List[str]:
-    """Every markdown and JSON file in the course, as course-relative posix paths."""
+    """Every markdown, JSON and SVG file in the course, as course-relative posix paths."""
     out = []
     for base, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if not d.startswith("."))
@@ -201,14 +201,14 @@ def can_resume(course_id: str) -> bool:
 
 
 def resolve_course_file(root: str, relative: str) -> str:
-    """A path inside the course folder, or a ValueError. Only markdown and JSON qualify.
+    """A path inside the course folder, or a ValueError. Only markdown, JSON and SVG qualify.
 
     The relative path comes from the browser, so it is normalised and checked to stay
     inside the course.
     """
     clean = posixpath.normpath("/" + (relative or "").replace("\\", "/").lstrip("/")).lstrip("/")
     if not clean or clean == "." or not clean.endswith(EDITABLE):
-        raise ValueError("Only .md and .json files inside the course can be edited.")
+        raise ValueError("Only .md, .json and .svg files inside the course can be edited.")
     full = os.path.normpath(os.path.join(root, clean))
     if os.path.commonpath([os.path.abspath(root), os.path.abspath(full)]) != os.path.abspath(root):
         raise ValueError("That path is outside the course.")

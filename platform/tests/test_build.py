@@ -345,6 +345,97 @@ class TestRequires(TempCourseTest):
         self.assertTrue(any("M77" in p for p in problems), problems)
 
 
+GOOD_SVG = """<svg viewBox='0 0 800 450'><title>A flow</title>
+<rect x='10' y='10' width='200' height='80' class='fig-soft'/>
+<g data-step='1'><text x='20' y='50' fill='currentColor'>First</text></g>
+<g data-step='2'><text x='20' y='90' class='fig-muted'>Second</text></g>
+</svg>"""
+
+DIRTY_SVG = """<?xml version='1.0'?><svg viewBox='0 0 10 10' width='400' height='300'>
+<style>body{display:none}</style><script>alert(1)</script>
+<a href='https://evil.example/x'><rect onclick='alert(2)' x='1' y='1' width='2' height='2'/></a>
+<image href='https://evil.example/pic.png'/><use href='#ok'/>
+</svg>"""
+
+
+class TestFigures(TempCourseTest):
+    """A figure is an SVG under figures/, referenced as `![caption](figures/<name>.svg)` and
+    inlined by the build; it is sanitised on the way in and checked like any other file
+    (CLAUDE.md "Figures")."""
+
+    def _with_figure(self, name, svg, mid="M01", caption="What to notice"):
+        fig_dir = os.path.join(self.course.root, "figures")
+        os.makedirs(fig_dir, exist_ok=True)
+        if svg is not None:
+            with open(os.path.join(fig_dir, name), "w", encoding="utf-8") as fh:
+                fh.write(svg)
+        cfg = config.load(self.course.root)
+        path = next(m.source for m in loader.load_modules(cfg) if m.id == mid)
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        text = text.replace("The idea, stated plainly.",
+                            "The idea, stated plainly.\n\n![%s](figures/%s)" % (caption, name))
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def test_a_figure_is_inlined_with_its_caption_and_steps(self):
+        self._with_figure("M01-1.svg", GOOD_SVG)
+        self.assertEqual(self.course.problems(), [])
+        mods = loader.load_modules(config.load(self.course.root))
+        sec = mods[0].sections[1]
+        self.assertIn('<figure class="figure" data-fig="M01-1.svg" data-steps="2">', sec.html)
+        self.assertIn("<figcaption>What to notice</figcaption>", sec.html)
+        self.assertNotIn("<img", sec.html)
+        self.assertNotIn("<svg", sec.text, "the excerpt is words, not drawing")
+        self.assertEqual(mods[0].figures, [{"name": "M01-1.svg", "steps": 2, "problem": ""}])
+        _, result = self.course.build(os.path.join(self.tmp, "dist"))
+        self.assertEqual(result.figures, 1)
+        self.assertIn("figures 1", result.summary())
+
+    def test_a_figure_is_sanitised_before_it_reaches_the_page(self):
+        from coursekit import figures
+        clean = figures.sanitize(DIRTY_SVG)
+        for gone in ("<?xml", "<style", "<script", "onclick", "https://evil.example", "<image",
+                     "width='400'", "height='300'"):
+            self.assertNotIn(gone, clean, gone)
+        self.assertIn("<use href='#ok'/>", clean, "fragment references stay")
+        self.assertIn("<rect", clean)
+        self.assertEqual(figures.problems(clean), [])
+
+    def test_a_missing_or_broken_figure_is_a_check_problem(self):
+        self._with_figure("M01-1.svg", None)
+        problems = self.course.problems()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("M01: figure M01-1.svg is missing", problems[0])
+
+        self._with_figure("M02-1.svg", "<svg viewBox='0 0 1 1'><g></svg>", mid="M02")
+        problems = self.course.problems()
+        self.assertTrue(any("M02: figure M02-1.svg is not well-formed" in p for p in problems), problems)
+
+        self._with_figure("M03-1.svg", "<svg><rect/></svg>", mid="M03")
+        problems = self.course.problems()
+        self.assertTrue(any("M03: figure M03-1.svg has no viewBox" in p for p in problems), problems)
+
+    def test_any_other_image_is_refused(self):
+        """A one-file site cannot load an image; only a figures/*.svg reference is allowed."""
+        path = os.path.join(self.course.root, "modules", "01-foundations", "M01-lesson.md")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n![a photo](images/photo.png)\n")
+        problems = self.course.problems()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("M01: figure images/photo.png is not a figures/<name>.svg reference", problems[0])
+
+    def test_names_for_lists_a_modules_figures_in_order(self):
+        from coursekit import figures
+        fig_dir = os.path.join(self.course.root, "figures")
+        os.makedirs(fig_dir)
+        for name in ("M01-10.svg", "M01-2.svg", "M01-1.svg", "M010-1.svg", "M01-x.svg", "notes.md"):
+            with open(os.path.join(fig_dir, name), "w", encoding="utf-8") as fh:
+                fh.write("x")
+        self.assertEqual(figures.names_for(fig_dir, "M01"), ["M01-1.svg", "M01-2.svg", "M01-10.svg"])
+        self.assertEqual(figures.names_for(os.path.join(fig_dir, "nowhere"), "M01"), [])
+
+
 class TestFillableWorksheets(unittest.TestCase):
     def test_blanks_cells_checks_and_answer_blocks_become_inputs(self):
         import re
@@ -496,6 +587,16 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
                         if word in code:
                             offenders.append("%s:%d has %r" % (os.path.basename(path), n, word))
         self.assertEqual(offenders, [], "\n".join(offenders))
+
+    def test_figure_colours_are_defined_for_both_themes(self):
+        """A figure's colour classes come from the page (`fig-1` ... `fig-muted`), so every
+        token has a light and a dark value and every class a rule."""
+        from coursekit import figures
+        css = bundler.css()
+        for token in ("--fig-1", "--fig-2", "--fig-3", "--fig-4", "--fig-soft", "--fig-line"):
+            self.assertGreaterEqual(css.count(token + ":"), 3, "%s in :root, the media block and the explicit dark block" % token)
+        for cls in figures.COLOUR_CLASSES:
+            self.assertIn(".figure .%s {" % cls, css)
 
     def test_page_receives_platform_settings(self):
         cfg = config.load(scaffold.create(tempfile.mkdtemp(prefix="cfg-"), "knots", 4))

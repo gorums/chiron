@@ -29,6 +29,7 @@ def check(modules, assessments: Dict[str, Any], suggestions: Dict[str, Any]) -> 
     problems: List[str] = []
     problems += _check_ids(modules)
     problems += _check_requires(modules)
+    problems += _check_figures(modules)
     problems += _check_assessments(modules, assessments)
     problems += _check_suggestions(modules, suggestions)
     return problems
@@ -51,6 +52,16 @@ def _check_requires(modules) -> List[str]:
         for rid in getattr(m, "requires", []) or []:
             if rid not in ids:
                 problems.append("%s requires '%s', which is not a module in this course." % (m.id, rid))
+    return problems
+
+
+def _check_figures(modules) -> List[str]:
+    """Every figure a module refers to is on disk and usable (see `figures.py`)."""
+    problems = []
+    for m in modules:
+        for fig in getattr(m, "figures", []) or []:
+            if fig.get("problem"):
+                problems.append("%s: figure %s %s." % (m.id, fig["name"], fig["problem"]))
     return problems
 
 

@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+from . import figures
 from .config import CourseConfig
 from .errors import ContentError
 from .markdown_render import to_html, to_text
@@ -47,6 +48,8 @@ class Section:
     heading: str
     html: str
     text: str
+    # The figures this section refers to, each `{name, steps, problem}` (see figures.py).
+    figures: List[Dict[str, Any]] = field(default_factory=list)
 
     def public(self) -> Dict[str, str]:
         return {"h": self.heading, "html": self.html, "text": self.text}
@@ -64,6 +67,7 @@ class Module:
     sections: List[Section]
     source: str
     requires: List[str] = field(default_factory=list)
+    figures: List[Dict[str, Any]] = field(default_factory=list)
     assess: Dict[str, Any] = field(default_factory=dict)
     suggest: List[Any] = field(default_factory=list)
 
@@ -145,7 +149,7 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
         if rid != module_id and rid not in requires:
             requires.append(rid)
 
-    sections = parse_sections(raw)
+    sections = parse_sections(raw, figures_dir=cfg.figures_dir)
     if not sections:
         raise ContentError("%s: no '## ' sections found — nothing to render." % path)
 
@@ -160,15 +164,17 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
         sections=sections,
         source=path,
         requires=requires,
+        figures=[f for s in sections for f in s.figures],
     )
 
 
-def parse_sections(raw: str) -> List[Section]:
+def parse_sections(raw: str, figures_dir: str = "") -> List[Section]:
     """Split a module body into its `##` sections.
 
     Public because it is the single definition of what counts as a section: Studio has to
     know the exact count to keep the suggestion files in step, and a second implementation
-    would drift."""
+    would drift. With `figures_dir`, figure references are replaced by the figures
+    themselves; without it (Studio counting headings) they stay as they are."""
     body = raw.split("\n## ", 1)
     if len(body) < 2:
         return []
@@ -181,5 +187,11 @@ def parse_sections(raw: str) -> List[Section]:
         if not rest:
             continue
         html = to_html(rest)
-        sections.append(Section(heading=heading.strip(), html=html, text=to_text(html)[:EXCERPT_CHARS]))
+        # The excerpt is taken before the figures go in: the tutor and the search index want
+        # the words, not the drawing.
+        text = to_text(html)[:EXCERPT_CHARS]
+        refs: List[Dict[str, Any]] = []
+        if figures_dir:
+            html, refs = figures.inline(html, figures_dir)
+        sections.append(Section(heading=heading.strip(), html=html, text=text, figures=refs))
     return sections

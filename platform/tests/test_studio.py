@@ -22,7 +22,7 @@ sys.path.insert(0, PLATFORM)
 
 from coursekit import config  # noqa: E402
 from coursekit.errors import CourseError  # noqa: E402
-from studio import catalog, claude_cli, coerce, curriculum, editing, files, generator, jobs, reviews  # noqa: E402
+from studio import catalog, claude_cli, coerce, curriculum, editing, files, figures, generator, jobs, reviews  # noqa: E402
 from studio.errors import GenerationError  # noqa: E402
 
 
@@ -1247,6 +1247,202 @@ class TestPhase3(unittest.TestCase):
             json.dump(dict(fixed, module="M03", at=1), fh)
         self.assertEqual(list(reviews.load_reviews(state_root, "fixture")), ["M03"])
         self.assertEqual(reviews.load_reviews(state_root, "nothing"), {})
+
+
+FIGURE_REPLY = """Here are the figures.
+=== FIGURE
+section: core concepts
+caption: The [two] halves and how they meet
+<svg viewBox='0 0 800 450'><title>Halves</title>
+<g data-step='1'><rect x='0' y='0' width='100' height='50' class='fig-1'/></g>
+<g data-step='2'><rect x='0' y='60' width='100' height='50' class='fig-2'/></g>
+</svg>
+=== FIGURE
+section: Exercise
+caption: Broken on purpose
+<svg viewBox='0 0 1 1'><rect></svg>
+=== FIGURE
+section: No such section
+caption: Orphan
+<svg viewBox='0 0 1 1'><rect x='0' y='0' width='1' height='1'/></svg>
+=== FIGURE
+section: Why this matters
+caption: Scripted
+<svg viewBox='0 0 1 1'><script>alert(1)</script><rect x='0' y='0' width='1' height='1'/></svg>
+"""
+
+
+class TestFigureWriting(unittest.TestCase):
+    """Figures for a module: the reply parsed figure by figure, coerced towards what the
+    build accepts, written under figures/ and referenced from the named section."""
+
+    def setUp(self):
+        import tempfile
+        sys.path.insert(0, HERE)
+        from test_build import CourseFixture
+        from coursekit import loader as ck_loader
+        self.tmp = tempfile.mkdtemp(prefix="studio-fig-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.fixture = CourseFixture(self.tmp)
+        self.cfg = config.load(self.fixture.root)
+        self.modules = ck_loader.load_modules(self.cfg)
+        self.headings = ["Why this matters", "Core concepts", "Exercise"]
+
+    def test_reply_parsing_and_coercion(self):
+        raw = figures.parse_reply(FIGURE_REPLY)
+        self.assertEqual([r["section"] for r in raw],
+                         ["core concepts", "Exercise", "No such section", "Why this matters"])
+        self.assertTrue(raw[0]["svg"].startswith("<svg") and raw[0]["svg"].endswith("</svg>"))
+
+        fixed = coerce.fix_figures(raw, self.headings, 3)
+        self.assertEqual([f["section"] for f in fixed], ["Core concepts", "Why this matters"],
+                         "the malformed one and the orphan are dropped; the heading's case is repaired")
+        self.assertEqual(fixed[0]["caption"], "The (two) halves and how they meet",
+                         "brackets would break the markdown reference")
+        self.assertEqual(fixed[0]["steps"], 2)
+        self.assertNotIn("<script", fixed[1]["svg"])
+        self.assertEqual(coerce.fix_figures(raw, self.headings, 1), fixed[:1], "capped")
+        self.assertEqual(coerce.fix_figures("junk", self.headings, 2), [])
+        self.assertEqual(figures.parse_reply("no figures here"), [])
+
+    def test_references_go_in_and_come_out(self):
+        body = ("# M01 — L\n\n**Time:** 60 minutes\n\n---\n\n## Core concepts\n\nText.\n\n---\n\n"
+                "## Exercise\n\nDo it.\n")
+        line = "![Cap](figures/M01-1.svg)"
+        after = figures.insert_reference(body, "Core concepts", line)
+        self.assertIn("Text.\n\n![Cap](figures/M01-1.svg)\n\n---\n\n## Exercise", after)
+        self.assertEqual(figures.insert_reference(body, "Nowhere", line), body)
+        end = figures.insert_reference(body, "Exercise", line)
+        self.assertTrue(end.rstrip().endswith("Do it.\n\n" + line))
+        self.assertEqual(figures.references_in(after, "M01"), ["M01-1.svg"])
+        self.assertEqual(figures.references_in(after, "M02"), [])
+        self.assertEqual(figures.strip_references(after, "M01"), body)
+        self.assertEqual(figures.strip_references(after, "M02"), after, "another module's figures stay")
+
+    def test_write_figures_replaces_files_and_references_then_builds(self):
+        from studio import prompts
+        plan = curriculum.plan_from_course(self.cfg, self.modules)
+        spec = plan["modules"][0]
+        path = self.modules[0].source
+        fig_dir = os.path.join(self.fixture.root, "figures")
+        os.makedirs(fig_dir)
+        with open(os.path.join(fig_dir, "M01-7.svg"), "w", encoding="utf-8") as fh:
+            fh.write("<svg viewBox='0 0 1 1'/>")
+        prompts_seen = []
+
+        def fake_ask(prompt, **kw):
+            prompts_seen.append(prompt)
+            return FIGURE_REPLY
+
+        original = claude_cli.ask
+        claude_cli.ask = fake_ask
+        try:
+            job = jobs.Job("figures")
+            body = figures.write_figures(job, self.fixture.root, plan, spec,
+                                         files.read_text(path), path)
+        finally:
+            claude_cli.ask = original
+
+        self.assertFalse(os.path.exists(os.path.join(fig_dir, "M01-7.svg")), "old figures go")
+        self.assertEqual(sorted(os.listdir(fig_dir)), ["M01-1.svg", "M01-2.svg"])
+        self.assertEqual(sorted(figures.references_in(body, "M01")), ["M01-1.svg", "M01-2.svg"])
+        self.assertIn("![The (two) halves and how they meet](figures/M01-1.svg)", body)
+        self.assertEqual(files.read_text(path), body)
+        self.assertEqual(self.fixture.problems(), [])
+        events = [e for e in job.since(0) if e["kind"] == "figures"]
+        self.assertEqual(events[0]["count"], 2)
+        text = prompts_seen[0]
+        for needle in ("=== FIGURE", "fig-soft", "data-step", "SINGLE quotes", "- Core concepts", "M01"):
+            self.assertIn(needle, text)
+        self.assertIn("Draw up to %d figures" % figures.FIGURES_PER_MODULE, text)
+        # a rebuild carries them into the page
+        _, result = self.fixture.build(os.path.join(self.tmp, "dist"))
+        self.assertEqual(result.figures, 2)
+
+    def test_draw_job_targets_the_modules_without_figures(self):
+        original = claude_cli.ask
+        claude_cli.ask = lambda prompt, **kw: FIGURE_REPLY
+        try:
+            job = jobs.Job("figures")
+            result = editing.draw(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture",
+                                  {"module": "M02"})
+            self.assertEqual(result["module"], "M02")
+            self.assertEqual(result["drawn"], ["M02"])
+            self.assertEqual(result["figures"], 2)
+
+            job = jobs.Job("figures")
+            result = editing.draw(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture", {})
+            self.assertEqual(result["drawn"], ["M01", "M03", "M04", "M05", "M06"], "M02 already had figures")
+            self.assertEqual(result["module"], "")
+            with self.assertRaises(GenerationError):
+                editing.draw(jobs.Job("figures"), self.tmp, os.path.join(self.tmp, "dist"), "fixture", {})
+            with self.assertRaises(GenerationError):
+                editing.draw(jobs.Job("figures"), self.tmp, os.path.join(self.tmp, "dist"), "fixture",
+                             {"module": "M99"})
+        finally:
+            claude_cli.ask = original
+        detail = catalog.course_detail("fixture") if catalog.course_root("fixture") == self.fixture.root else None
+        if detail:
+            self.assertEqual(detail["moduleList"][1]["figures"], 2)
+
+    def test_remove_module_takes_its_figures_to_the_trash(self):
+        from studio import manage
+        fig_dir = os.path.join(self.fixture.root, "figures")
+        os.makedirs(fig_dir)
+        for name in ("M02-1.svg", "M03-1.svg"):
+            with open(os.path.join(fig_dir, name), "w", encoding="utf-8") as fh:
+                fh.write("<svg viewBox='0 0 1 1'/>")
+        trash = os.path.join(self.tmp, "trash")
+        removed = manage.remove_module(self.fixture.root, "M02", trash)
+        self.assertEqual(removed["figures"], 1)
+        self.assertEqual(os.listdir(fig_dir), ["M03-1.svg"])
+        self.assertIn("M02-1.svg", os.listdir(removed["trash"]))
+
+    def test_a_generation_run_draws_figures_after_each_module(self):
+        """With figures on, the pipeline asks for them right after a module's text and
+        keeps them on a resume."""
+        from test_build import CourseFixture  # noqa: F401 - the fixture above is the course
+        asked = []
+
+        def fake_ask(prompt, **kw):
+            asked.append(kw.get("what", ""))
+            if kw.get("what", "").startswith("the figures for"):
+                return FIGURE_REPLY
+            if "study data for module" in prompt:
+                return json.dumps({"predict": "p",
+                                   "quiz": [{"q": "Q", "options": ["a", "b", "c", "d"], "answer": 2, "why": "w"}],
+                                   "cards": [{"front": "f", "back": "b"}], "elaborate": ["e"],
+                                   "transfer": {"scenario": "s", "prompt": "p", "model": "m"}})
+            if "one-tap questions" in prompt:
+                return json.dumps([["a", "b", "c"]] * 3)
+            return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
+
+        # the study data shaped the way generate() writes it, so the resume can extend it
+        from coursekit import assessments as ck_assess
+        assess = ck_assess.load_assessments(self.cfg)
+        sugg = ck_assess.load_suggestions(self.cfg)
+        data_dir = os.path.join(self.fixture.root, "data")
+        shutil.rmtree(data_dir)
+        files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
+        files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
+        original = claude_cli.ask
+        claude_cli.ask = fake_ask
+        try:
+            # drop M06 so the run has something to write, then resume it
+            os.remove(self.modules[-1].source)
+            job = jobs.Job("generate")
+            result = generator.generate(job, self.tmp, os.path.join(self.tmp, "dist"),
+                                        {"id": "fixture", "resume": True})
+        finally:
+            claude_cli.ask = original
+        self.assertEqual(result["modules"], 6)
+        self.assertEqual(asked.count("the figures for M06"), 1, asked)
+        self.assertEqual([w for w in asked if w.startswith("the figures for")],
+                         ["the figures for M01", "the figures for M02", "the figures for M03",
+                          "the figures for M04", "the figures for M05", "the figures for M06"],
+                         "kept modules without figures get theirs too")
+        progress = [e for e in job.since(0) if e["kind"] == "progress"]
+        self.assertTrue(any("Figures for M06" in e.get("label", "") for e in progress), progress)
 
 
 class TestStaleReviews(unittest.TestCase):

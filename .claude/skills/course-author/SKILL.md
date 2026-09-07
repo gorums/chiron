@@ -100,6 +100,12 @@ Every module has the same seven sections, in this order:
 Write one module at a time, completely, before starting the next. Do not draft all nineteen
 outlines and fill them in — the fill-in pass is where courses go generic.
 
+Where a picture shows what the prose can only list — a flow, a funnel, a 2x2, a sequence
+that builds up — draw it as an SVG in `figures/<ID>-<n>.svg` and refer to it from the
+section with `![caption](figures/<ID>-<n>.svg)`. The rules (colour classes, steps, size)
+are in `references/module-format.md` under "Figures"; the build enforces them. One or two
+per module where they earn their place; none where they do not.
+
 The **one rule** that makes a course stick: every exercise applies to a single concrete
 thing the reader chooses in module 1 — their business, their team, their project. Establish
 that choice in M01 and refer back to it in every subsequent exercise.

@@ -20,6 +20,12 @@
   --bad-soft: #fbe6e4;
   --shadow: 0 1px 2px rgba(25, 24, 23, 0.05), 0 8px 24px rgba(25, 24, 23, 0.06);
   --shadow-lg: 0 2px 6px rgba(25, 24, 23, 0.07), 0 24px 60px rgba(25, 24, 23, 0.13);
+  --fig-1: #0f6b60;
+  --fig-2: #b45309;
+  --fig-3: #3b5bdb;
+  --fig-4: #a32b2b;
+  --fig-soft: #ebe7df;
+  --fig-line: #9c958a;
   --radius: 14px;
   --radius-sm: 9px;
   --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -49,6 +55,12 @@
     --bad-soft: #33191a;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 60px rgba(0, 0, 0, 0.5);
+    --fig-1: #4fd1c0;
+    --fig-2: #e0a458;
+    --fig-3: #8da2fb;
+    --fig-4: #f08b84;
+    --fig-soft: #2b3037;
+    --fig-line: #6b7078;
   }
 }
 :root[data-theme="dark"] {
@@ -73,6 +85,12 @@
   --bad-soft: #33191a;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 60px rgba(0, 0, 0, 0.5);
+  --fig-1: #4fd1c0;
+  --fig-2: #e0a458;
+  --fig-3: #8da2fb;
+  --fig-4: #f08b84;
+  --fig-soft: #2b3037;
+  --fig-line: #6b7078;
 }
 * {
   box-sizing: border-box;

@@ -224,6 +224,8 @@ Rules:
   the reader's progress and the quiz mapping.
 - Where a note asks for a source you do not have, hedge the claim honestly rather than
   inventing a citation.
+- A line of the form `![...](figures/...)` is a figure the build inlines. Keep every one
+  exactly where it is unless a note names it.
 - A note about the quiz, the flashcards or the prompts is handled separately; ignore it here.
 
 The module as it stands:
@@ -544,6 +546,68 @@ a summary of a module.
 
 Return ONLY a JSON array of this shape, no prose and no code fence:
 {WORKSHEET_PLAN_SCHEMA}"""
+
+
+FIGURES_FORMAT = """=== FIGURE
+section: <one of the module's `##` headings, verbatim>
+caption: <one sentence: what the reader should notice in it>
+<svg viewBox='0 0 800 450'> ... </svg>"""
+
+
+def figures(cfg: Dict[str, Any], spec: Dict[str, Any], body: str, headings: List[str],
+            count: int, max_steps: int) -> str:
+    """Diagrams for a module, as SVG the build can inline (see `coursekit.figures`).
+
+    A picture earns its place when it shows a structure the prose can only list: a flow,
+    a funnel, a 2x2, a timeline, a before/after, the parts of a thing and how they touch.
+    Colour comes from the page's classes so the figure reads in both themes; a build-up
+    with `data-step` groups is the moving picture a one-file course can carry.
+    """
+    listing = "\n".join("  - " + h for h in headings)
+    return f"""Draw up to {count} figures for module {spec['id']}, "{spec['title']}", of "{cfg['title']}",
+a course on {cfg['subject']} for {cfg['audience']}.
+
+A figure earns its place only where a picture shows something the prose can only list: a
+flow or sequence, a funnel, a 2x2, a timeline, a before/after, the parts of a thing and how
+they connect, a quantity that dwarfs another. Do not draw a decoration, a list in boxes, or
+anything a sentence says just as well. Fewer good figures beat {count} weak ones; zero is a
+valid answer for a module that has nothing to draw.
+
+The module's sections, one of which each figure belongs to (spell the name exactly):
+{listing}
+
+Each figure is a single SVG element, written to these rules - the build rejects a figure
+that breaks them:
+- Start with `<svg viewBox='0 0 800 450'>` (or a taller box up to 800x600). No width or
+  height attributes, no xmlns needed, no XML declaration.
+- Use SINGLE quotes for every attribute value.
+- Colour comes only from these class names, which the page defines for light and dark
+  themes: `fig-1` `fig-2` `fig-3` `fig-4` (four strong fills, in that order of importance),
+  `fig-soft` (a quiet fill for boxes and bands), `fig-line` (a stroke for connectors and
+  frames; it sets fill to none), `fig-muted` (secondary text). Text and arrows are
+  `fill='currentColor'` / `stroke='currentColor'`. Never a hex colour, never `<style>`.
+- Text: `<text>` elements only, font-size 15 to 24, at most 40 words in the whole figure,
+  no line longer than the space it sits in. Every label must be legible at half size.
+- No `<script>`, `<image>`, `<foreignObject>`, links, or external references. Only the
+  entities &amp; &lt; &gt; - write an arrow as a path, not a character.
+- Keep each under 8 KB. Simple shapes, generous spacing, one idea per figure.
+- Give the SVG a `<title>` as its first child: the caption, for screen readers.
+
+A figure that builds up in steps is stronger for a sequence or a cause-and-effect: wrap
+each stage in `<g data-step='1'>`, `<g data-step='2'>`, ... up to {max_steps}, in the order
+they should appear. The page reveals them one at a time, with the reader in control, and
+can play them like a short animation. Anything outside a step group is always visible -
+put the frame and the axis there, and the moving parts in the steps. Use steps only where
+the order itself teaches something.
+
+The module:
+\"\"\"
+{body[:20000]}
+\"\"\"
+
+Return the figures one after another in exactly this format, nothing before the first
+`=== FIGURE` and nothing after the last SVG. No code fence, no commentary:
+{FIGURES_FORMAT}"""
 
 
 REVIEW_SCHEMA = """{

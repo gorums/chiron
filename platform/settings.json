@@ -62,6 +62,8 @@
   "generation": {
     "quizItems": 6,
     "cardItems": 6,
+    "figuresPerModule": 2,
+    "figureSteps": 5,
     "questionsPerSection": 3,
     "maxCorpusChars": 60000,
     "maxWorksheets": 10,
@@ -77,14 +79,16 @@
       "worksheetPlan": 420,
       "worksheet": 600,
       "moduleSpec": 420,
-      "review": 600
+      "review": 600,
+      "figures": 600
     }
   },
   "build": {
     "excerptChars": 2200,
     "blurbChars": 95,
     "minutesPerModule": 60,
-    "minModules": 3
+    "minModules": 3,
+    "figureMaxBytes": 40000
   },
   "logs": {
     "level": "INFO",
@@ -123,6 +127,9 @@
       "sideWidth": 290,
       "readMin": 640,
       "readLine": 0.3
+    },
+    "figures": {
+      "playMs": 1600
     },
     "learner": {
       "maxGaps": 8,

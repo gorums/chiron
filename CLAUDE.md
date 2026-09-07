@@ -96,6 +96,7 @@ courses/<id>/               one course = one separate git repository (gitignored
                             the directory itself moves with COURSES_DIR)
   course.json               the manifest that makes a folder a course
   modules/<part>/M01-*.md   the teaching
+  figures/<mid>-<n>.svg     diagrams a module refers to; inlined by the build (see "Figures")
   plan/ reference/ templates/
   data/assessments/ data/suggestions/
 dist/<id>/                  build output (generated — do not edit)
@@ -131,8 +132,8 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      55 tests — engine, and the code conventions below
-python platform/tests/test_studio.py     101 tests — Studio
+python platform/tests/test_build.py      61 tests — engine, and the code conventions below
+python platform/tests/test_studio.py     107 tests — Studio
 npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
 
@@ -219,7 +220,7 @@ grep -rniE "marketing|marketer" platform/web/
 must return nothing.
 
 The mirror of that rule: `courses/<id>/` contains no code. A course is markdown, JSON and
-nothing else.
+SVG figures, nothing else.
 
 ## How the build works
 
@@ -230,7 +231,8 @@ nothing else.
 | `errors` | `CourseError` and its three subclasses |
 | `config` | `course.json` → `CourseConfig`; builds the `CFG` the page receives |
 | `markdown_render` | markdown → HTML; HTML → plain text for search and chat context |
-| `loader` | module markdown → `Module`/`Section` objects; reads the optional `**Requires:**` line |
+| `figures` | SVG figures: sanitise, check, inline into a section's HTML, count the build-up steps |
+| `loader` | module markdown → `Module`/`Section` objects; reads the optional `**Requires:**` line; inlines the figures |
 | `assessments` | quizzes, flashcards, suggested questions; merges the per-part files |
 | `library` | glossary, mental models, worksheets, plan pages — all optional. `fillable` turns a worksheet's blanks into numbered inputs |
 | `validate` | every cross-file check, collected into one report |
@@ -267,6 +269,7 @@ and everything else exists to make the practice half of that honest:
 | Role-play: the tutor plays `assess.roleplay.persona` in the rail and stays in character until "Finish & get feedback" | `17b-grader.js`, `17-rail.js` (`c.kind === "rp"`) |
 | Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Claude | `11b-worksheets.js`; the inputs are made at build time by `library.fillable` |
 | Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `07-module.js`, `06-home.js` |
+| Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `07c-figures.js`, `css/02-content.css` |
 | Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `07-module.js`, `15-marks-core.js`, `18-notes.js`, `19-settings.js`, `10b-plan.js` (`viewRecord`), `css/04-practice.css` |
 | The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `17c-learner.js`, `17d-learner-view.js` (`#/learner`), `06-home.js` (`renderGapCard`) |
 
@@ -388,6 +391,8 @@ Always point a user at the `-local.html` copy.
 - Every flashcard has both `front` and `back`.
 - A `roleplay`, when present, has `persona`, `situation`, `goal` and a non-empty `rubric`.
 - Every id in a module's `**Requires:**` line is a module in the course.
+- Every figure a module refers to is on disk, well-formed, has a `viewBox` and is under
+  `build.figureMaxBytes`; any other `<img>` is refused (see "Figures").
 - **A module's suggestion list has exactly one entry per `##` section.** They are matched by
   position. This is the most common authoring failure.
 - No duplicate module ids; no assessment or suggestion entry that matches no module.
@@ -407,6 +412,44 @@ without changing the window.
 A `##` section whose body is empty is dropped from the render *and* from the count — which
 is usually why a count mismatch appears out of nowhere.
 
+### Figures
+
+A course cannot ship pictures - it is one file that works off disk, and a model cannot
+draw a raster anyway - but it can ship **diagrams as SVG**, which is text. A figure is
+`courses/<id>/figures/<mid>-<n>.svg`, referenced from the module on a paragraph of its own:
+
+```
+![What the reader should notice](figures/M03-1.svg)
+```
+
+`coursekit/figures.py` owns the contract. `loader.parse_sections(raw, figures_dir)`
+replaces the paragraph with `<figure class="figure" data-fig=...>` holding the SVG and a
+`<figcaption>`; the section's `text` excerpt is taken before that, so the tutor and search
+see words, not markup. On the way in the SVG is **sanitised** (`<script>`, `<style>`,
+`<foreignObject>`, `<image>`, event attributes and non-fragment hrefs are removed - a
+`<style>` inside inline SVG would restyle the whole page) and **checked** (well-formed
+XML, a `viewBox`, under `build.figureMaxBytes`); a problem is a `check` failure like any
+other. Colour comes only from classes the page defines for both themes - `fig-1` ...
+`fig-4`, `fig-soft`, `fig-line`, `fig-muted` - and from `currentColor`.
+
+A figure whose groups carry `<g data-step="1">`, `<g data-step="2">`, ... is a **build-up**:
+`07c-figures.js` hides the steps and adds Back / Next / Play (`page.figures.playMs`
+between steps). That is the animated GIF a course cannot carry, with the reader in charge
+of the pace. Everything outside a step group is always visible.
+
+Studio draws them (`studio/figures.py`): `prompts.figures` asks for up to
+`generation.figuresPerModule` diagrams in a delimited text format (an SVG inside a JSON
+string is a parse failure waiting to happen), `coerce.fix_figures` keeps only the ones
+naming a real section that pass `coursekit.figures`, and `write_figures` replaces the
+module's old figure files and reference lines with the new ones. A generation run draws
+them right after each module's text (`brief["figures"]`, on by default; a failure is logged
+and the module ships without); `extend` and a full `rewrite` do the same; a patch keeps
+the reference lines where they are. `POST /api/courses/<id>/figures` draws for every
+module without any (`{all: true}` redraws them all) and
+`POST /api/courses/<id>/modules/<mid>/figures` for one; the Modules tab and the row menu
+offer both. `remove_module` trashes a module's figures with its file, and the Files tab
+can edit an `.svg` by hand (the PUT sanitises and checks it).
+
 ## Course Studio
 
 `platform/studio/` is a second front end onto `coursekit`, for what is awkward in a terminal:
@@ -421,7 +464,8 @@ reading validation errors next to the course they belong to.
 | `curriculum` | the plan a course is written from: `make_plan`, `normalise_plan`, `plan_from_course`, `load_plan` / `reconstruct_plan` for a resume |
 | `coerce` | model output into shapes the validator accepts: `fix_quiz_item`, `fix_assessment`, `fix_suggestions`, `fix_spec`, `fix_review` |
 | `generator` | the pipeline: plan → approve → write → validate → build; the writers (`write_module`, `write_study_data`) and `build_course` / `check_course` |
-| `editing` | one module of an existing course: `extend`, `rewrite`, patch mode, `store_module_data` |
+| `editing` | one module of an existing course: `extend`, `rewrite`, patch mode, `draw` (figures), `store_module_data` |
+| `figures` | figures for one module: parse the delimited reply, write `figures/<mid>-<n>.svg`, put the references in the text |
 | `reviews` | what Claude or the owner thinks of a module, under `state/reviews/` |
 | `catalog` | what the API reports: `course_summary`, `course_detail`, `state`, `calendar`, `settings_view` |
 | `runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |

@@ -320,6 +320,7 @@ function viewNew() {
         <label for="f-notes">Anything else it should cover or avoid <span class="hint">optional</span></label>
         <textarea id="f-notes" placeholder="Weighted toward salary and contract talks. Skip hostage-negotiation material."></textarea>
       </div>
+      <label class="radio" style="margin:0 0 4px"><input type="checkbox" id="f-figures" checked> <b>Draw figures</b> <span class="sub" style="margin:0">— one or two SVG diagrams per module where a picture beats a paragraph: a flow, a funnel, a 2x2, a build-up the reader steps through. Adds one Claude call per module.</span></label>
       <div class="actions" style="margin-top:6px">
         <button class="btn" id="planbtn">Plan the course</button>
         <a class="btn ghost" href="#/">Cancel</a>
@@ -347,6 +348,7 @@ async function startGeneration() {
       practitioner: $("#f-practitioner").value.trim(),
       audience: $("#f-audience").value.trim(),
       notes: $("#f-notes").value.trim(),
+      figures: $("#f-figures").checked,
     });
     location.hash = "#/job/" + j.id;
   } catch (err) {

@@ -38,10 +38,12 @@ trust both. The table at the bottom of the class lists every route in one place.
     POST /api/courses/<id>/delete           move the course and its build to state/trash/
     POST /api/courses/<id>/resume           finish a generation run that died  -> {job}
     POST /api/courses/<id>/extend           add a module  {topic, part, minutes, notes} -> {job}
+    POST /api/courses/<id>/figures          draw figures for every module without any  {all} -> {job}
     POST /api/courses/<id>/modules/<mid>/rewrite   rewrite one module  {notes} -> {job}
     POST /api/courses/<id>/modules/<mid>/remove    take one module out (file to state/trash/)
     POST /api/courses/<id>/modules/<mid>/move      reorder, or move to another part  {part, index}
     POST /api/courses/<id>/modules/<mid>/review    have Claude read it critically  -> {job}
+    POST /api/courses/<id>/modules/<mid>/figures   draw (or redraw) its figures  -> {job}
     POST /api/courses/<id>/modules/<mid>/accept    the owner's own verdict  {accepted: bool}
     POST /api/generate                      start a generation job  -> {job}
     POST /api/jobs/<id>/answer              supply the approved curriculum
@@ -67,6 +69,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from coursekit import config as ck_config
+from coursekit import figures as ck_figures
 from coursekit import loader as ck_loader
 from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR
@@ -478,6 +481,11 @@ class Handler(BaseHTTPRequestHandler):
                 json.loads(text)
             except ValueError as exc:
                 return self._fail("That is not valid JSON: %s" % exc)
+        if full.endswith(".svg"):
+            problem = ck_figures.first_problem(text)
+            if problem:
+                return self._fail("That figure %s." % problem)
+            text = ck_figures.sanitize(text)
         write_text(full, text)
         self._json({"ok": True, "path": relative})
 
@@ -614,6 +622,32 @@ class Handler(BaseHTTPRequestHandler):
         log.info("rewrite: course=%s module=%s mode=%s model=%s", course_id, mid, mode, brief["model"])
         job = jobs.Job("rewrite", {"course": course_id, "module": mid, "mode": mode})
         self._start_job(job, lambda j: editing.rewrite(j, COURSES_DIR, DIST_DIR, course_id, mid, brief))
+
+    @route("POST", COURSE + r"/figures")
+    def figures_course(self, course_id: str):
+        brief = self._body()
+        if not self._claude("Claude Code is not on this PATH, so nothing can be drawn."):
+            return
+        if not self._idle(course_id):
+            return
+        brief["model"] = self._model(brief)
+        brief.pop("module", None)
+        log.info("figures: course=%s all=%s model=%s", course_id, bool(brief.get("all")), brief["model"])
+        job = jobs.Job("figures", {"course": course_id, "all": bool(brief.get("all"))})
+        self._start_job(job, lambda j: editing.draw(j, COURSES_DIR, DIST_DIR, course_id, brief))
+
+    @route("POST", MODULE + r"/figures")
+    def figures_module(self, course_id: str, mid: str):
+        brief = self._body()
+        if not self._claude("Claude Code is not on this PATH, so nothing can be drawn."):
+            return
+        if not self._idle(course_id):
+            return
+        brief["model"] = self._model(brief)
+        brief["module"] = mid
+        log.info("figures: course=%s module=%s model=%s", course_id, mid, brief["model"])
+        job = jobs.Job("figures", {"course": course_id, "module": mid})
+        self._start_job(job, lambda j: editing.draw(j, COURSES_DIR, DIST_DIR, course_id, brief))
 
     @route("POST", MODULE + r"/review")
     def review(self, course_id: str, mid: str):

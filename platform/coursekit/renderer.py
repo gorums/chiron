@@ -33,6 +33,7 @@ class BuildResult:
     local_path: str
     modules: int
     sections: int
+    figures: int
     quiz_items: int
     cards: int
     glossary: int
@@ -42,7 +43,8 @@ class BuildResult:
 
     def summary(self) -> str:
         return (
-            "modules {0.modules} · sections {0.sections} · quiz {0.quiz_items} · "
+            "modules {0.modules} · sections {0.sections} · figures {0.figures} · "
+            "quiz {0.quiz_items} · "
             "cards {0.cards} · glossary {0.glossary} · models {0.models} · "
             "templates {0.templates} · {0.kb:.0f} KB".format(self)
         )
@@ -107,6 +109,7 @@ def write(cfg: CourseConfig, modules, library: Dict[str, Any], out_dir: str) -> 
         local_path=local_path,
         modules=len(modules),
         sections=sum(len(m.sections) for m in modules),
+        figures=sum(len(m.figures) for m in modules),
         quiz_items=sum(len(m.assess.get("quiz", [])) for m in modules),
         cards=sum(len(m.assess.get("cards", [])) for m in modules),
         glossary=len(library.get("glossary", [])),

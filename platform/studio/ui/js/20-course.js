@@ -136,7 +136,7 @@ function paintModules(c) {
           return `<div class="modrow" id="mod-${m.id}">
         <span class="order"><button title="Move up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">▲</button><button title="Move down" aria-label="Move ${esc(m.id)} down" ${i === mods.length - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">▼</button></span>
         <span class="mid">${esc(m.id)}</span>
-        <span class="title"><span class="dot ${dot}" title="${esc(state)}" style="margin-right:6px"></span>${esc(m.title)} ${verdict}<small>${m.minutes} min · ${m.sections} sections${state ? " · " + esc(state) : ""}</small></span>
+        <span class="title"><span class="dot ${dot}" title="${esc(state)}" style="margin-right:6px"></span>${esc(m.title)} ${verdict}<small>${m.minutes} min · ${m.sections} sections${m.figures ? ` · ${m.figures} figure${m.figures === 1 ? "" : "s"}` : ""}${state ? " · " + esc(state) : ""}</small></span>
         <span class="rowtools">${open}
           <button class="btn sm ghost kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" title="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">⋯</button>
           <div class="menu hidden" id="menu-${m.id}" role="menu">
@@ -144,6 +144,7 @@ function paintModules(c) {
             <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${STATE.claude.available ? "" : "disabled"}>${rv && !rv.ownerOnly ? "Review again" : "Review with Claude"}<small>a verdict, gaps, errors, quiz issues</small></button>
             <button role="menuitem" onclick="closeMenus();acceptModule('${c.id}','${m.id}',${isGood ? "false" : "true"})">${isGood ? "Withdraw “good”" : "Mark as good"}<small>${isGood ? "back to the review's verdict" : "your verdict outranks the review"}</small></button>
             <button role="menuitem" onclick="closeMenus();toggleRewrite('${m.id}')">Patch or rewrite…<small>with notes, by Claude</small></button>
+            ${figuresMenuItem(c, m)}
             ${manyParts ? `<div class="sep"></div><label class="label" for="part-${m.id}">Move to part</label><select id="part-${m.id}" onchange="moveModule('${c.id}','${m.id}',this.value,-1)">${(c.parts || []).map(p => `<option value="${esc(p.id)}" ${p.id === part.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>` : ""}
             <div class="sep"></div>
             <button role="menuitem" class="danger" onclick="closeMenus();toggleRemove('${m.id}')">Remove…<small>moves the file to the trash</small></button>
@@ -181,7 +182,7 @@ function paintModules(c) {
     })
     .join("");
   $("#tabbody").innerHTML =
-    parts ||
+    (parts && figuresBar(c) + parts) ||
     `<div class="card"><p class="sub" style="margin:0">This course has no readable modules yet.</p></div>`;
   if (route.query.rewrite) {
     const el = document.getElementById("rwn-" + route.query.rewrite);

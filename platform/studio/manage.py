@@ -18,6 +18,7 @@ import shutil
 from typing import Any, Dict, List
 
 from coursekit import config as ck_config
+from coursekit import figures as ck_figures
 from coursekit import loader as ck_loader
 from coursekit.errors import CourseError
 
@@ -175,7 +176,7 @@ def move_module(root: str, mid: str, part_id: str = "", index: int = -1) -> Dict
 
 
 def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
-    """Take one module out of a course: its file, its study data, its short title.
+    """Take one module out of a course: its file, its figures, its study data, its short title.
 
     The file goes to the trash rather than being deleted. Progress for the id is left alone in
     the reader's state — harmless, and the id is never reused so it can never be confused.
@@ -201,7 +202,11 @@ def remove_module(root: str, mid: str, trash_dir: str) -> Dict[str, Any]:
         shutil.move(path, os.path.join(dest, os.path.basename(path)))
 
     removed = {"file": [os.path.relpath(p, root).replace(os.sep, "/") for p in found],
-               "assessment": False, "suggestions": False, "trash": dest}
+               "assessment": False, "suggestions": False, "figures": 0, "trash": dest}
+
+    for name in ck_figures.names_for(cfg.figures_dir, mid):
+        shutil.move(os.path.join(cfg.figures_dir, name), os.path.join(dest, name))
+        removed["figures"] += 1
 
     assess_dir = cfg.path(cfg.data["assessments"])
     if os.path.isdir(assess_dir):

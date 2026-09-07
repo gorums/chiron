@@ -1,6 +1,6 @@
 """The generation pipeline: a brief in, a built course out.
 
-    plan  ->  [approval gate]  ->  modules  ->  study data  ->  reference  ->  check  ->  build
+    plan  ->  [approval gate]  ->  modules (+ figures)  ->  study data  ->  reference  ->  check  ->  build
 
 Two design points worth knowing before changing anything here.
 
@@ -32,7 +32,7 @@ from coursekit import scaffold as ck_scaffold
 from coursekit import validate as ck_validate
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, prompts
+from . import claude_cli, figures, prompts
 from .coerce import fix_assessment, fix_suggestions
 from .curriculum import PLAN_FILE, load_plan, make_plan, normalise_plan, plan_to_manifest
 from .errors import GenerationError
@@ -136,14 +136,33 @@ def write_study_data(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, A
 
 def existing_module(root: str, plan: Dict[str, Any], mod: Dict[str, Any]) -> str:
     """The body of a module already on disk for this id, or '' if none."""
+    path = existing_module_path(root, plan, mod)
+    if not path:
+        return ""
+    body = read_text(path)
+    return body if headings_of(body) else ""
+
+
+def existing_module_path(root: str, plan: Dict[str, Any], mod: Dict[str, Any]) -> str:
+    """Where a module of this id already sits, whatever its slug, or '' if nowhere."""
     directory = os.path.dirname(module_path(root, plan, mod))
     if not os.path.isdir(directory):
         return ""
     for name in sorted(os.listdir(directory)):
         if name.endswith(".md") and name.split("-", 1)[0] == mod["id"]:
-            body = read_text(os.path.join(directory, name))
-            return body if headings_of(body) else ""
+            return os.path.join(directory, name)
     return ""
+
+
+def draw_figures(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any], body: str,
+                 path: str, model: str) -> str:
+    """Figures for a module just written. Optional: a failure here must not lose the run,
+    so it is logged and the module ships without them."""
+    try:
+        return figures.write_figures(job, root, plan, mod, body, path, model)
+    except Exception as exc:  # noqa: BLE001 - any failure of an optional step is reported, not raised
+        job.log("Could not draw figures for %s (%s); continuing without them." % (mod["id"], exc))
+        return body
 
 
 def existing_study_data(root: str):
@@ -190,8 +209,10 @@ def generate(job: Job, courses_dir: str, dist_dir: str, brief: Dict[str, Any]) -
     _lay_down_tree(root, course_id, plan, resume)
 
     modules = plan["modules"]
-    steps = _Steps(job, total=len(modules) * 2 + 6)    # modules + study data + reference + build
-    bodies = _write_modules(job, root, plan, model, resume, steps)
+    with_figures = figures.enabled() and brief.get("figures", True) is not False
+    per_module = 3 if with_figures else 2                  # text, figures, study data
+    steps = _Steps(job, total=len(modules) * per_module + 6)   # + reference + build
+    bodies = _write_modules(job, root, plan, model, resume, steps, with_figures)
     _write_reference(job, root, plan, bodies, model, resume, steps)
 
     steps.next("Validating and building")
@@ -235,7 +256,7 @@ def _lay_down_tree(root: str, course_id: str, plan: Dict[str, Any], resume: bool
     """The folders, the manifest, the README and the saved plan."""
     for part in plan["parts"]:
         os.makedirs(os.path.join(root, "modules", part["dir"]), exist_ok=True)
-    for sub in ("plan", "reference", "templates", "data/assessments", "data/suggestions"):
+    for sub in ("plan", "reference", "templates", "figures", "data/assessments", "data/suggestions"):
         os.makedirs(os.path.join(root, sub), exist_ok=True)
     if not resume:
         write_json(os.path.join(root, "course.json"), plan_to_manifest(plan, course_id))
@@ -244,8 +265,9 @@ def _lay_down_tree(root: str, course_id: str, plan: Dict[str, Any], resume: bool
 
 
 def _write_modules(job: Job, root: str, plan: Dict[str, Any], model: str, resume: bool,
-                   steps: _Steps) -> Dict[str, str]:
-    """Every module with its study data written immediately after. Returns the bodies."""
+                   steps: _Steps, with_figures: bool = False) -> Dict[str, str]:
+    """Every module with its figures and its study data written immediately after.
+    Returns the bodies."""
     had_assess, had_suggest = existing_study_data(root) if resume else ({}, {})
     bodies: Dict[str, str] = {}
     assess_rows: List[Dict[str, Any]] = []
@@ -260,6 +282,14 @@ def _write_modules(job: Job, root: str, plan: Dict[str, Any], model: str, resume
         else:
             steps.next("Writing %s · %s" % (mid, mod["title"]))
             bodies[mid] = write_module(job, root, plan, mod, model)
+
+        if with_figures:
+            path = existing_module_path(root, plan, mod) or module_path(root, plan, mod)
+            if kept and figures.references_in(kept, mid):
+                steps.next("Keeping the figures of %s" % mid)
+            else:
+                steps.next("Figures for %s" % mid)
+                bodies[mid] = draw_figures(job, root, plan, mod, bodies[mid], path, model)
 
         if kept and mid in had_assess and mid in had_suggest:
             steps.next("Keeping study data for %s" % mid)
@@ -365,7 +395,8 @@ def build_course(root: str, dist_dir: str) -> Dict[str, Any]:
     out = ck_renderer.write(cfg, modules, ck_library.build(cfg),
                             os.path.join(dist_dir, cfg.id))
     return {
-        "modules": out.modules, "sections": out.sections, "quiz": out.quiz_items,
+        "modules": out.modules, "sections": out.sections, "figures": out.figures,
+        "quiz": out.quiz_items,
         "cards": out.cards, "glossary": out.glossary, "models": out.models,
         "templates": out.templates, "kb": round(out.kb),
         "web": out.web_path, "local": out.local_path,

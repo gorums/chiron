@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+from coursekit import figures as ck_figures
 from coursekit import validate as ck_validate
 from coursekit.settings import SETTINGS
 
@@ -250,6 +251,33 @@ def fix_spec(raw: Any, mid: str, part_id: str, topic: str, minutes: int,
 
 
 # --------------------------------------------------------------------------- reviews
+
+
+def fix_figures(raw: Any, headings: List[str], cap: int) -> List[Dict[str, Any]]:
+    """The figures a model returned, kept only when the build would accept them.
+
+    Each comes back as `{section, caption, svg, steps}` with the SVG sanitised. A figure
+    is dropped when it names no section of the module (matched case-insensitively, so a
+    stray capital does not lose a drawing), when the SVG would fail `coursekit.figures`,
+    or when it would be one more than `cap`. Nothing here raises: a module without
+    figures is a valid module.
+    """
+    by_lower = {h.strip().lower(): h for h in headings}
+    out: List[Dict[str, Any]] = []
+    for fig in raw if isinstance(raw, list) else []:
+        if not isinstance(fig, dict):
+            continue
+        section = by_lower.get(str(fig.get("section") or "").strip().lower())
+        svg = ck_figures.sanitize(str(fig.get("svg") or ""))
+        if not section or ck_figures.problems(svg):
+            continue
+        caption = " ".join(str(fig.get("caption") or "").split())[:300]
+        caption = caption.replace("[", "(").replace("]", ")")
+        out.append({"section": section, "caption": caption, "svg": svg,
+                    "steps": ck_figures.steps_in(svg)})
+        if len(out) >= cap:
+            break
+    return out
 
 
 def fix_review(raw: Any) -> Dict[str, Any]:

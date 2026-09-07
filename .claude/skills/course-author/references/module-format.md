@@ -77,6 +77,47 @@ all available. Blockquotes are the right tool for a definition worth memorising:
 > place, and describe something they will choose over the alternatives.
 ```
 
+## Figures
+
+A course cannot carry photographs, but it can carry **diagrams as SVG**. Where a picture
+shows something the prose can only list - a flow, a funnel, a 2x2, a timeline, a
+before/after, the parts of a thing and how they connect - write the SVG to
+`figures/<ID>-<n>.svg` and refer to it from the section on a paragraph of its own:
+
+```markdown
+![The three stages, and where most of the loss happens](figures/M03-1.svg)
+```
+
+The build inlines the file into the page inside a `<figure>` with the alt text as its
+caption, sanitises it, and refuses to build when it is missing, malformed, has no
+`viewBox`, or is over the size limit. Any other image reference is refused: a one-file
+site has nothing to load it from.
+
+Rules for the SVG, which the build enforces or the page depends on:
+
+- Start with `<svg viewBox='0 0 800 450'>` (up to 800x600 for a tall one). No `width`
+  or `height`, no XML declaration, no `xmlns` needed.
+- **Colour only through the page's classes**, so the figure reads in the light and the
+  dark theme: `fig-1` `fig-2` `fig-3` `fig-4` (four strong fills, in that order of
+  importance), `fig-soft` (a quiet fill for boxes and bands), `fig-line` (a stroke for
+  connectors and frames; sets fill to none), `fig-muted` (secondary text). Text and
+  arrows use `fill='currentColor'` / `stroke='currentColor'`. No hex colours, no
+  `<style>` - an inline `<style>` would restyle the whole page and is stripped.
+- `<text>` only, font-size 15-24, at most 40 words in the whole figure. A figure that a
+  paragraph says just as well is not a figure.
+- Nothing that runs or loads: no `<script>`, `<image>`, `<foreignObject>`, links or
+  external references. They are stripped anyway.
+- A `<title>` as the first child, for screen readers.
+- Under 8 KB.
+
+**A build-up** is the moving picture a course can carry. Wrap each stage in
+`<g data-step='1'>`, `<g data-step='2'>`, ... (up to five) in the order they should
+appear; the page hides them and gives the reader Back, Next and Play. Everything outside
+a step group is always visible: put the frame and the axes there, the moving parts in the
+steps. Use steps only where the order itself teaches something.
+
+One or two figures per module is plenty. Zero is right for a module with nothing to draw.
+
 ## Section-by-section intent
 
 | Section | What belongs in it |

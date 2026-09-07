@@ -691,3 +691,104 @@ h2.big {
   z-index: 60;
   transition: width 0.12s;
 }
+
+/* ---- figures: SVG diagrams inlined by the build (coursekit/figures.py) ---- */
+.figure {
+  margin: 18px 0 22px;
+  padding: 16px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+.figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  font-family: var(--sans);
+  color: var(--text);
+}
+.figure .fig-1 {
+  fill: var(--fig-1);
+}
+.figure .fig-2 {
+  fill: var(--fig-2);
+}
+.figure .fig-3 {
+  fill: var(--fig-3);
+}
+.figure .fig-4 {
+  fill: var(--fig-4);
+}
+.figure .fig-soft {
+  fill: var(--fig-soft);
+}
+.figure .fig-line {
+  fill: none;
+  stroke: var(--fig-line);
+}
+.figure .fig-muted {
+  fill: var(--muted);
+}
+.figure figcaption {
+  margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.figure.missing {
+  border-style: dashed;
+  color: var(--bad);
+}
+.figure.missing figcaption {
+  margin: 0;
+  color: var(--bad);
+}
+/* a build-up: steps are hidden until the reader reveals them */
+.figure[data-steps] g[data-step] {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.figure[data-steps] g[data-step].on {
+  opacity: 1;
+}
+.nomotion .figure[data-steps] g[data-step] {
+  transition: none;
+}
+.figsteps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.figsteps button {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.figsteps button:hover {
+  border-color: var(--accent);
+}
+.figsteps button[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+.figsteps .where {
+  margin-left: auto;
+}
+@media print {
+  .figure[data-steps] g[data-step] {
+    opacity: 1;
+  }
+  .figsteps {
+    display: none;
+  }
+}
