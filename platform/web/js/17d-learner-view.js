@@ -7,15 +7,10 @@
    drawn by the route change, so the question waits in `rail.pendingAsk` until then. */
 function askAbout(mid, q) {
   if (!byId(mid)) return;
-  if (!STATE.ui) STATE.ui = {};
-  STATE.ui.rail = true;
-  save();
+  showRail();
   rail.pendingAsk = q;
-  const target = "#/m/" + mid + "/1";
-  if (location.hash === target) {
-    applyRail();
-    renderRail();
-  } else go(target);
+  if (route.view === "m" && route.id === mid) renderRail();
+  else go("#/m/" + mid + "/1");
 }
 function drillGap(id) {
   const g = (learner().gaps || []).find(x => x.id === id);

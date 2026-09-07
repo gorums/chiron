@@ -3,7 +3,6 @@ function render() {
   if (route.view !== "m") stopTimer();
   closePanel();
   clearSel();
-  if (route.view !== "m") rail.pinned = null;
   if (!(route.view === "m" && route.step === 2) && !(route.view === "check" && route.id === "run"))
     QUIZ = null;
   renderSidebar();
@@ -23,7 +22,7 @@ function render() {
   applyRail();
   const tg = document.getElementById("railtoggle");
   if (tg) tg.classList.toggle("show", route.view === "m");
-  if (route.view === "m" && railOpen()) renderRail();
+  railRouteChanged();
 }
 /* the left sidebar: a slide-over on a narrow screen, hideable on a wide one */
 function isNarrow() {

@@ -83,7 +83,7 @@ function viewMarks() {
         sec = mod.sections[b.sec];
       h += `<div class="markrow book"><div class="meta"><span class="tag acc">${mod.id}</span><span>${esc(mod.short)}</span><span class="tag">bookmark</span><span style="margin-left:auto">${new Date(b.ts).toLocaleDateString()}</span></div>
         <div style="font-size:15px;font-weight:600;margin-bottom:8px">⚑ ${esc(sec ? sec.h : "")}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm primary" onclick="STATE.pos['${mod.id}']=${b.sec};save();go('#/m/${mod.id}/1')">Go to section</button><button class="btn sm ghost" onclick="toggleBookmark('${mod.id}',${b.sec});viewMarks()">Remove</button></div></div>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm primary" onclick="jumpToPassage('${mod.id}',${b.sec},null)">Go to section</button><button class="btn sm ghost" onclick="toggleBookmark('${mod.id}',${b.sec});viewMarks()">Remove</button></div></div>`;
     });
   }
   if (f === "all" || f === "chats") {
@@ -147,14 +147,7 @@ function markRow(m) {
     </div></div>`;
 }
 function continueConvo(id) {
-  const c = convos()[id];
-  if (!c) return;
-  activeConvoIds()[c.mid] = id;
-  save();
-  if (!STATE.ui) STATE.ui = {};
-  STATE.ui.rail = true;
-  save();
-  go("#/m/" + c.mid + "/1");
+  switchConvo(id);
 }
 async function compactFromList(id) {
   const c = convos()[id];

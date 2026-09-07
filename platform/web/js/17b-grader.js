@@ -162,18 +162,18 @@ function startRoleplay(mid) {
   const m = byId(mid),
     rp = m.assess.roleplay;
   if (!rp) return;
-  const c = newConvo(mid, { title: "Role-play: " + rp.goal.slice(0, 50) });
-  c.kind = "rp";
+  const c = newConvo(
+    { mid, step: null, sec: null },
+    { title: "Role-play: " + rp.goal.slice(0, 50), kind: "rp" }
+  );
   c.msgs.push({
     r: "a",
     t: rp.situation + "\n\n_You speak first. Say what you would actually say._",
     ts: Date.now(),
   });
   save();
-  if (!STATE.ui) STATE.ui = {};
-  STATE.ui.rail = true;
-  save();
-  applyRail();
+  rail.showing = c.id;
+  showRail();
   renderRail();
   const inp = document.getElementById("railin");
   if (inp) inp.focus();
@@ -185,8 +185,8 @@ function roleplaySystem(m, rp) {
 async function finishRoleplay(mid) {
   const m = byId(mid),
     rp = m.assess.roleplay,
-    c = activeConvo(mid, false);
-  if (!rp || !c || c.kind !== "rp") return;
+    c = convoShown();
+  if (!rp || !c || c.kind !== "rp" || c.mid !== mid) return;
   const turns = c.msgs.filter(x => x.r === "u").length;
   if (turns < 2) {
     toast("Have at least a couple of exchanges first");

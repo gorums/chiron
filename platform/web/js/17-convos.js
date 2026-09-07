@@ -1,21 +1,25 @@
 /* ---- conversations with the tutor: the model behind the chat rail ----
 
    Every conversation is stored in STATE.convos[id]:
-     { id, mid, sec, kind, msgs, created, updated, parent, summary, title }
-   `mid` is the module it belongs to; `sec` the section index it follows (null for a
-   module-wide chat); `kind` is "rp" for a role-play. STATE.active[mid] names the
-   conversation the rail shows for that module.
+     { id, mid, step, sec, kind, msgs, created, updated, parent, summary, title }
+   `mid` is the module it belongs to. `step` and `sec` are its *place*: the step key from
+   STEPS ("read", "elab", ...) and, on the Read step, the section index. A chat with no
+   place (`step` null: role-plays, chats carried over from before places existed, a
+   compacted whole-module chat) belongs to the module as a whole. `kind` is "rp" for a
+   role-play.
 
    A message is { r, t, ts }: `r` is the role ("u" the reader, "a" the tutor, "e" an
-   error), `t` the text, `ts` when. These short keys are a stored contract - old saves
-   carry them - so they are not renamed here. */
+   error), `t` the text, `ts` when. A reader's message also records where it was asked
+   (`step`, `sec`, and `quote` + `mark` when it came from a selected passage). These short
+   keys are a stored contract - old saves carry them - so they are not renamed here.
+
+   There is no stored "active" conversation. The rail shows the newest conversation at
+   the place the reader is looking at (`convoAt`), and a conversation the reader picked
+   by hand (`rail.showing`) only until they move somewhere else. STATE.active is a key
+   older saves carry; nothing reads it any more. */
 function convos() {
   if (!STATE.convos) STATE.convos = {};
   return STATE.convos;
-}
-function activeConvoIds() {
-  if (!STATE.active) STATE.active = {};
-  return STATE.active;
 }
 function migrateChats() {
   if (!STATE.chats || STATE._migrated) return;
@@ -33,7 +37,6 @@ function migrateChats() {
       summary: "",
       title: "",
     };
-    activeConvoIds()[mid] = id;
   });
   STATE._migrated = true;
   save();
@@ -49,105 +52,53 @@ function convosFor(mid) {
 function allConvos() {
   return Object.values(convos()).sort((a, b) => b.updated - a.updated);
 }
-/* A chat is either about one section of its module (`sec` is the section index) or about
-   the module as a whole (`sec` is null: older chats, "New chat", role-plays). Section
-   chats follow the reader down the page; module-wide chats stay put. */
-function secConvo(mid, i) {
-  return Object.values(convos()).find(c => c.mid === mid && c.sec === i && c.kind !== "rp") || null;
+
+/* ---- places ----
+   A place is { mid, step, sec }: `step` a STEPS key, `sec` a section index on the Read
+   step and null elsewhere. `step` null means "nowhere in particular": the module as a
+   whole. */
+function placeOf(c) {
+  const step = c.step || (c.sec != null ? "read" : null);
+  return { mid: c.mid, step, sec: c.sec != null ? c.sec : null };
 }
-function chatSec(c) {
-  return c && c.sec != null ? c.sec : rail.section;
+function samePlace(a, b) {
+  return !!a && !!b && a.mid === b.mid && a.step === b.step && a.sec === b.sec;
 }
-/* section chats are made as the reader scrolls, so the empty ones are dropped again */
-function pruneEmpty(mid, keepId) {
-  Object.values(convos()).forEach(c => {
-    if (c.mid !== mid || c.id === keepId || c.msgs.length || c.summary || c.kind === "rp") return;
-    delete convos()[c.id];
-    if (activeConvoIds()[mid] === c.id) delete activeConvoIds()[mid];
-  });
+function hasPlace(c) {
+  return c.kind !== "rp" && placeOf(c).step != null;
+}
+/* the newest ordinary conversation at a place, or null: an empty chat is never stored */
+function convoAt(place) {
+  const here = Object.values(convos()).filter(c => c.kind !== "rp" && samePlace(placeOf(c), place));
+  here.sort((a, b) => b.updated - a.updated);
+  return here[0] || null;
 }
 function convoTitle(c) {
   if (c.title) return c.title;
-  if (c.sec != null) {
-    const m = byId(c.mid),
-      s = m && m.sections[c.sec];
-    if (s) return s.h;
-  }
+  const place = placeOf(c);
+  if (place.step) return placeLabel(place);
   const first = (c.msgs || []).find(m => m.r === "u");
   if (first) return first.t.length > 46 ? first.t.slice(0, 46) + "…" : first.t;
   return c.summary ? "Continued conversation" : "New chat";
 }
-function activeConvo(mid, create) {
-  const id = activeConvoIds()[mid];
-  if (id && convos()[id]) return convos()[id];
-  // nothing chosen yet: the chat about the section in view, when that module is open
-  const sec = route.view === "m" && route.id === mid ? rail.section : null;
-  const own = sec != null ? secConvo(mid, sec) : null;
-  if (own) {
-    activeConvoIds()[mid] = own.id;
-    return own;
-  }
-  const existing = convosFor(mid)[0];
-  if (existing) {
-    activeConvoIds()[mid] = existing.id;
-    return existing;
-  }
-  if (create === false) return null;
-  return newConvo(mid, sec != null ? { sec } : null);
-}
-/* the reader scrolled to section i: a section chat moves with them, unless a reply is
-   on its way or the section was just picked from the menu (the smooth scroll passes
-   through the sections in between) */
-function followSection(mid, i) {
-  if (rail.sending || Date.now() < rail.sectionLockUntil) return false;
-  const c = activeConvo(mid, false);
-  if (c && (c.sec == null || c.sec === i)) return false;
-  const next = secConvo(mid, i) || newConvo(mid, { sec: i });
-  activeConvoIds()[mid] = next.id;
-  pruneEmpty(mid, next.id);
-  save();
-  return true;
-}
-/* from the menu at the top of the rail: that section's chat, and the page scrolled to it */
-function pickSection(mid, i) {
-  const next = secConvo(mid, i) || newConvo(mid, { sec: i });
-  activeConvoIds()[mid] = next.id;
-  pruneEmpty(mid, next.id);
-  save();
-  rail.section = i;
-  lockSectionFollowing();
-  rail.menuOpen = false;
-  rail.pinned = null;
-  rail.pinnedQuestions = null;
-  document.querySelectorAll(".prose .picked").forEach(n => n.classList.remove("picked"));
-  renderRail();
-  jumpToPassage(mid, i, null);
-}
-function newConvo(mid, opts) {
+function newConvo(place, opts) {
   const id = newId();
-  convos()[id] = {
+  const c = {
     id,
-    mid,
+    mid: place.mid,
+    step: place.step || null,
+    sec: place.sec != null ? place.sec : null,
     msgs: [],
     created: Date.now(),
     updated: Date.now(),
     parent: (opts && opts.parent) || null,
     summary: (opts && opts.summary) || "",
     title: (opts && opts.title) || "",
-    sec: opts && opts.sec != null ? opts.sec : null,
   };
-  activeConvoIds()[mid] = id;
+  if (opts && opts.kind) c.kind = opts.kind;
+  convos()[id] = c;
   save();
-  return convos()[id];
-}
-function switchConvo(id) {
-  const c = convos()[id];
-  if (!c) return;
-  activeConvoIds()[c.mid] = id;
-  pruneEmpty(c.mid, id);
-  save();
-  rail.menuOpen = false;
-  renderRail();
+  return c;
 }
 function deleteConvo(id) {
   const c = convos()[id];
@@ -157,10 +108,9 @@ function deleteConvo(id) {
     "It cannot be undone.",
     "Delete",
     () => {
-      const mid = c.mid;
       delete convos()[id];
       forget(id);
-      if (activeConvoIds()[mid] === id) delete activeConvoIds()[mid];
+      if (rail.showing === id) rail.showing = null;
       save();
       rail.menuOpen = false;
       if (route.view === "m") renderRail();
@@ -181,9 +131,9 @@ function renameConvo(id) {
   });
 }
 
-/* compaction: carry the substance forward into a fresh conversation */
+/* compaction: carry the substance forward into a fresh conversation at the same place */
 async function compactConvo(id) {
-  const c = convos()[id] || activeConvo(route.id, false);
+  const c = convos()[id] || convoShown();
   if (!c || !c.msgs.length || rail.compacting) return;
   if (connMode() === "none") {
     toast("Not connected — open Settings");
@@ -202,11 +152,12 @@ async function compactConvo(id) {
     const summary = await askBridge(sys, [
       { role: "user", content: transcript.slice(-TUTOR.summaryChars) },
     ]);
-    const fresh = newConvo(c.mid, {
+    const fresh = newConvo(placeOf(c), {
       parent: c.id,
       summary: summary.trim(),
       title: "Continued: " + convoTitle(c).slice(0, 40),
     });
+    rail.showing = fresh.id;
     rail.compacting = false;
     renderRail();
     toast("Carried the important parts into a new chat");

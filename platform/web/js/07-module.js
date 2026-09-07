@@ -53,7 +53,8 @@ function viewModule() {
   const idx = moduleIndex(m.id);
   const prev = MODS[idx - 1],
     next = MODS[idx + 1];
-  if (rail.section >= m.sections.length) rail.section = 0;
+  // where the reader left off; landOn() corrects it once the Read step is on screen
+  rail.section = Math.max(0, Math.min(STATE.pos[m.id] || 0, m.sections.length - 1));
   const ms = mastery(m),
     pre = prereqs(m);
 
@@ -85,10 +86,12 @@ function viewModule() {
   renderStep(m, step);
 }
 /* The link carries the section being read, so the brief in Studio can name it. Built at
-   click time because rail.section follows the scroll position. */
+   click time because the place follows the scroll position. */
 function studioGo(kind, mid) {
   const m = byId(mid),
-    sec = m && m.sections[rail.section] ? m.sections[rail.section].h : "";
+    place = placeNow();
+  const sec =
+    m && place && place.step === "read" && m.sections[place.sec] ? m.sections[place.sec].h : "";
   const base = `${STUDIO.origin}/#/course/${STUDIO.id}`;
   location.href =
     kind === "add"
@@ -167,7 +170,7 @@ function renderStep(m, step) {
     setupToc();
     applyMarks(m.id);
     attachParaButtons(m.id);
-    resumeScroll(m);
+    landOn(m);
   } else if (step === 2) {
     renderQuiz(m);
   } else if (step === 3) {
@@ -241,32 +244,55 @@ function renderStep(m, step) {
     b.innerHTML = s;
   }
 }
-function jump(e, i) {
-  e.preventDefault();
-  lockSectionFollowing();
-  document.getElementById("sec" + i).scrollIntoView({ behavior: "smooth", block: "start" });
-}
-/* From the chat: take the reader to the part of the module a question was asked about.
-   The passage itself when the question came from a selection, the section otherwise.
-   Switches to the Read step first when the reader is elsewhere. */
+/* ---- landing on a section ----
+   Every way of getting to a passage goes through jumpToPassage: a TOC link, a message's
+   label in the chat, the chat menu, a bookmark, a mark opened from Marks & questions.
+   On the Read step it scrolls there now; from anywhere else it remembers the target and
+   changes the route, and landOn() scrolls once the step is drawn. Jumps are instant, not
+   smooth, so the sections in between are never "in view" on the way. */
+let jumpTarget = null; // { sec, markId } to land on when the Read step is next drawn
+let resumeGuard = ""; // the module whose resume position was already used this visit
 function jumpToPassage(mid, sec, markId) {
   const here = route.view === "m" && route.id === mid && (route.step || 0) === 1;
-  if (!here) {
-    resumeGuard = mid;
-    go(`#/m/${mid}/1`);
+  if (here) {
+    scrollToPassage(sec, markId, true);
+    if (sectionScrollHandler) sectionScrollHandler();
+    return;
   }
-  lockSectionFollowing();
-  setTimeout(
-    () => {
-      const mk = markId ? document.querySelector(`mark.hl[data-k="${markId}"]`) : null;
-      const el = mk || document.getElementById("sec" + sec);
-      if (!el) return;
-      el.scrollIntoView({ behavior: here ? "smooth" : "auto", block: mk ? "center" : "start" });
-      el.classList.add("flash");
-      setTimeout(() => el.classList.remove("flash"), 1600);
-    },
-    here ? 0 : 80
-  );
+  jumpTarget = { sec, markId };
+  go(`#/m/${mid}/1`);
+}
+function jump(e, i) {
+  e.preventDefault();
+  jumpToPassage(route.id, i, null);
+}
+function scrollToPassage(sec, markId, flash) {
+  const mk = markId ? document.querySelector(`mark.hl[data-k="${markId}"]`) : null;
+  const el = mk || document.getElementById("sec" + sec);
+  if (!el) return;
+  rail.section = sec;
+  el.scrollIntoView({ block: mk ? "center" : "start" });
+  if (!flash) return;
+  el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 1600);
+}
+/* The Read step was just drawn. After the route change has scrolled the window to the
+   top: land on the jump target, or on the last section seen (once per module visit), and
+   then settle which section is in view. */
+function landOn(m) {
+  const target = jumpTarget;
+  jumpTarget = null;
+  setTimeout(() => {
+    if (!(route.view === "m" && route.id === m.id && (route.step || 0) === 1)) return;
+    const pos = STATE.pos[m.id] || 0;
+    if (target) scrollToPassage(target.sec, target.markId, true);
+    else if (resumeGuard !== m.id && pos > 0 && m.sections[pos]) {
+      scrollToPassage(pos, null, false);
+      toast("Resumed at “" + m.sections[pos].h + "”");
+    }
+    resumeGuard = m.id;
+    if (sectionScrollHandler) sectionScrollHandler();
+  }, 80);
 }
 /* Which section is being read. The reading band runs from under the sticky topbar to a
    fixed fraction of the viewport (`page.ui.readLine`). The current section keeps its place
@@ -274,14 +300,15 @@ function jumpToPassage(mid, sec, markId) {
    the reader is on it - and when it has left, the section under the band's lower edge takes
    over. Recomputed on every scroll, so exactly one section is current however short it is
    (an intersection observer reported two when a short section and its neighbour both
-   touched the band). While a jump is in progress (`rail.sectionLockUntil`) the sections the
-   smooth scroll passes through are ignored, and the lock lasts as long as the scrolling. */
+   touched the band). When the section changes the rail is told (railPlaceChanged). */
+const SCROLL_THROTTLE_MS = 40;
 let sectionScrollHandler = null;
 function setupToc() {
   const links = [...document.querySelectorAll("#toc a")];
   const secs = [...document.querySelectorAll(".sec")];
   if (sectionScrollHandler) window.removeEventListener("scroll", sectionScrollHandler);
   if (!secs.length) return;
+  const highlight = i => links.forEach((l, j) => l.classList.toggle("on", j === i));
   let queued = false;
   // A timer, not requestAnimationFrame: frames stop while a tab is hidden or the
   // renderer is paused, and a throttle that waits for one would then never run again.
@@ -290,18 +317,17 @@ function setupToc() {
     queued = true;
     setTimeout(() => {
       queued = false;
-      if (route.view !== "m") return;
-      if (Date.now() < rail.sectionLockUntil) {
-        rail.sectionLockUntil = Date.now() + SCROLL_SETTLE_MS;
-        return;
-      }
+      if (route.view !== "m" || (route.step || 0) !== 1) return;
       const i = sectionInView(secs, rail.section);
-      links.forEach((l, j) => l.classList.toggle("on", j === i));
-      setCurSec(i);
+      highlight(i);
+      if (i === rail.section) return;
+      rail.section = i;
+      STATE.pos[route.id] = i; // picked up on the next save
+      railPlaceChanged();
     }, SCROLL_THROTTLE_MS);
   };
   window.addEventListener("scroll", sectionScrollHandler, { passive: true });
-  sectionScrollHandler();
+  highlight(rail.section);
 }
 function sectionInView(secs, current) {
   const bar = document.querySelector(".topbar");
@@ -314,20 +340,6 @@ function sectionInView(secs, current) {
     if (el.getBoundingClientRect().top <= bandBottom) found = i;
   });
   return found;
-}
-/* pick up where the page was left: the last section seen, if past the first */
-let resumeGuard = "";
-function resumeScroll(m) {
-  const pos = STATE.pos[m.id] || 0;
-  if (pos <= 0 || resumeGuard === m.id) return;
-  resumeGuard = m.id;
-  setTimeout(() => {
-    const el = document.getElementById("sec" + pos);
-    if (el && route.view === "m" && route.id === m.id) {
-      el.scrollIntoView({ block: "start" });
-      toast("Resumed at “" + m.sections[pos].h + "”");
-    }
-  }, 60);
 }
 function toggleBookmark(mid, i) {
   const k = mid + ":" + i;

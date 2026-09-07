@@ -1,108 +1,77 @@
-/* ---- the chat rail: always there, always about what you are looking at ---- */
+/* ---- the chat rail: always there, always about what you are looking at ----
+
+   The rule is one sentence: the rail shows the conversation at the place the reader is
+   looking at (`placeNow()` in 17a-place.js, `convoAt` in 17-convos.js), and follows them
+   when they move. The two exceptions are explicit: a conversation the reader picked by
+   hand (`rail.showing`) stays until they move somewhere else, and a passage they pinned
+   (`rail.pinned`) fixes the place until they unpin it. Nothing is tracked on scroll but
+   `rail.section`, which 07-module.js keeps; nothing is created until a message is sent. */
 
 /* Everything the rail keeps between renders. Nothing here is saved: the conversations
    themselves live in STATE.convos (see 17-convos.js). */
 const rail = {
-  section: 0, // the section the reader is looking at
-  pinned: null, // a passage pinned as the question's context, or null
+  section: 0, // the section under the reading line on the Read step (07-module.js sets it)
+  showing: null, // a conversation the reader chose by hand, by id; null = the one at the place
+  pinned: null, // a passage pinned as the question's context: { mid, sec, text, markId }
   pinnedQuestions: null, // suggested questions for the pinned passage
+  pendingPin: null, // a passage to pin once the module is drawn (see openPanel)
+  pendingAsk: null, // a question to send once the rail is drawn (see askAbout)
   generating: false, // asking the tutor for question suggestions
   menuOpen: false, // the conversation menu is showing
   sending: false, // a reply is on its way
-  sectionLockUntil: 0, // no section-following until this time (a jump scrolls past sections)
   compacting: false, // a conversation is being summarised into a fresh one
-  pendingAsk: null, // a question to send as soon as the rail is drawn (see askAbout)
 };
 
-function railOpen() {
-  if (!STATE.ui) STATE.ui = { rail: true };
-  return STATE.ui.rail !== false;
+/* ---- which conversation the rail draws ---- */
+function convoShown() {
+  const place = placeNow();
+  if (!place) return null;
+  const chosen = rail.showing ? convos()[rail.showing] : null;
+  if (chosen && chosen.mid === place.mid) return chosen;
+  rail.showing = null;
+  return convoAt(place);
 }
-function toggleRail() {
-  if (!STATE.ui) STATE.ui = {};
-  STATE.ui.rail = !railOpen();
-  save();
-  applyRail();
+/* The reader moved to another section: the rail follows, unless it is answering or the
+   conversation on show was picked by hand for this very place. */
+function railPlaceChanged() {
+  if (rail.sending) return;
+  const chosen = rail.showing ? convos()[rail.showing] : null;
+  if (chosen && hasPlace(chosen) && !samePlace(placeOf(chosen), placeNow())) rail.showing = null;
   if (railOpen()) renderRail();
 }
-const DOCKS = [
-  ["right", "", "Dock right"],
-  ["bottom", "", "Dock along the bottom"],
-];
-function railPos() {
-  const p = STATE.ui && STATE.ui.railPos;
-  return DOCKS.some(d => d[0] === p) ? p : "right";
-}
-/* Sizes come from the platform's `page.ui` settings (LAYOUT). The rail is never wider
-   than leaves `readMin` pixels for the text beside it. */
-function railWidth() {
-  const side = STATE.ui && STATE.ui.sideOff ? 0 : LAYOUT.sideWidth;
-  const cap = Math.max(LAYOUT.railMin, window.innerWidth - side - LAYOUT.readMin);
-  return Math.max(
-    LAYOUT.railMin,
-    Math.min((STATE.ui && STATE.ui.railW) || LAYOUT.railDefault, cap)
-  );
-}
-function railHeight() {
-  return Math.max(
-    LAYOUT.railHeightMin,
-    Math.min(
-      (STATE.ui && STATE.ui.railH) || LAYOUT.railHeightDefault,
-      Math.floor(window.innerHeight * 0.8)
-    )
-  );
-}
-function setRailPos(p) {
-  if (!STATE.ui) STATE.ui = {};
-  STATE.ui.railPos = p;
-  save();
-  applyRail();
-  if (route.view === "m" && railOpen()) renderRail();
-  if (route.view === "settings") viewSettings();
-}
-/* Lays the page out: which columns the #app grid has, and where the rail sits in them.
-   Everything is recomputed from state, so a drag, a dock change, a hidden sidebar and a
-   window resize all go through here. */
-function applyRail() {
-  const show = route.view === "m" && railOpen();
-  const pos = railPos(),
-    side = !(STATE.ui && STATE.ui.sideOff),
-    narrow = window.innerWidth <= 860;
-  const root = document.documentElement.style;
-  root.setProperty("--railw", railWidth() + "px");
-  root.setProperty("--railh", railHeight() + "px");
-  root.setProperty("--sidew", (side && !narrow ? LAYOUT.sideWidth : 0) + "px");
-  document.body.classList.toggle("rail-on", show);
-  ["rail-right", "rail-bottom"].forEach(c => document.body.classList.remove(c));
-  document.body.classList.add("rail-" + pos);
-  const app = document.getElementById("app"),
-    main = document.getElementById("main"),
-    sb = document.getElementById("sidebar");
-  const el = document.getElementById("rail");
-  if (el) {
-    el.classList.toggle("hidden", route.view !== "m");
-    el.classList.toggle("shut", !railOpen());
+/* The route changed: a pin belongs to one module's Read step, and a hand-picked
+   conversation to one module. Called by render() once the view is drawn. */
+function railRouteChanged() {
+  const place = placeNow();
+  if (rail.pinned && !(place && place.mid === rail.pinned.mid && (route.step || 0) === 1))
+    unpin(false);
+  rail.menuOpen = false;
+  if (!place) {
+    rail.showing = null;
+    return;
   }
-  // grid columns: [sidebar] [main] [rail]  — the rail docks right, or along the bottom
-  const cols = [],
-    place = (node, col) => {
-      if (node) node.style.gridColumn = String(col);
-    };
-  let col = 1;
-  if (side && !narrow) {
-    cols.push(LAYOUT.sideWidth + "px");
-    place(sb, col++);
-  } else place(sb, "");
-  const inGrid = show && !narrow && pos !== "bottom";
-  cols.push("1fr");
-  place(main, col++);
-  if (inGrid) {
-    cols.push("var(--railw)");
-    place(el, col++);
-  } else place(el, "");
-  if (app) app.style.gridTemplateColumns = narrow ? "" : cols.join(" ");
-  const t = document.getElementById("railtoggle");
-  if (t) t.classList.toggle("hidden", route.view !== "m");
+  railPlaceChanged();
+}
+/* Go to a place and show a conversation there (the newest one, or `convoId`). A Read
+   place scrolls the page to its section; any other place is a step of the module; no
+   place at all means the module, wherever the reader is in it. */
+function openPlace(place, convoId) {
+  rail.showing = convoId || null;
+  rail.menuOpen = false;
+  unpin(false);
+  showRail();
+  const inModule = route.view === "m" && route.id === place.mid;
+  if (place.step === "read") {
+    STATE.pos[place.mid] = place.sec;
+    rail.section = place.sec;
+    save();
+    jumpToPassage(place.mid, place.sec, null);
+    if (inModule && (route.step || 0) === 1) renderRail();
+    return;
+  }
+  const stepIndex = place.step ? stepIndexOf(place.step) : route.step || 0;
+  if (inModule && (place.step == null || (route.step || 0) === stepIndex)) renderRail();
+  else go(`#/m/${place.mid}/${stepIndex}`);
 }
 
 /* ---- questions built from the passage itself, instantly and for free ---- */
@@ -154,7 +123,7 @@ function localQuestions(text, hints) {
   if (terms[1]) qs.push(`How is ${terms[1]} different from ${terms[0]}?`);
   else qs.push("Give me a concrete example of this.");
   if (num) qs.push(`Where does the ${num} come from?`);
-  qs.push(`How would I apply this to ${STATE.biz || (CFG.anchor || {}).noun || "my own case"}?`);
+  qs.push(anchorQuestion());
   qs.push("When does this stop being true?");
   return qs.slice(0, 5);
 }
@@ -219,74 +188,60 @@ function attachParaButtons(mid) {
         .map(n => n.textContent.trim())
         .slice(0, 4);
       pinQuote(txt.length > 1500 ? txt.slice(0, 1500) + "…" : txt, i, hints);
-      document.querySelectorAll(".prose .picked").forEach(n => n.classList.remove("picked"));
+      unpick();
       el.classList.add("picked");
     });
     el.appendChild(b);
   });
 }
 
-/* ---------- context ---------- */
-/* How long after the last scroll event a jump counts as finished. */
-const SCROLL_SETTLE_MS = 250;
-/* How often, at most, the section under the reading line is recomputed while scrolling. */
-const SCROLL_THROTTLE_MS = 40;
-/* A jump is starting: the sections the smooth scroll passes through must not steal the
-   chat. The scroll handler in 07-module.js keeps the lock alive while scrolling lasts. */
-function lockSectionFollowing() {
-  rail.sectionLockUntil = Date.now() + 1500;
-}
-function setCurSec(i) {
-  if (i === rail.section) return;
-  rail.section = i;
-  if (route.view !== "m" || !route.id) return;
-  STATE.pos[route.id] = i; // picked up on the next save
-  if (!rail.pinned && followSection(route.id, i)) {
-    rail.menuOpen = false;
-    if (railOpen()) renderRail();
-    return;
-  }
-  if (railOpen() && !rail.pinned) {
-    renderRailHead();
-    renderSuggest();
-  }
-}
+/* ---- a pinned passage: the question's context, until unpinned ---- */
 function pinQuote(text, sec, hints, markId) {
-  rail.pinned = { text: text, sec: sec, markId: markId || null };
+  rail.pinned = { mid: route.id, sec, text, markId: markId || null };
   rail.pinnedQuestions = localQuestions(text, hints);
-  if (!railOpen()) {
-    STATE.ui = STATE.ui || {};
-    STATE.ui.rail = true;
-    save();
-    applyRail();
-  }
+  rail.showing = null;
+  showRail();
   renderRail();
   const inp = document.getElementById("railin");
   if (inp) inp.focus();
 }
-function unpin() {
+function unpin(redraw) {
   rail.pinned = null;
   rail.pinnedQuestions = null;
+  unpick();
+  if (redraw !== false) renderRail();
+}
+function unpick() {
   document.querySelectorAll(".prose .picked").forEach(n => n.classList.remove("picked"));
-  renderRail();
 }
-function railCtxLabel() {
-  const m = byId(route.id);
-  if (!m) return "";
-  if (rail.pinned) return "your selection";
-  const s = m.sections[chatSec(activeConvo(m.id, false))];
-  return s ? s.h : m.title;
+/* the "?" beside a section heading: the whole section becomes the subject */
+function askSection(mid, i) {
+  const m = byId(mid),
+    sec = m && m.sections[i];
+  if (!sec) return;
+  const txt = sec.text.length > 1500 ? sec.text.slice(0, 1500) + "…" : sec.text;
+  pinQuote(txt, i, [sec.h]);
 }
-function railSuggestions() {
-  if (rail.pinned) return rail.pinnedQuestions || localQuestions(rail.pinned.text);
-  const m = byId(route.id);
-  if (!m) return [];
-  const set = (m.suggest && m.suggest[chatSec(activeConvo(m.id, false))]) || [];
-  const extra = STATE.biz
-    ? ["How does this apply to " + STATE.biz + "?"]
-    : ["How would I apply this to " + ((CFG.anchor || {}).noun || "my own case") + "?"];
-  return set.concat(extra);
+/* a mark (highlight, note, open question) opened from the text or from Marks & questions:
+   its passage is pinned and the page lands on it */
+function closePanel() {
+  const p = document.getElementById("panel");
+  if (p) p.remove();
 }
+function openPanel(mid, id) {
+  const mk = findMark(mid, id);
+  if (!mk) return;
+  showRail();
+  if (route.view === "m" && route.id === mid && (route.step || 0) === 1) {
+    pinQuote(mk.text, mk.sec, null, id);
+    jumpToPassage(mid, mk.sec, id);
+    return;
+  }
+  rail.pendingPin = { mid, sec: mk.sec, text: mk.text, markId: id };
+  jumpToPassage(mid, mk.sec, id);
+}
+
+/* ---------- render ---------- */
 /* the tutor as a tool on the section in view, not just a question box */
 const TOOL_CHIPS = [
   [
@@ -302,41 +257,28 @@ const TOOL_CHIPS = [
     "Explain this section again more simply, as if to someone smart who has never worked in this field, with one concrete example.",
   ],
 ];
-function activeIsRoleplay() {
-  const c = activeConvo(route.id, false);
+function isRoleplay(c) {
   return !!(c && c.kind === "rp");
 }
-function systemForRail() {
-  const m = byId(route.id);
-  const c = activeConvo(m.id);
-  const sec = m.sections[rail.pinned ? rail.pinned.sec : chatSec(c)];
-  const quote = rail.pinned ? rail.pinned.text : sec ? sec.text.slice(0, 1200) : "";
-  if (c && c.kind === "rp" && m.assess.roleplay) return roleplaySystem(m, m.assess.roleplay);
-  return `${CFG.tutorPersona} The person is ${CFG.audience} working through a ${CFG.hours}-hour ${CFG.subject} course. Right now they are in module ${m.id}, "${m.title}", reading the section "${sec ? sec.h : ""}".
-
-${rail.pinned ? "They selected this passage and are asking about it:" : "The part of the text they are looking at:"}
-"""
-${quote}
-"""
-${STATE.biz ? `\n${(CFG.anchor || {}).label}, which examples should be aimed at: ${STATE.biz}` : ""}
-${c && c.summary ? `\nWhat happened in your earlier conversation with them, carried over. Do not repeat it; build on it:\n"""\n${c.summary}\n"""` : ""}
-
-How to answer:
-- Be concise. Two or three short paragraphs is plenty; a short list only when it genuinely helps.
-- Be concrete: real numbers, real examples, a real first step.
-- Tie it back to what they are reading.
-- If the course text is a simplification, or you disagree with it, say so and explain where it breaks down.
-- No preamble, no flattery. Answer the question.
-${learnerContext(m.id)}`;
-}
-
-/* ---------- render ---------- */
 function renderRail() {
   const el = document.getElementById("rail");
   if (!el || route.view !== "m") return;
   const m = byId(route.id);
   if (!m) return;
-  const c = activeConvo(m.id);
+  if (rail.pendingPin && rail.pendingPin.mid === m.id) {
+    rail.pinned = rail.pendingPin;
+    rail.pinnedQuestions = localQuestions(rail.pinned.text);
+    rail.showing = null;
+  }
+  rail.pendingPin = null;
+  const c = convoShown();
+  const old = document.getElementById("railin");
+  const draft = old ? old.value : "";
+  const placeholder = isRoleplay(c)
+    ? "Say what you would actually say…"
+    : placeNow().step === "read"
+      ? "Ask about this section…"
+      : "Ask about this step…";
   el.innerHTML = `
     <div class="railgrip" id="railgrip" title="Drag to resize"></div>
     <div class="railhead" id="railhead"></div>
@@ -344,18 +286,19 @@ function renderRail() {
     <div class="chatmenu hidden" id="chatmenu"></div>
     <div class="railfoot">
       <div class="row">
-        <textarea id="railin" rows="1" placeholder="${c.kind === "rp" ? "Say what you would actually say…" : "Ask about this section…"}"></textarea>
+        <textarea id="railin" rows="1" placeholder="${placeholder}"></textarea>
         <button class="btn primary" id="railsend" onclick="railSend()" aria-label="Send">↑</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:7px">
         <span style="font-size:11px;color:var(--muted)">${connMode() === "none" ? "not connected" : "⌘/Ctrl+↵ to send"}</span>
-        ${c.msgs.length ? `<button class="btn sm ghost" style="margin-left:auto;font-size:11.5px" onclick="compactConvo('${c.id}')" title="Summarise this chat and continue in a fresh one">Compact</button>` : ""}
+        ${c && c.msgs.length ? `<button class="btn sm ghost" style="margin-left:auto;font-size:11.5px" onclick="compactConvo('${c.id}')" title="Summarise this chat and continue in a fresh one">Compact</button>` : ""}
       </div>
     </div>`;
   renderRailHead();
   renderRailBody();
   bindRailGrip();
   const inp = document.getElementById("railin");
+  inp.value = draft;
   inp.addEventListener("keydown", e => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
       e.preventDefault();
@@ -377,25 +320,29 @@ function renderRailHead() {
   if (!h) return;
   const m = byId(route.id);
   if (!m) return;
-  const c = activeConvo(m.id);
-  const n = convosFor(m.id).length;
+  const place = placeNow(),
+    c = convoShown();
+  const title = c ? convoTitle(c) : placeLabel(place);
+  const secNo = c ? (placeOf(c).step === "read" ? placeOf(c).sec : null) : place.sec;
+  const where = c && !hasPlace(c) ? "Whole module" : place.step === "read" ? "Reading" : "Step";
+  const others = convosFor(m.id).length;
   h.innerHTML = `
     <div class="railtop">
       <span class="dotstat ${connMode() !== "none" ? "on" : ""}" title="${connMode() !== "none" ? "Connected" : "Not connected"}"></span>
-      <button class="convobtn" onclick="toggleChatMenu()" title="Chats in this module — one per section">
-        <span class="ct">${c.sec != null ? `<span class="secno">§${c.sec + 1}</span> ` : ""}${esc(convoTitle(c))}</span><span class="cv">▾</span>
+      <button class="convobtn" onclick="toggleChatMenu()" title="Chats in this module — one per section and per step">
+        <span class="ct">${secNo != null ? `<span class="secno">§${secNo + 1}</span> ` : ""}${esc(title)}</span><span class="cv">▾</span>
       </button>
-      <button class="iconbtn" style="width:28px;height:28px" title="New chat" aria-label="New chat" onclick="startNew()">${ico("plus", 15)}</button>
+      <button class="iconbtn" style="width:28px;height:28px" title="New chat here" aria-label="New chat" onclick="startNew()">${ico("plus", 15)}</button>
       <button class="iconbtn" style="width:28px;height:28px" title="Hide (a)" aria-label="Hide the tutor" onclick="toggleRail()">${ico("close", 14)}</button>
     </div>
     <div class="railctx">
-      ${c.kind === "rp" ? `<div class="rpbar"><span class="tag warn">role-play</span><span style="flex:1;font-size:12.5px;color:var(--text-2)">${c.finished ? "Finished — feedback below" : "Claude is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
+      ${isRoleplay(c) ? `<div class="rpbar"><span class="tag warn">role-play</span><span style="flex:1;font-size:12.5px;color:var(--text-2)">${c.finished ? "Finished — feedback below" : "Claude is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
       ${
         rail.pinned
           ? `<div class="pinned"><span class="tag acc">selection</span>
              <button class="iconbtn" style="width:22px;height:22px" title="Unpin" aria-label="Unpin the selection" onclick="unpin()">${ico("close", 12)}</button>
              <div class="ptext">${esc(rail.pinned.text.length > 220 ? rail.pinned.text.slice(0, 220) + "…" : rail.pinned.text)}</div></div>`
-          : `<div class="ctxline">${c.sec != null ? "About" : "Reading"} · <b>${esc(railCtxLabel())}</b>${n > 1 ? ` · ${n} chats here` : ""}</div>`
+          : `<div class="ctxline">${where} · <b>${esc(placeLabel(place))}</b>${others > 1 ? ` · ${others} chats in this module` : ""}</div>`
       }
     </div>`;
 }
@@ -403,51 +350,86 @@ function toggleChatMenu() {
   rail.menuOpen = !rail.menuOpen;
   renderChatMenu();
 }
+/* The menu: this module's sections and steps, each with its chat, then the chats that
+   belong to no place, then the newest chats of other modules. Picking a row goes there. */
 function renderChatMenu() {
   const el = document.getElementById("chatmenu");
   if (!el) return;
   el.classList.toggle("hidden", !rail.menuOpen);
   if (!rail.menuOpen) return;
   const m = byId(route.id);
-  const cur = activeConvo(m.id);
-  const mine = convosFor(m.id),
-    others = allConvos()
-      .filter(c => c.mid !== m.id)
-      .slice(0, 8);
-  const row = c => `<div class="crow ${c.id === cur.id ? "on" : ""}">
+  const cur = convoShown(),
+    place = placeNow();
+  const asked = c => (c ? c.msgs.filter(x => x.r === "u").length : 0);
+  const count = c =>
+    asked(c) ? `${asked(c)} question${asked(c) === 1 ? "" : "s"}` : "no questions yet";
+  const del = c =>
+    c
+      ? `<button class="iconbtn" style="width:24px;height:24px" title="Delete" aria-label="Delete" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>`
+      : "";
+  const placeRow = (p, label, here) => {
+    const c = convoAt(p);
+    const on = cur ? c && c.id === cur.id : samePlace(p, place);
+    return `<div class="crow ${on ? "on" : ""}">
+      <button class="cmain" onclick="openPlace(${esc(JSON.stringify(p))})" title="Open this and its chat">
+        <span class="t">${label}</span>
+        <span class="s">${count(c)}${here ? " · in view" : ""}</span>
+      </button>${del(c)}</div>`;
+  };
+  const secRows = m.sections
+    .map((s, i) =>
+      placeRow(
+        { mid: m.id, step: "read", sec: i },
+        `<span class="secno">§${i + 1}</span> ${esc(s.h)}`,
+        place.step === "read" && place.sec === i
+      )
+    )
+    .join("");
+  const stepRows = STEPS.filter(
+    s => s.k !== "read" && (s.k === place.step || convoAt({ mid: m.id, step: s.k, sec: null }))
+  )
+    .map(s => placeRow({ mid: m.id, step: s.k, sec: null }, esc(s.n), s.k === place.step))
+    .join("");
+  const convoRow = c => `<div class="crow ${cur && c.id === cur.id ? "on" : ""}">
       <button class="cmain" onclick="switchConvo('${c.id}')">
-        <span class="t">${esc(convoTitle(c))}</span>
-        <span class="s">${byId(c.mid).id} · ${c.msgs.filter(x => x.r === "u").length} question${c.msgs.filter(x => x.r === "u").length === 1 ? "" : "s"} · ${new Date(c.updated).toLocaleDateString()}${c.parent ? " · carried over" : ""}</span>
+        <span class="t">${c.mid !== m.id ? `<span class="secno">${c.mid}</span> ` : ""}${esc(convoTitle(c))}</span>
+        <span class="s">${count(c)} · ${new Date(c.updated).toLocaleDateString()}${c.parent ? " · carried over" : ""}</span>
       </button>
       <button class="iconbtn" style="width:24px;height:24px" title="Rename" aria-label="Rename" onclick="renameConvo('${c.id}')">${ico("pencil", 12)}</button>
-      <button class="iconbtn" style="width:24px;height:24px" title="Delete" aria-label="Delete" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>
-    </div>`;
-  const wide = mine.filter(c => c.sec == null);
-  const secRow = (s, i) => {
-    const c = secConvo(m.id, i),
-      n = c ? c.msgs.filter(x => x.r === "u").length : 0;
-    return `<div class="crow ${c && c.id === cur.id ? "on" : ""}">
-      <button class="cmain" onclick="pickSection('${m.id}',${i})" title="Open this section and its chat">
-        <span class="t"><span class="secno">§${i + 1}</span> ${esc(s.h)}</span>
-        <span class="s">${n ? `${n} question${n === 1 ? "" : "s"}` : "no questions yet"}${i === rail.section ? " · in view" : ""}</span>
-      </button>
-      ${c ? `<button class="iconbtn" style="width:24px;height:24px" title="Delete" aria-label="Delete" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>` : ""}
-    </div>`;
-  };
+      ${del(c)}</div>`;
+  const loose = convosFor(m.id).filter(c => !hasPlace(c));
+  const others = allConvos()
+    .filter(c => c.mid !== m.id && (c.msgs.length || c.summary))
+    .slice(0, 8);
   el.innerHTML = `
     <div class="cmhead">${m.id} · ${esc(m.short || m.title)} — by section</div>
-    ${m.sections.map(secRow).join("")}
-    ${wide.length ? `<div class="cmhead">Whole module</div>` + wide.map(row).join("") : ""}
-    ${others.length ? `<div class="cmhead">Other modules</div>` + others.map(row).join("") : ""}
+    ${secRows}
+    ${stepRows ? `<div class="cmhead">By step</div>` + stepRows : ""}
+    ${loose.length ? `<div class="cmhead">Whole module</div>` + loose.map(convoRow).join("") : ""}
+    ${others.length ? `<div class="cmhead">Other modules</div>` + others.map(convoRow).join("") : ""}
     <div class="cmfoot">
-      <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat</button>
-      ${cur.msgs.length ? `<button class="btn sm" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
+      <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat here</button>
+      ${cur && cur.msgs.length ? `<button class="btn sm" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
       <button class="btn sm ghost" onclick="go('#/marks')">All conversations</button>
     </div>`;
 }
+/* a conversation picked from the menu or the Marks page: go to its place and show it */
+function switchConvo(id) {
+  const c = convos()[id];
+  if (!c) return;
+  openPlace(placeOf(c), id);
+}
+/* a fresh conversation at this place; the one it replaces stays in the menu */
 function startNew() {
-  newConvo(route.id);
+  const cur = convoShown();
   rail.menuOpen = false;
+  if (!cur || (!cur.msgs.length && !cur.summary)) {
+    renderRail();
+    toast("This chat is already empty");
+    return;
+  }
+  const c = newConvo(placeNow());
+  rail.showing = c.id;
   renderRail();
   toast("New chat");
 }
@@ -456,21 +438,21 @@ function renderRailBody() {
   if (!b) return;
   const m = byId(route.id);
   if (!m) return;
-  const c = activeConvo(m.id);
+  const c = convoShown();
   let h = "";
   if (connMode() === "none") {
     h += `<div class="warnbar" style="margin:0 0 12px"><span>Not connected to Claude.</span>
       <button class="btn sm" onclick="go('#/settings')">Connect</button></div>`;
   }
-  if (c.summary) {
+  if (c && c.summary) {
     h += `<div class="carried"><b>Carried over${c.parent && convos()[c.parent] ? " from “" + esc(convoTitle(convos()[c.parent])) + "”" : ""}</b>
       <div>${esc(c.summary)}</div></div>`;
   }
   h += `<div class="thread" id="railthread">`;
   if (rail.compacting) h += `<div class="msg a typing"><i></i><i></i><i></i></div>`;
-  c.msgs.forEach(x => {
+  (c ? c.msgs : []).forEach((x, i) => {
     h += `<div class="msg ${x.r === "u" ? "u" : x.r === "e" ? "a err" : "a"}">
-      ${x.r === "u" && x.sec != null && m.sections[x.sec] ? `<button class="msgctx" onclick="jumpToPassage('${m.id}',${x.sec},${x.mark ? "'" + esc(x.mark) + "'" : "null"})" title="Go to this part of the module">${esc(m.sections[x.sec].h)}${x.quote ? " · selection" : ""} ↗</button>` : ""}
+      ${x.r === "u" && messageLabel(m, x) ? `<button class="msgctx" onclick="jumpToMessage('${c.id}',${i})" title="Go to this part of the module">${esc(messageLabel(m, x))}${x.quote ? " · selection" : ""} ↗</button>` : ""}
       ${x.r === "u" ? esc(x.t) : mdLite(x.t)}</div>`;
   });
   h += `<div id="railpending"></div></div>`;
@@ -487,36 +469,51 @@ function renderRailBody() {
       dot.className = "dotstat " + (bridgeChecking ? "busy" : connMode() !== "none" ? "on" : "");
   }
 }
+/* where a message was asked from, for the label above it */
+function messageLabel(m, x) {
+  if (x.sec != null && m.sections[x.sec]) return m.sections[x.sec].h;
+  if (x.step && x.step !== "read") return stepNamed(x.step);
+  return "";
+}
+function jumpToMessage(cid, i) {
+  const c = convos()[cid],
+    x = c && c.msgs[i];
+  if (!x) return;
+  if (x.sec != null) jumpToPassage(c.mid, x.sec, x.mark || null);
+  else if (x.step) openPlace({ mid: c.mid, step: x.step, sec: null }, c.id);
+}
 function renderSuggest() {
   const box = document.getElementById("railsuggest");
+  const m = byId(route.id);
+  if (!m) return;
+  const place = placeNow(),
+    c = convoShown();
   if (box) {
-    const gaps = rail.pinned ? [] : gapChips(route.id);
-    box.innerHTML =
-      gaps
-        .map(
-          q =>
-            `<button class="chip gap" onclick="askThis(this)" data-q="${esc(q)}" title="From what you missed or asked before">${esc(q)}</button>`
-        )
-        .join("") +
-      railSuggestions()
-        .map(
-          q => `<button class="chip" onclick="askThis(this)" data-q="${esc(q)}">${esc(q)}</button>`
-        )
-        .join("") +
-      (rail.pinned
-        ? `<button class="chip gen" onclick="genQuestions()" ${rail.generating ? "disabled" : ""}>
+    const gaps = rail.pinned ? [] : gapChips(m.id);
+    const chip = (q, cls, title) =>
+      `<button class="chip ${cls}" onclick="askThis(this)" data-q="${esc(q)}" ${title ? `title="${title}"` : ""}>${esc(q)}</button>`;
+    const tools = rail.pinned
+      ? `<button class="chip gen" onclick="genQuestions()" ${rail.generating ? "disabled" : ""}>
           ${rail.generating ? "Thinking of better questions…" : "✦ Ask Claude for sharper questions"}</button>`
-        : `<div class="toolchips">${TOOL_CHIPS.map(([l, q]) => `<button class="chip tool" onclick="askThis(this)" data-q="${esc(q)}">${l}</button>`).join("")}</div>`);
-    if (activeIsRoleplay()) box.innerHTML = "";
+      : place.step === "read"
+        ? `<div class="toolchips">${TOOL_CHIPS.map(([l, q]) => `<button class="chip tool" onclick="askThis(this)" data-q="${esc(q)}">${l}</button>`).join("")}</div>`
+        : "";
+    box.innerHTML = isRoleplay(c)
+      ? ""
+      : gaps.map(q => chip(q, "gap", "From what you missed or asked before")).join("") +
+        placeSuggestions(m, place)
+          .map(q => chip(q, ""))
+          .join("") +
+        tools;
   }
   const lead = document.getElementById("raillead2");
   if (lead)
-    lead.innerHTML = activeIsRoleplay()
+    lead.innerHTML = isRoleplay(c)
       ? `<p class="sub" style="font-size:12px;margin:0 0 8px">In character. Write "pause" to step out. When you are done, press <b>Finish &amp; get feedback</b> above.</p>`
       : `<p class="sub" style="font-size:12px;margin:0 0 8px">${
           rail.pinned
             ? "Questions about <b>the passage you picked</b>:"
-            : "Questions worth asking about <b>" + esc(railCtxLabel()) + "</b>:"
+            : "Questions worth asking about <b>" + esc(placeLabel(place)) + "</b>:"
         }</p>`;
 }
 function askThis(el) {
@@ -524,6 +521,8 @@ function askThis(el) {
   inp.value = el.dataset.q;
   railSend();
 }
+/* Send what is in the box. The conversation is the one on show, or a new one at this
+   place; the tutor's instructions are built for this place at this moment. */
 async function railSend() {
   const m = byId(route.id);
   if (!m) return;
@@ -539,13 +538,16 @@ async function railSend() {
       return;
     }
   }
-  const c = activeConvo(m.id);
+  const place = placeNow();
+  const c = convoShown() || newConvo(place);
+  rail.showing = c.id;
   const markId = rail.pinned ? rail.pinned.markId : null;
   c.msgs.push({
     r: "u",
     t: text,
     ts: Date.now(),
-    sec: rail.pinned ? rail.pinned.sec : chatSec(c),
+    step: place.step,
+    sec: place.sec,
     quote: rail.pinned ? rail.pinned.text : "",
     mark: markId,
   });
@@ -569,7 +571,7 @@ async function railSend() {
       .filter(x => x.r !== "e")
       .slice(-TUTOR.railTurns)
       .map(x => ({ role: x.r === "u" ? "user" : "assistant", content: x.t }));
-    const reply = await askBridge(systemForRail(), msgs);
+    const reply = await askBridge(systemForRail(m, c, place), msgs);
     c.msgs.push({ r: "a", t: reply, ts: Date.now() });
     if (markId) {
       const mk = findMark(m.id, markId);
@@ -581,77 +583,9 @@ async function railSend() {
   c.updated = Date.now();
   save();
   rail.sending = false;
-  btn.disabled = false;
-  inp.disabled = false;
+  if (route.view !== "m") return;
   renderRail();
+  if (convoShown() !== c) toast("Claude replied in “" + convoTitle(c) + "”");
   const i2 = document.getElementById("railin");
   if (i2) i2.focus();
 }
-
-/* opening a mark's passage just pins it into the rail */
-function closePanel() {
-  const p = document.getElementById("panel");
-  if (p) p.remove();
-}
-function openPanel(mid, id) {
-  const m = findMark(mid, id);
-  if (!m) return;
-  if (route.id !== mid || route.step !== 1) {
-    go("#/m/" + mid + "/1");
-    setTimeout(() => pinQuote(m.text, m.sec, null, id), 260);
-    return;
-  }
-  pinQuote(m.text, m.sec, null, id);
-}
-/* the "?" beside a section heading: the whole section becomes the subject */
-function askSection(mid, i) {
-  const m = byId(mid),
-    sec = m && m.sections[i];
-  if (!sec) return;
-  const txt = sec.text.length > 1500 ? sec.text.slice(0, 1500) + "…" : sec.text;
-  const hints = [sec.h];
-  pinQuote(txt, i, hints);
-  document.querySelectorAll(".prose .picked").forEach(n => n.classList.remove("picked"));
-}
-
-/* the rail is resizable: drag its inner edge. Width (or height, docked at the bottom) is
-   kept per device in STATE.ui and saved as you drag, so a reload keeps it. */
-let railSaveTimer = null;
-function bindRailGrip() {
-  const g = document.getElementById("railgrip");
-  if (!g) return;
-  g.addEventListener("mousedown", e => {
-    e.preventDefault();
-    if (!STATE.ui) STATE.ui = {};
-    document.body.classList.add("raildrag");
-    const pos = railPos();
-    const move = ev => {
-      if (pos === "bottom") STATE.ui.railH = Math.round(window.innerHeight - ev.clientY);
-      else STATE.ui.railW = Math.round(window.innerWidth - ev.clientX);
-      applyRail();
-      clearTimeout(railSaveTimer);
-      railSaveTimer = setTimeout(save, 300);
-    };
-    const up = () => {
-      document.body.classList.remove("raildrag");
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      if (pos === "bottom") STATE.ui.railH = railHeight();
-      else STATE.ui.railW = railWidth();
-      save();
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  });
-  g.addEventListener("dblclick", () => {
-    if (!STATE.ui) STATE.ui = {};
-    if (railPos() === "bottom") STATE.ui.railH = LAYOUT.railHeightDefault;
-    else STATE.ui.railW = LAYOUT.railDefault;
-    save();
-    applyRail();
-    toast("Chat size reset");
-  });
-}
-window.addEventListener("resize", () => {
-  applyRail();
-});

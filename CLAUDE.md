@@ -131,7 +131,7 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      54 tests — engine, and the code conventions below
+python platform/tests/test_build.py      55 tests — engine, and the code conventions below
 python platform/tests/test_studio.py     101 tests — Studio
 npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
@@ -321,6 +321,40 @@ Questions tab lists the open gaps, each as a rewrite brief - a gap that keeps co
 is the best evidence that a module needs work. The knobs are `page.learner` in
 `settings.json`; `platform/tests/learner_checks.js` exercises the whole thing inside a
 booted page (`page_smoke.js --checks`).
+
+### The chat rail
+
+One rule: **the rail shows the conversation at the place the reader is looking at, and
+follows them when they move.** A place is `{mid, step, sec}` - the module, the step from
+the route (`predict`, `read`, `quiz`, `elab`, `apply`, `gaps`) and, on the Read step, the
+section under the reading line. It is read off the page whenever it is needed
+(`placeNow()` in `17a-place.js`), never stored; the only thing kept on scroll is
+`rail.section`, which the scroll handler in `07-module.js` maintains with hysteresis.
+
+- **One conversation per place, found, not tracked.** A conversation carries its place
+  (`step`, `sec`); `convoAt(place)` returns the newest one there, or null, and nothing is
+  created until the first message is sent (`17-convos.js`). There is no stored "active"
+  conversation: `STATE.active` is a key old saves carry that nothing reads. A chat on the
+  Elaborate step is about the Elaborate step; scrolling from section 2 to section 3 shows
+  section 3's chat. Role-plays and chats from before places existed have no place and
+  belong to the module as a whole.
+- **Two explicit exceptions.** `rail.showing` is a conversation the reader picked by hand
+  (menu, "New chat", a role-play, "Continue" on the Marks page, a compaction); it stays
+  until they move to another place, or is answering (`railPlaceChanged`). `rail.pinned`
+  is a selected passage; it fixes the place to that section until unpinned, and does not
+  survive leaving the module's Read step (`railRouteChanged`, called from `render()`).
+- **The tutor is told about the place.** `systemForRail(m, c, place)` puts the section
+  text on the Read step and, on every other step, what the step asks and what the reader
+  has written so far (`placeText`): the Predict guess, the quiz question in view, the
+  Elaborate answers with their verdicts, the Apply draft (the model answer only once it
+  is revealed), the open gap items. `placeSuggestions` gives each step its own chips.
+- **Every way to a passage is `jumpToPassage(mid, sec, markId)`** (`07-module.js`): a TOC
+  link, a message's label, a menu row, a bookmark, a mark opened from Marks & questions.
+  On the Read step it scrolls now; from anywhere else it sets `jumpTarget` and changes
+  the route, and `landOn()` scrolls once the step is drawn. Jumps are instant, so the
+  sections in between are never "in view" and there is no lock to keep.
+
+`platform/tests/rail_checks.js` runs all of this inside a booted page.
 
 There is no module system and no build step for the JS. Everything is top-level in one
 scope. Adding a global means adding it to that shared scope — check the name is free.
@@ -615,7 +649,8 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
 - **Boot under node before you ship.** `node platform/tests/page_smoke.js <built page>`
   and the same with `platform/studio/ui/js/*.js` catch an undeclared name; both run from
   the test suites. `--checks <file.js>` runs a checks file inside the booted page, which
-  is how page logic that needs a real `STATE` is tested (`learner_checks.js`).
+  is how page logic that needs a real `STATE` is tested (`learner_checks.js`,
+  `rail_checks.js`).
 
 ### Tests
 

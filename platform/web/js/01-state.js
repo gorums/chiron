@@ -30,7 +30,7 @@ const blank = () => ({
   notes: {},
   marks: {},
   convos: {},
-  active: {},
+  active: {}, // no longer read: the rail finds its conversation by place (see 17-convos.js)
   biz: "",
   chk: {},
   cp: null,
