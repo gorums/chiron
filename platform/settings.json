@@ -38,7 +38,9 @@
   },
   "anthropic": {
     "apiUrl": "https://api.anthropic.com/v1/messages",
-    "apiVersion": "2023-06-01"
+    "modelsUrl": "https://api.anthropic.com/v1/models",
+    "apiVersion": "2023-06-01",
+    "apiKey": ""
   },
   "models": {
     "default": "opus",
@@ -72,7 +74,8 @@
   "claude": {
     "timeout": 600,
     "jsonAttempts": 3,
-    "chatHistory": 20
+    "chatHistory": 20,
+    "probeTimeout": 90
   },
   "generation": {
     "quizItems": 6,
@@ -110,6 +113,12 @@
     "notebookMaxBytes": 400000,
     "notebookOutputChars": 4000,
     "notebookPromptChars": 1600
+  },
+  "discovery": {
+    "hours": 24,
+    "startDelaySeconds": 5,
+    "timeout": 20,
+    "apiPage": 100
   },
   "logs": {
     "level": "INFO",

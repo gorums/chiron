@@ -9,8 +9,16 @@ Resolution, later layers winning:
     platform/settings.json          the committed defaults
     $SETTINGS_FILE                  an optional JSON overlay, deep-merged, for a machine that
                                     wants a different model list or its own timeouts
+    <state>/settings.json           what Studio's settings page changed - today the model
+                                    list; deep-merged like the overlay, written only by Studio
     .env at the repo root           the scalar knobs listed in ENV_KEYS (same file compose reads)
     the environment                 the same names, winning over .env
+
+The Studio layer sits under the state directory because it is personal and generated, like
+progress; `paths.state` may itself come from the environment, so the file is located after
+the environment has been read once and the environment is applied again over it.
+`Settings.reload()` re-reads every layer in place, so a list Studio just saved reaches every
+module that holds the `SETTINGS` object without a restart.
 
 An environment value is coerced to the type of the default it replaces, so `STUDIO_PORT=9000`
 becomes an int and `STUDIO_HOST=0.0.0.0` stays a string. `Settings.overrides` records which
@@ -31,6 +39,8 @@ PLATFORM_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(PLATFORM_DIR)
 ENV_FILE = os.path.join(REPO_ROOT, ".env")
 SETTINGS_FILE = os.path.join(PLATFORM_DIR, "settings.json")
+STUDIO_SETTINGS_NAME = "settings.json"      # under the state directory
+STUDIO_SOURCE = "Studio"                    # what `overrides` says for that layer
 
 # Environment / .env name -> the dotted key it overrides. These are the knobs a machine is
 # likely to differ on; anything else is edited in settings.json or an overlay file.
@@ -52,8 +62,12 @@ ENV_KEYS: Dict[str, str] = {
     "JUPYTER_INTERNAL_URL": "jupyter.internalUrl",
     "JUPYTER_TOKEN": "jupyter.token",
     "BRIDGE_API_URL": "anthropic.apiUrl",
+    "ANTHROPIC_API_KEY": "anthropic.apiKey",
     "ANTHROPIC_API_VERSION": "anthropic.apiVersion",
 }
+
+# Settings that are secrets: shown as set or empty, never by value.
+SECRET_KEYS = ("anthropic.apiKey", "jupyter.token")
 
 # Binding to every interface is how a container is reached through its published port; the
 # address a browser on this machine should then use is loopback.
@@ -112,11 +126,23 @@ def _coerce(raw: str, like: Any) -> Any:
 
 class Settings:
     def __init__(self, data: Dict[str, Any], overrides: Dict[str, str], path: str = SETTINGS_FILE,
-                 overlay: str = ""):
+                 overlay: str = "", studio_file: str = "",
+                 env: Optional[Dict[str, str]] = None, dotenv: Optional[Dict[str, str]] = None):
         self.data = data
-        self.overrides = overrides      # dotted key -> "environment" | ".env" | overlay path
+        self.overrides = overrides      # dotted key -> "environment" | ".env" | STUDIO_SOURCE | overlay path
         self.path = path
         self.overlay = overlay
+        self.studio_file = studio_file  # the layer Studio writes; "" when that layer is off
+        self.env = env                  # the environment and .env this was loaded from, for reload()
+        self.dotenv = dotenv
+
+    def reload(self) -> None:
+        """Re-read every layer into this same object, so every module holding `SETTINGS`
+        sees what Studio just wrote."""
+        fresh = load(self.path, env=self.env, dotenv=self.dotenv, overlay=self.overlay,
+                     studio_file=self.studio_file)
+        self.data = fresh.data
+        self.overrides = fresh.overrides
 
     # ---- generic access ----
 
@@ -255,7 +281,8 @@ class Settings:
     # ---- for the Studio settings page ----
 
     def describe(self) -> List[Dict[str, Any]]:
-        """Every scalar setting as {key, value, source}, in file order."""
+        """Every scalar setting as {key, value, source}, in file order; a secret's value
+        is replaced by whether it is set."""
         rows: List[Dict[str, Any]] = []
 
         def walk(node: Any, prefix: str) -> None:
@@ -270,7 +297,8 @@ class Settings:
                         str(v.get("id") if isinstance(v, dict) else v) for v in value),
                         "source": self.overrides.get(dotted, "settings.json")})
                 else:
-                    rows.append({"key": dotted, "value": value,
+                    shown = ("(set)" if value else "") if dotted in SECRET_KEYS else value
+                    rows.append({"key": dotted, "value": shown,
                                  "source": self.overrides.get(dotted, "settings.json")})
         walk(self.data, "")
         return rows
@@ -296,10 +324,43 @@ def _get(data: Dict[str, Any], dotted: str) -> Any:
     return node
 
 
+def _apply_env(data: Dict[str, Any], overrides: Dict[str, str], dotenv: Dict[str, str],
+               env: Dict[str, str], env_keys: Dict[str, str]) -> None:
+    """`.env`, then the environment, over `data`: the scalar knobs in `env_keys`, typed."""
+    for layer, source in ((dotenv, ".env"), (env, "environment")):
+        for name, dotted in env_keys.items():
+            raw = layer.get(name)
+            if raw is None or raw == "":
+                continue
+            try:
+                value = _coerce(str(raw), _get(data, dotted))
+            except ValueError as exc:
+                raise SettingsError("%s=%r is not a valid value for %s: %s" % (name, raw, dotted, exc)) from exc
+            _set(data, dotted, value)
+            overrides[dotted] = source
+
+
+def _merge_file(data: Dict[str, Any], overrides: Dict[str, str], path: str, source: str,
+                what: str) -> None:
+    """One JSON layer over `data`, every key it sets recorded under `source`."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            extra = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise SettingsError("%s %s could not be read: %s" % (what, path, exc)) from exc
+    if isinstance(extra, dict):
+        for dotted in _leaves(extra):
+            overrides[dotted] = source
+        _deep_merge(data, extra)
+
+
 def load(path: str = SETTINGS_FILE, *, env: Optional[Dict[str, str]] = None,
          dotenv: Optional[Dict[str, str]] = None, overlay: Optional[str] = None,
+         studio_file: Optional[str] = None,
          env_keys: Optional[Dict[str, str]] = None) -> Settings:
-    """Read the defaults, then apply the overlay, `.env` and the environment in that order."""
+    """Read the defaults, then apply the overlay, Studio's file, `.env` and the environment in
+    that order. `studio_file=None` means the default place under the state directory;
+    `""` turns that layer off (tests)."""
     env = os.environ if env is None else env
     dotenv = read_env_file() if dotenv is None else dotenv
     env_keys = ENV_KEYS if env_keys is None else env_keys
@@ -316,28 +377,17 @@ def load(path: str = SETTINGS_FILE, *, env: Optional[Dict[str, str]] = None,
     overrides: Dict[str, str] = {}
     overlay = env.get("SETTINGS_FILE") if overlay is None else overlay
     if overlay:
-        try:
-            with open(overlay, encoding="utf-8") as fh:
-                extra = json.load(fh)
-        except (OSError, ValueError) as exc:
-            raise SettingsError("SETTINGS_FILE %s could not be read: %s" % (overlay, exc)) from exc
-        if isinstance(extra, dict):
-            for dotted in _leaves(extra):
-                overrides[dotted] = overlay
-            _deep_merge(data, extra)
+        _merge_file(data, overrides, overlay, overlay, "SETTINGS_FILE")
 
-    for layer, source in ((dotenv, ".env"), (env, "environment")):
-        for name, dotted in env_keys.items():
-            raw = layer.get(name)
-            if raw is None or raw == "":
-                continue
-            try:
-                value = _coerce(str(raw), _get(data, dotted))
-            except ValueError as exc:
-                raise SettingsError("%s=%r is not a valid value for %s: %s" % (name, raw, dotted, exc)) from exc
-            _set(data, dotted, value)
-            overrides[dotted] = source
-    return Settings(data, overrides, path, overlay or "")
+    # The environment is read once to learn where the state directory is, and again after
+    # Studio's file so that it still wins over what Studio wrote.
+    _apply_env(data, overrides, dotenv, env, env_keys)
+    if studio_file is None:
+        studio_file = os.path.join(Settings(data, {}).state_dir, STUDIO_SETTINGS_NAME)
+    if studio_file and os.path.isfile(studio_file):
+        _merge_file(data, overrides, studio_file, STUDIO_SOURCE, "Studio's settings file")
+        _apply_env(data, overrides, dotenv, env, env_keys)
+    return Settings(data, overrides, path, overlay or "", studio_file or "", env, dotenv)
 
 
 def _leaves(node: Dict[str, Any], prefix: str = "") -> Iterable[str]:

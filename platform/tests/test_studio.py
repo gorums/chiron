@@ -23,6 +23,12 @@ sys.path.insert(0, PLATFORM)
 
 from coursekit import config  # noqa: E402
 from coursekit.errors import CourseError  # noqa: E402
+from coursekit.settings import SETTINGS
+
+# The tests describe the platform's list, not what this machine's Studio last saved over it.
+SETTINGS.studio_file = ""
+SETTINGS.reload()
+
 from studio import catalog, claude_cli, coerce, curriculum, editing, files, figures, generator, jobs, reviews  # noqa: E402
 from studio.errors import GenerationError  # noqa: E402
 
@@ -587,23 +593,28 @@ class TestModelChoice(unittest.TestCase):
 
     def test_requested_then_default(self):
         from coursekit.settings import SETTINGS
-        other = next(m["id"] for m in SETTINGS.models
-                     if m.get("alias") != claude_cli.DEFAULT_MODEL)
-        alias = claude_cli.MODEL_ALIASES[other]
-        self.assertEqual(claude_cli.model_chain(other), [alias, claude_cli.DEFAULT_MODEL])
-        self.assertEqual(claude_cli.model_chain(""), [claude_cli.DEFAULT_MODEL])
-        self.assertEqual(claude_cli.model_chain("nonsense"), [claude_cli.DEFAULT_MODEL])
-        self.assertEqual(claude_cli.model_chain(claude_cli.DEFAULT_MODEL), [claude_cli.DEFAULT_MODEL])
+        default = claude_cli.default_model()
+        other = next(m["id"] for m in SETTINGS.models if m.get("alias") != default)
+        alias = claude_cli.model_aliases()[other]
+        self.assertEqual(claude_cli.model_chain(other), [alias, default])
+        self.assertEqual(claude_cli.model_chain(""), [default])
+        self.assertEqual(claude_cli.model_chain("nonsense"), [default])
+        self.assertEqual(claude_cli.model_chain(default), [default])
 
     def test_models_come_from_platform_settings(self):
         from coursekit.settings import SETTINGS
         from studio import prefs, server
-        self.assertEqual([m[0] for m in prefs.MODELS], [m["alias"] for m in SETTINGS.models])
-        self.assertEqual(claude_cli.MODEL_ALIASES, SETTINGS.model_aliases)
+        self.assertEqual([m[0] for m in prefs.models()], [m["alias"] for m in SETTINGS.models])
+        self.assertEqual(claude_cli.model_aliases(), SETTINGS.model_aliases)
         view = catalog.settings_view()
-        self.assertEqual([m["id"] for m in view["models"]], [m[0] for m in prefs.MODELS])
-        self.assertEqual(catalog.state()["claude"]["models"], view["models"],
+        self.assertEqual([m["id"] for m in view["models"]], [m[0] for m in prefs.models()])
+        self.assertEqual([m["apiId"] for m in view["models"]], [m["id"] for m in SETTINGS.models],
+                         "a served page stores the full id")
+        state = catalog.state()
+        self.assertEqual(state["claude"]["models"], view["models"],
                          "every writing form offers the list, so /api/state carries it")
+        self.assertEqual(state["claude"]["defaultModel"], SETTINGS.model_id(catalog.PREFS.model))
+        self.assertEqual(view["modelList"]["list"], SETTINGS.models)
         self.assertEqual(view["paths"]["settings"], SETTINGS.path)
 
         self.assertIn("STUDIO_PORT", view["envKeys"])
@@ -629,14 +640,266 @@ class TestModelChoice(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="studio-prefs-")
         self.addCleanup(shutil.rmtree, tmp, True)
         store = prefs.Prefs(os.path.join(tmp, "nested", "studio.json"))
-        self.assertEqual(store.model, claude_cli.DEFAULT_MODEL)
+        self.assertEqual(store.model, claude_cli.default_model())
         self.assertEqual(store.save({"model": "opus"})["model"], "opus")
         self.assertEqual(prefs.Prefs(store.path).model, "opus")
         with self.assertRaises(ValueError):
             store.save({"model": "claude-fable-5-1[1m]"})
         with open(store.path, "w") as fh:
             fh.write("{broken")
-        self.assertEqual(store.model, claude_cli.DEFAULT_MODEL, "a corrupt file falls back")
+        self.assertEqual(store.model, claude_cli.default_model(), "a corrupt file falls back")
+
+
+class TestModelList(unittest.TestCase):
+    """The model list is editable from the settings page (studio/models.py): saved to the
+    Studio layer of the settings, validated first, live everywhere at once, and a reset
+    brings the platform's list back."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        from coursekit.settings import SETTINGS
+        self.tmp = tempfile.mkdtemp(prefix="studio-models-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.was = SETTINGS.studio_file
+        SETTINGS.studio_file = os.path.join(self.tmp, "settings.json")
+        SETTINGS.reload()
+        self.addCleanup(self._restore)
+        self.settings = SETTINGS
+
+    def _restore(self):
+        self.settings.studio_file = self.was
+        self.settings.reload()
+
+    def test_validation(self):
+        from studio import models
+        good = models.normalise([{"id": "claude-x-9", "alias": "x", "label": " X ", "note": "n"},
+                                 {"id": "claude-y-1"}])
+        self.assertEqual(good, [{"id": "claude-x-9", "alias": "x", "label": "X", "note": "n"},
+                                {"id": "claude-y-1", "label": "claude-y-1", "note": ""}])
+        for bad in ([], "x", [{}], [{"id": "Claude Opus"}], [{"id": "claude-x", "alias": "bad alias"}],
+                    [{"id": "claude-x"}, {"id": "claude-x"}],
+                    [{"id": "claude-x", "alias": "a"}, {"id": "claude-y", "alias": "a"}],
+                    [{"id": "claude-x", "alias": "claude-y"}, {"id": "claude-y"}]):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                models.normalise(bad)
+
+    def test_replace_is_live_and_reset_forgets(self):
+        from studio import models, prefs
+        before = models.platform_list()
+        self.assertFalse(models.current()["custom"])
+        saved = models.replace([{"id": "claude-new-1", "alias": "new", "label": "New"},
+                                {"id": "claude-haiku-4-5-20251001", "alias": "haiku"}])
+        self.assertTrue(saved["custom"])
+        self.assertEqual([m["id"] for m in self.settings.models], ["claude-new-1", "claude-haiku-4-5-20251001"])
+        self.assertIn("new", claude_cli.model_aliases(), "the CLI alias table follows")
+        self.assertIn("new", prefs.allowed(), "the default may now be the new model")
+        self.assertEqual(claude_cli.model_chain("opus"), [claude_cli.default_model()],
+                         "a model taken off the list is no longer tried")
+        self.assertEqual([m["apiId"] for m in catalog.models_view()],
+                         ["claude-new-1", "claude-haiku-4-5-20251001"])
+        self.assertEqual(models.platform_list(), before, "the platform's list is untouched")
+        with open(self.settings.studio_file, encoding="utf-8") as fh:
+            on_disk = json.load(fh)
+        self.assertEqual([m["id"] for m in on_disk["models"]["list"]], ["claude-new-1", "claude-haiku-4-5-20251001"])
+
+        back = models.reset()
+        self.assertFalse(back["custom"])
+        self.assertEqual(self.settings.models, before)
+        with open(self.settings.studio_file, encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh), {}, "only the list is forgotten, nothing else")
+
+    def test_probe_asks_once_with_that_model_only(self):
+        """A test from the settings page never falls back to another model."""
+        import subprocess
+        calls = []
+
+        class Done:
+            returncode = 0
+            stdout = "OK"
+            stderr = ""
+
+        def fake_run(cli, args, prompt, timeout):
+            calls.append(args)
+            if "claude-gone-0" in args:
+                raise subprocess.TimeoutExpired("claude", timeout)
+            return Done()
+
+        real_run, real_find = claude_cli._run, claude_cli.find_cli
+        claude_cli._run, claude_cli.find_cli = fake_run, lambda: "claude"
+        try:
+            self.assertTrue(claude_cli.probe("claude-new-1", timeout=5)["ok"])
+            slow = claude_cli.probe("claude-gone-0", timeout=5)
+        finally:
+            claude_cli._run, claude_cli.find_cli = real_run, real_find
+        self.assertFalse(slow["ok"])
+        self.assertIn("within 5s", slow["error"])
+        self.assertEqual([a[a.index("--model") + 1] for a in calls], ["claude-new-1", "claude-gone-0"])
+        self.assertEqual(len(calls), 2, "one attempt per probe, no fallback")
+
+
+FAKE_CLI = (
+    b'junk{id:"claude-opus-5",family:"opus",display_name:"Opus 5",knowledge_cutoff:"x"}'
+    b'{id:"claude-sonnet-5",family:"sonnet",display_name:"Sonnet 5",k:1}'
+    b'{id:"claude-haiku-4-5",family:"haiku",display_name:"Haiku 4.5",k:1}'
+    b'{id:"claude-opus-4-1",family:"opus",display_name:"Opus 4.1",k:1}'
+    b'model_selector_config:[{id:"cc",models:[{id:"claude-opus-5",name:"Opus 5",short_name:"Opus",section:"main"},'
+    b'{id:"claude-sonnet-5",name:"Sonnet 5",short_name:"Sonnet",section:"main"},'
+    b'{id:"claude-haiku-4-5",name:"Haiku 4.5",short_name:"Haiku",section:"main"}]}]more'
+)
+
+
+class TestModelDiscovery(unittest.TestCase):
+    """The model list keeps itself current (studio/discover.py): Claude Code's catalog is
+    read out of the installed binary, Anthropic's list is read when a key is configured,
+    and the merge adds what is offered, removes what no source knows, and never empties."""
+
+    def test_cli_catalog_is_parsed_out_of_the_binary(self):
+        from studio import discover
+        cat = discover.parse_cli_catalog(FAKE_CLI)
+        self.assertTrue(cat["ok"])
+        self.assertEqual([m["id"] for m in cat["offered"]], ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"])
+        self.assertEqual(cat["offered"][0]["label"], "Claude Opus 5")
+        self.assertEqual(set(cat["known"]), {"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-opus-4-1"})
+        nothing = discover.parse_cli_catalog(b"a different build")
+        self.assertFalse(nothing["ok"])
+        self.assertIn("no model catalog", nothing["error"])
+
+    def test_cli_catalog_is_cached_per_file_version(self):
+        import tempfile
+        from studio import discover
+        with tempfile.NamedTemporaryFile(suffix=".exe", delete=False) as fh:
+            fh.write(FAKE_CLI)
+        self.addCleanup(os.remove, fh.name)
+        first = discover.read_cli_catalog(fh.name)
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["path"], fh.name)
+        self.assertEqual(discover.read_cli_catalog(fh.name)["known"], first["known"])
+
+    def test_api_catalog_pages_through_v1_models(self):
+        import io
+        import urllib.request
+        from studio import discover
+        pages = {
+            "": {"data": [{"id": "claude-opus-5", "display_name": "Claude Opus 5", "created_at": "2026-04-01T00:00:00Z"}],
+                 "has_more": True, "last_id": "claude-opus-5"},
+            "claude-opus-5": {"data": [{"id": "claude-new-6", "display_name": "Claude New 6", "created_at": "2026-09-01T00:00:00Z"}],
+                              "has_more": False, "last_id": "claude-new-6"},
+        }
+        seen = []
+
+        class Reply(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_open(req, timeout=0):
+            seen.append((req.full_url, req.get_header("X-api-key")))
+            after = req.full_url.split("after_id=")[1] if "after_id=" in req.full_url else ""
+            return Reply(json.dumps(pages[after]).encode("utf-8"))
+
+        real = urllib.request.urlopen
+        urllib.request.urlopen = fake_open
+        try:
+            got = discover.read_api_catalog(key="sk-test", url="https://example.test/v1/models")
+        finally:
+            urllib.request.urlopen = real
+        self.assertTrue(got["ok"])
+        self.assertEqual([m["id"] for m in got["models"]], ["claude-opus-5", "claude-new-6"])
+        self.assertEqual(len(seen), 2)
+        self.assertEqual(seen[0][1], "sk-test")
+        self.assertIn("after_id=claude-opus-5", seen[1][0])
+        self.assertFalse(discover.read_api_catalog(key="", url="https://example.test/")["ok"], "no key, no call")
+
+    def test_cached_catalog_beats_the_binary_seed(self):
+        import tempfile
+        from studio import discover
+        home = tempfile.mkdtemp(prefix="claude-home-")
+        self.addCleanup(__import__("shutil").rmtree, home, True)
+        folder = os.path.join(home, "cache", "model-catalog")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "cc-x.json"), "w", encoding="utf-8") as fh:
+            json.dump({"fetchedAt": 1, "catalog": {"surface": "cc", "config": {"models": [
+                {"id": "claude-next-7", "name": "Next 7", "section": "main"}]}}}, fh)
+        with open(os.path.join(folder, "broken.json"), "w", encoding="utf-8") as fh:
+            fh.write("{nope")
+        self.assertEqual(discover.read_cached_catalog(home),
+                         [{"id": "claude-next-7", "label": "Claude Next 7"}])
+        self.assertEqual(discover.read_cached_catalog(os.path.join(home, "absent")), [])
+        # the binary's picker rows survive a release that adds fields between name and section
+        rows = discover.parse_cli_catalog(
+            b'{id:"claude-a-1",family:"a",display_name:"A 1"}'
+            b'{id:"claude-a-1",name:"A 1",short_name:"A",extra:{x:1},section:"main"}')
+        self.assertEqual([m["id"] for m in rows["offered"]], ["claude-a-1"])
+
+    def test_plan_adds_offered_removes_unknown_never_empties(self):
+        from studio import discover
+        current = [{"id": "claude-opus-5", "alias": "opus", "label": "Claude Opus 5", "note": "n"},
+                   {"id": "claude-haiku-4-5-20251001", "alias": "haiku", "label": "Claude Haiku 4.5", "note": ""},
+                   {"id": "claude-gone-3", "label": "Gone", "note": ""}]
+        cli = discover.parse_cli_catalog(FAKE_CLI)
+        api = {"ok": True, "models": [
+            {"id": "claude-opus-5", "label": "Claude Opus 5", "created": "2026-04-01"},
+            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5", "created": "2025-10-01"},
+            {"id": "claude-new-6", "label": "Claude New 6", "created": "2026-09-01"},
+            {"id": "claude-new-6-20260901", "label": "Claude New 6", "created": "2026-09-01"},
+            {"id": "claude-old-2", "label": "Claude Old 2", "created": "2024-01-01"},
+        ]}
+        new, added, candidates = discover.plan(current, cli, api, "2026-09-09")
+        self.assertEqual([m["id"] for m in added], ["claude-sonnet-5", "claude-new-6"],
+                         "Claude Code's picker and anything newer than what is listed; a dated "
+                         "snapshot of a bare id is the same model; the back catalogue is not")
+        self.assertIn("added automatically on 2026-09-09", added[0]["note"])
+        self.assertEqual([m["id"] for m in candidates], ["claude-gone-3"], "unknown to every source")
+        self.assertEqual([m["id"] for m in new][:3],
+                         ["claude-opus-5", "claude-haiku-4-5-20251001", "claude-gone-3"],
+                         "the dated haiku is known by its bare id; a candidate is still listed")
+        self.assertEqual(new[0]["alias"], "opus", "existing entries are untouched")
+
+        cli_only = discover.plan(current, cli, {"ok": False, "models": []}, "2026-09-09")
+        self.assertEqual([m["id"] for m in cli_only[1]], ["claude-sonnet-5"])
+        self.assertEqual([m["id"] for m in cli_only[2]], ["claude-gone-3"])
+
+        nothing, added, candidates = discover.plan(current, {"ok": False}, {"ok": False}, "2026-09-09")
+        self.assertEqual((nothing, added, candidates), (current, [], []), "no source, no change")
+
+    def test_removals_need_the_api_or_a_refused_probe(self):
+        """An older Claude Code passes an id its table lacks straight to the API and it works
+        (Fable 5.1 on 2.1.252), so the binary's table alone never removes a model."""
+        from studio import discover
+        gone = {"id": "claude-gone-3", "label": "Gone", "note": ""}
+        fine = {"id": "claude-fable-5-1", "label": "Fable", "note": ""}
+        asked = []
+
+        def probe(model_id):
+            asked.append(model_id)
+            return {"ok": model_id == "claude-fable-5-1"}
+
+        removed, checked = discover.removals([gone, fine], api_answered=False, probe=probe, keep_one=False)
+        self.assertEqual([m["id"] for m in removed], ["claude-gone-3"])
+        self.assertEqual(checked, {"claude-gone-3": False, "claude-fable-5-1": True})
+        self.assertEqual(asked, ["claude-gone-3", "claude-fable-5-1"])
+
+        removed, checked = discover.removals([gone, fine], api_answered=True, probe=probe, keep_one=False)
+        self.assertEqual([m["id"] for m in removed], ["claude-gone-3", "claude-fable-5-1"],
+                         "absent from Anthropic's list means gone, no call needed")
+        self.assertEqual(checked, {})
+
+        removed, _ = discover.removals([gone], api_answered=True, probe=probe, keep_one=True)
+        self.assertEqual(removed, [], "never emptied")
+
+    def test_run_reports_without_saving(self):
+        from studio import discover
+        report = discover.run(save=False)
+        self.assertIn("cli", report["sources"])
+        self.assertIn("api", report["sources"])
+        self.assertIsInstance(report["added"], list)
+        self.assertIn("at", report)
+        status = discover.status()
+        self.assertIn("hours", status)
+        self.assertIn("apiConfigured", status)
 
 
 class TestLog(unittest.TestCase):

@@ -21,7 +21,7 @@ from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, curriculum, generator, jupyter, manage, prefs, progress, reviews
+from . import claude_cli, curriculum, discover, generator, jupyter, manage, models, prefs, progress, reviews
 from . import log as logmod
 from .errors import GenerationError
 from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, store
@@ -256,7 +256,8 @@ def state() -> Dict[str, Any]:
     return {
         "courses": courses,
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or "",
-                   "model": PREFS.model, "models": models_view()},
+                   "model": PREFS.model, "models": models_view(),
+                   "defaultModel": SETTINGS.model_id(PREFS.model)},
         "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
         "jupyter": jupyter_public(),
         "root": REPO_ROOT,
@@ -279,8 +280,11 @@ def profiles_view() -> Dict[str, Any]:
 
 def models_view() -> List[Dict[str, str]]:
     """The models a form may pick from, as the UI shows them: `/api/state` carries the list
-    so every writing form can offer it without a second request."""
-    return [{"id": m[0], "name": m[1], "note": m[2]} for m in prefs.MODELS]
+    so every writing form can offer it without a second request. `id` is the name a form
+    sends (the CLI alias); `apiId` is the full id a served course page stores and sends to
+    the API."""
+    return [{"id": m[0], "name": m[1], "note": m[2], "apiId": SETTINGS.model_id(m[0])}
+            for m in prefs.models()]
 
 
 def settings_view() -> Dict[str, Any]:
@@ -290,6 +294,8 @@ def settings_view() -> Dict[str, Any]:
         "model": PREFS.model,
         "profile": PREFS.profile,
         "models": models_view(),
+        "modelList": models.current(),
+        "discovery": discover.status(),
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or ""},
         "jupyter": jupyter_public(),
         "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,

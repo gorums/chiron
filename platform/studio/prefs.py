@@ -1,8 +1,11 @@
 """Studio-wide preferences: `state/studio.json`.
 
-Tiny by design. Today it holds one thing - the model every generation and tutor call should
-ask Claude Code for - because that was the setting whose absence broke a run. Anything
-course-specific belongs in `course.json`; anything per-browser belongs in the page.
+Tiny by design. It holds the model every generation and tutor call should ask Claude Code
+for - the setting whose absence once broke a run - and the reader profile. The list that
+model is chosen from is not here: it is `SETTINGS.models`, the platform's list under
+whatever the settings page saved over it (`studio/models.py`), read live so a model added a
+minute ago is already allowed. Anything course-specific belongs in `course.json`; anything
+per-browser belongs in the page.
 """
 
 from __future__ import annotations
@@ -15,10 +18,17 @@ from . import claude_cli
 from .files import read_json, write_json
 from .ids import DEFAULT_PROFILE, is_profile
 
-# (alias, label, note) for every model in settings.json - the only list Settings offers.
-MODELS = tuple((m.get("alias") or m["id"], m.get("label") or m["id"], m.get("note", ""))
-               for m in SETTINGS.models)
-_ALLOWED = {m[0] for m in MODELS}
+
+
+def models() -> tuple:
+    """(alias, label, note) for every model in use - the only list Settings offers. Read on
+    every call, not once: the list is editable from the settings page (`studio/models.py`)."""
+    return tuple((m.get("alias") or m["id"], m.get("label") or m["id"], m.get("note", ""))
+                 for m in SETTINGS.models)
+
+
+def allowed() -> set:
+    return {m[0] for m in models()}
 
 
 class Prefs:
@@ -33,7 +43,7 @@ class Prefs:
                 data = loaded
         except (OSError, ValueError):
             pass
-        model = data.get("model") if data.get("model") in _ALLOWED else claude_cli.DEFAULT_MODEL
+        model = data.get("model") if data.get("model") in allowed() else claude_cli.default_model()
         profile = str(data.get("profile") or DEFAULT_PROFILE).strip().lower()
         if not is_profile(profile):
             profile = DEFAULT_PROFILE
@@ -43,9 +53,9 @@ class Prefs:
         current = self.load()
         if "model" in changes:
             model = str(changes["model"] or "").strip()
-            if model not in _ALLOWED:
+            if model not in allowed():
                 raise ValueError("Unknown model '%s'. Choose one of: %s."
-                                 % (model, ", ".join(sorted(_ALLOWED))))
+                                 % (model, ", ".join(sorted(allowed()))))
             current["model"] = model
         if "profile" in changes:
             profile = str(changes["profile"] or "").strip().lower()

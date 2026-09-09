@@ -37,6 +37,9 @@ c.ServerApp.port = int(SETTINGS.get("jupyter.port"))
 c.ServerApp.open_browser = False
 c.ServerApp.root_dir = SETTINGS.courses_dir
 c.ServerApp.allow_remote_access = host in ANY_HOST
+# The container runs as root, and Jupyter refuses to start as root unless told so; on the
+# host this is a no-op for an ordinary user.
+c.ServerApp.allow_root = True
 c.ServerApp.terminals_enabled = False
 c.FileContentsManager.delete_to_trash = False
 

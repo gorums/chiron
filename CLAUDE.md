@@ -1,3 +1,7 @@
+# Remember this
+
+When reporting information to me, be extremely concise and sacrifice grammar for the sake of concision.
+
 # Course platform
 
 A generic engine for building interactive study courses. You describe a theme and an hour
@@ -60,11 +64,15 @@ Resolution, later layers winning:
 |---|---|
 | `platform/settings.json` | the committed defaults |
 | `SETTINGS_FILE` | an optional JSON overlay, deep-merged: a different model list, longer timeouts |
+| `state/settings.json` | what Studio's settings page saved - today the model list (`studio/models.py`); deep-merged the same way, written only by Studio, reported as source `Studio` |
 | `.env` at the repo root | the scalar knobs in `settings.ENV_KEYS` (`STUDIO_PORT`, `BRIDGE_HOST`, `STUDIO_MODEL`, `JUPYTER_TOKEN`, ...) |
 | the environment | the same names, winning over `.env` |
 
 An environment value is coerced to the type of the default it replaces, so `STUDIO_PORT`
-becomes an int. `SETTINGS.overrides` records which layer supplied each overridden key;
+becomes an int. `SETTINGS.reload()` re-reads every layer into the same object, which is how
+a list saved on the settings page reaches every module without a restart; anything derived
+from the model list is therefore a function (`claude_cli.model_aliases()`,
+`prefs.models()`), never a module constant. `SETTINGS.overrides` records which layer supplied each overridden key;
 `build.py where` prints them and the Studio settings page (`#/settings`) lists every
 resolved value with its source. Studio's own preference file, `state/studio.json`, sits on
 top of all of this for the one thing the UI edits: the model.
@@ -136,8 +144,8 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      68 tests — engine, and the code conventions below
-python platform/tests/test_studio.py     117 tests — Studio
+python platform/tests/test_build.py      70 tests — engine, and the code conventions below
+python platform/tests/test_studio.py     131 tests — Studio
 npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
 
@@ -582,6 +590,8 @@ reading validation errors next to the course they belong to.
 | `figures` | figures for one module: parse the delimited reply, write `figures/<mid>-<n>.svg`, put the references in the text |
 | `notebooks` | notebooks for one module: parse the delimited cells, write `notebooks/<mid>-<n>.ipynb`, put the references in the text |
 | `jupyter` | the Jupyter server: is it reachable, and what a served page is told (`GET /api/jupyter`); `build.py jupyter` |
+| `models` | the model list Studio offers: validated, saved to `state/settings.json`, live everywhere after `SETTINGS.reload()`; `GET/PUT /api/models`, `/api/models/reset`, `/api/models/test` |
+| `discover` | keeps that list current without anyone typing an id: Claude Code's catalog read out of the installed binary, Anthropic's `GET /v1/models` when a key is set; `plan()` merges, `schedule()` runs daily, `POST /api/models/discover` runs now |
 | `reviews` | what Claude or the owner thinks of a module, under `state/reviews/` |
 | `catalog` | what the API reports: `course_summary`, `course_detail`, `state`, `calendar`, `settings_view` |
 | `runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |
@@ -612,8 +622,44 @@ person last chose interactively, and the headless SDK path rejects some of those
 context variant fails with `unrecognized_model`) — which is how a run died at module 8 of 9.
 `claude_cli.model_chain()` tries the requested alias, then Studio's default (`prefs`, env
 `STUDIO_MODEL`, else `models.default` in `settings.json`), then the bare CLI as a last
-resort. `prefs.MODELS` is the only list the Settings page offers, and it is `models.list`
-from `settings.json`. **Every form that writes a course picks its model** - new course,
+resort. `prefs.models()` is the only list the Settings page offers, and it is
+`SETTINGS.models`: `models.list` from `settings.json` under whatever the settings page
+saved over it. **The list is editable without touching a committed file.** The "Models on
+offer" card on `#/settings` (`ui/js/31-models.js`) edits id, alias, label and note per row,
+reorders, adds and removes; Save is `PUT /api/models` with the whole list, which
+`studio/models.py` validates (an id `claude --model` would take, no name used twice, never
+empty) and writes to `state/settings.json`, the Studio layer of the settings, then
+`SETTINGS.reload()`. "Back to the platform's list" is `POST /api/models/reset`. A row's
+Test button is `POST /api/models/test`: `claude_cli.probe` asks the CLI once with that
+model only, no fallback chain, within `claude.probeTimeout`, so a typo or a retired id is
+refused on the settings page and not at module 8 of a run. A served course page adopts the
+list Studio reports in `/api/state` (`adoptStudioModels` in `14-conn.js`, `claude.models`
+with `apiId` and `claude.defaultModel`), so it needs no rebuild; a page off disk keeps the
+list it was built with, and the bridge reads the layer when it starts.
+
+**Nobody has to type a new model's id.** `studio/discover.py` keeps the list current from
+two sources: the catalog inside the installed `claude` binary (the rows its `/model` picker
+offers and the fuller table of everything `--model` accepts; `claude update` refreshes it,
+and Studio's calls go through that binary, so it is the list that decides whether a run
+works) and, when `ANTHROPIC_API_KEY` is set in `.env` or the environment (`anthropic.apiKey`,
+masked on the settings page with the other `SECRET_KEYS`, never sent to a page), Anthropic's
+`GET /v1/models` (`anthropic.modelsUrl`), from which only models newer than the newest one
+already listed are taken. Claude Code's picker rows come from the catalog it last fetched
+(`cache/model-catalog/*.json` under `CLAUDE_CONFIG_DIR` or `~/.claude`) when there is one,
+else from the seed in the binary. `plan()` is the pure merge: offered and missing is added
+with a note saying when and from where; listed but unknown to every source that answered is
+a *candidate*; a dated snapshot and its bare id are one model. `removals()` decides the
+candidates: absent from Anthropic's list means gone; unknown to the binary's table alone is
+not enough - Claude Code 2.1.252 in the image accepted `claude-fable-5-1` without listing
+it - so such a candidate stays unless one real call (`claude_cli.probe`) is refused. The
+list is never emptied. `run()` applies it through `models.replace` and writes
+`state/models-discovery.json`; `schedule()` runs it `discovery.startDelaySeconds` after
+Studio starts and every `discovery.hours` (0 turns it off); the Models card shows the last
+check and has "Check now". Reading the binary is a regex over its bytes (`CLI_SELECTOR`,
+`CLI_CATALOG`), so a build that changes the shape reports "could not be read" and changes
+nothing. Studio on the host and Studio in the container share `state/settings.json`, so
+each check is made against the Claude Code that runs it. **Every form that
+writes a course picks its model** - new course,
 resume, add a module, patch or rewrite - from the same list (`ui/js/28-model.js`:
 `modelChoice`, `modelBrief`), preselected to Studio's default and sent as `model` in the
 request; `Handler._model` keeps a known alias or id for that job alone and falls back to

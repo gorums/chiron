@@ -33,6 +33,20 @@ function tutorModelLabel() {
   const found = PLATFORM.models.find(m => m.id === id);
   return found ? found.label : id;
 }
+/* The model list Studio reports replaces the one this page was built with, in place, so a
+   model added on Studio's settings page is offered here without a rebuild. A saved pick
+   that the new list no longer has falls back to the default through modelFor(). */
+function adoptStudioModels(claude) {
+  const list = Array.isArray(claude.models) ? claude.models.filter(m => m && m.apiId) : [];
+  if (!list.length) return;
+  PLATFORM.models.splice(
+    0,
+    PLATFORM.models.length,
+    ...list.map(m => ({ id: m.apiId, label: m.name || m.apiId }))
+  );
+  if (claude.defaultModel) PLATFORM.defaultModel = claude.defaultModel;
+  if (typeof syncModelPickers === "function") syncModelPickers();
+}
 function isLocalFile() {
   return location.protocol === "file:";
 }
@@ -55,6 +69,7 @@ async function checkStudio() {
     clearTimeout(t);
     const j = await r.json();
     studioOk = !!(j && j.claude && j.claude.available);
+    if (j && j.claude) adoptStudioModels(j.claude);
   } catch (e) {
     studioOk = false;
   }

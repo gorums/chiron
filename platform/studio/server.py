@@ -23,6 +23,11 @@ trust both. The table at the bottom of the class lists every route in one place.
     POST /api/import/git                    clone a course repository  {url}    -> {course}
     GET  /api/settings                      Studio-wide preferences (model), paths, log file
     POST /api/settings                      change them  {model}
+    GET  /api/models                        the model list in use, and whether it is Studio's own
+    PUT  /api/models                        replace it  {list: [{id, alias, label, note}]}
+    POST /api/models/reset                  forget Studio's list; the platform's applies again
+    POST /api/models/test                   ask the CLI once, this model only  {model} -> {ok, seconds, error}
+    POST /api/models/discover               look for new or retired models now (Claude Code's catalog, Anthropic's list)
     GET  /api/logs?limit=&level=&q=         the newest log lines, for the Settings page
     POST /api/logs/clear                    empty the in-memory buffer (the file is kept)
     GET  /api/courses/<id>                  one course in detail: parts, modules, files, progress
@@ -79,7 +84,8 @@ from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
-from . import (catalog, claude_cli, curriculum, editing, generator, jobs, jupyter, manage, progress,
+from . import (catalog, claude_cli, curriculum, discover, editing, generator, jobs, jupyter, manage, models,
+               progress,
                reviews, search, transfer)
 from . import log as logmod
 from .errors import GenerationError
@@ -256,7 +262,7 @@ class Handler(BaseHTTPRequestHandler):
         """The model a job should use: the request's, else Studio's default. Every writing
         form offers the list from settings.json; an unknown name falls back to the default."""
         asked = str(brief.get("model") or "").strip()
-        return asked if asked in claude_cli.MODEL_ALIASES else PREFS.model
+        return asked if asked in claude_cli.model_aliases() else PREFS.model
 
     def _start_job(self, job: jobs.Job, work: Callable[[jobs.Job], Any]) -> None:
         REGISTRY.add(job).start(work)
@@ -320,6 +326,45 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(str(exc))
         log.info("settings: model -> %s", saved["model"])
         self._json({"ok": True, "settings": catalog.settings_view()})
+
+    # ---- the model list ----
+
+    @route("GET", r"/api/models")
+    def models_get(self):
+        self._json(models.current())
+
+    @route("PUT", r"/api/models")
+    def models_put(self):
+        try:
+            saved = models.replace(self._body().get("list"))
+        except ValueError as exc:
+            return self._fail(str(exc))
+        log.info("settings: model list -> %s", ", ".join(m["id"] for m in saved["list"]))
+        self._json({"ok": True, "models": saved, "settings": catalog.settings_view()})
+
+    @route("POST", r"/api/models/reset")
+    def models_reset(self):
+        self._body()
+        saved = models.reset()
+        log.info("settings: model list back to the platform's")
+        self._json({"ok": True, "models": saved, "settings": catalog.settings_view()})
+
+    @route("POST", r"/api/models/discover")
+    def models_discover(self):
+        self._body()
+        report = discover.run()
+        self._json({"ok": True, "report": report, "models": models.current(),
+                    "settings": catalog.settings_view()})
+
+    @route("POST", r"/api/models/test")
+    def models_test(self):
+        body = self._body()
+        if not self._claude():
+            return
+        model = str(body.get("model") or "").strip()
+        if not models.MODEL_ID.match(model):
+            return self._fail("Send the model id to test.")
+        self._json(claude_cli.probe(model))
 
     @route("GET", r"/api/logs")
     def logs(self):
@@ -788,6 +833,7 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = "") -
 
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    discover.schedule()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

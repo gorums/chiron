@@ -912,6 +912,56 @@ table.paths td:first-child {
   color: var(--muted);
   white-space: nowrap;
 }
+.modelrows {
+  display: grid;
+  gap: 8px;
+}
+.modelrow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.modelrow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.modelrow .fields {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 1fr 2fr;
+  gap: 8px;
+}
+.modelrow .fields input {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.modelrow .fields input.id,
+.modelrow .fields input.alias {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.modelrow .tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+.modelrow .tools .pill {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .modelrow {
+    grid-template-columns: 1fr;
+  }
+  .modelrow .fields {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 .logbox {
   margin: 0;
   max-height: 52vh;

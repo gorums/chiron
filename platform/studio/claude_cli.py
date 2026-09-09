@@ -19,7 +19,7 @@ import re
 import shutil
 import subprocess
 import time
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from coursekit.settings import SETTINGS
 
@@ -31,16 +31,26 @@ DEFAULT_TIMEOUT = int(SETTINGS.get("claude.timeout"))
 JSON_ATTEMPTS = int(SETTINGS.get("claude.jsonAttempts"))
 CHAT_HISTORY = int(SETTINGS.get("claude.chatHistory"))
 
-# Every accepted spelling of a model -> the short alias the CLI takes. Unknown values are
-# dropped rather than passed through. The list is `models.list` in settings.json.
-MODEL_ALIASES = SETTINGS.model_aliases
+# One probe call has to answer well inside a job's timeout, or the settings page hangs.
+PROBE_TIMEOUT = int(SETTINGS.get("claude.probeTimeout"))
+PROBE_PROMPT = "Reply with the single word OK and nothing else."
 
-# Every call names its model. Without `--model` the CLI inherits whatever the person last
-# picked interactively - which can be a model the headless SDK path does not accept (a
-# `[1m]` context variant, say), and then a run dies mid-module with "unrecognized_model".
-# `models.default` in settings.json; STUDIO_MODEL in .env or the environment overrides it,
-# and Studio's own preference (state/studio.json) overrides that per call.
-DEFAULT_MODEL = SETTINGS.default_model
+
+def model_aliases() -> Dict[str, str]:
+    """Every accepted spelling of a model -> the short alias the CLI takes. Unknown values
+    are dropped rather than passed through. Read per call, not once at import: the list is
+    `models.list` in settings.json under whatever Studio's settings page saved over it."""
+    return SETTINGS.model_aliases
+
+
+def default_model() -> str:
+    """Every call names its model. Without `--model` the CLI inherits whatever the person
+    last picked interactively - which can be a model the headless SDK path does not accept
+    (a `[1m]` context variant, say), and then a run dies mid-module with
+    "unrecognized_model". `models.default` in settings.json; STUDIO_MODEL in .env or the
+    environment overrides it, and Studio's own preference (state/studio.json) overrides that
+    per call."""
+    return SETTINGS.default_model
 
 
 def timeout_for(step: str) -> int:
@@ -112,11 +122,8 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT, what: s
         )
 
     os.makedirs(_SCRATCH, exist_ok=True)
-    base = ["-p", "--output-format", "text"]
-    attempts = []
-    for alias in model_chain(model):
-        attempts.append(base + ["--model", alias])
-    attempts.append(base)                       # last resort: whatever the CLI defaults to
+    attempts = [_HEADLESS + ["--model", alias] for alias in model_chain(model)]
+    attempts.append(list(_HEADLESS))            # last resort: whatever the CLI defaults to
 
     last = ""
     for n, args in enumerate(attempts):
@@ -124,16 +131,7 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT, what: s
         started = time.time()
         _tell("call", phase="start", what=what, model=label, chars=len(prompt), timeout=timeout)
         try:
-            proc = subprocess.run(
-                _argv(cli, args),
-                input=prompt,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                encoding="utf-8",
-                errors="replace",
-                cwd=_SCRATCH,
-            )
+            proc = _run(cli, args, prompt, timeout)
         except subprocess.TimeoutExpired:
             log.error("claude %s: no answer within %ds (prompt %d chars)", label, timeout, len(prompt))
             _tell("call", phase="end", what=what, model=label, ok=False,
@@ -173,11 +171,57 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT, what: s
 def model_chain(model: str = "") -> list:
     """The aliases to try, in order: what was asked for, then Studio's default."""
     chain = []
-    for candidate in ((model or "").strip(), DEFAULT_MODEL):
-        alias = MODEL_ALIASES.get(candidate)
+    aliases = model_aliases()
+    for candidate in ((model or "").strip(), default_model()):
+        alias = aliases.get(candidate)
         if alias and alias not in chain:
             chain.append(alias)
     return chain
+
+
+def probe(model: str, timeout: int = PROBE_TIMEOUT) -> Dict[str, Any]:
+    """Does the CLI accept this model? One short call, this model only, no fallback - the
+    settings page asks before a model just added is trusted with a forty-minute run.
+    Returns {ok, seconds, reply | error}; never raises for a refused model."""
+    cli = find_cli()
+    if not cli:
+        return {"ok": False, "seconds": 0, "error": "Claude Code is not on this PATH."}
+    os.makedirs(_SCRATCH, exist_ok=True)
+    started = time.time()
+    try:
+        proc = _run(cli, _HEADLESS + ["--model", model], PROBE_PROMPT, timeout)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "seconds": round(time.time() - started, 1),
+                "error": "no answer within %ds" % timeout}
+    except Exception as exc:  # noqa: BLE001 - the CLI could not start; the reason is the result
+        return {"ok": False, "seconds": round(time.time() - started, 1), "error": str(exc)[:300]}
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    took = round(time.time() - started, 1)
+    if proc.returncode == 0 and out:
+        log.info("claude probe %s: ok in %.1fs", model, took)
+        return {"ok": True, "seconds": took, "reply": out[:80]}
+    reason = err[:300] or out[:300] or "exit code %s with no output" % proc.returncode
+    log.warning("claude probe %s: refused in %.1fs: %s", model, took, reason)
+    return {"ok": False, "seconds": took, "error": reason}
+
+
+# The headless invocation every call is built on: one prompt on stdin, plain text back.
+_HEADLESS = ["-p", "--output-format", "text"]
+
+
+def _run(cli: str, args: list, prompt: str, timeout: int) -> subprocess.CompletedProcess:
+    """One CLI call from the scratch directory, the prompt on stdin."""
+    return subprocess.run(
+        _argv(cli, args),
+        input=prompt,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        encoding="utf-8",
+        errors="replace",
+        cwd=_SCRATCH,
+    )
 
 
 def chat_prompt(system: str, messages) -> str:

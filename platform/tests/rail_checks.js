@@ -139,4 +139,22 @@ assert(picker.split("<option").length - 1 === listed.length, "with every model o
 setTutorModel(listed[0]);
 assert(modelPicker().indexOf(`value="${listed[0]}" selected`) >= 0, "a new pick shows at once");
 
+/* served by Studio, the page takes the list Studio reports in place of the built-in one,
+   so a model added on the settings page is offered without a rebuild */
+const builtIn = PLATFORM.models.map(x => ({ id: x.id, label: x.label }));
+const builtInDefault = PLATFORM.defaultModel;
+adoptStudioModels({
+  models: [{ apiId: "claude-new-1", name: "New" }],
+  defaultModel: "claude-new-1",
+});
+assert(
+  PLATFORM.models.length === 1 && PLATFORM.models[0].id === "claude-new-1",
+  "the list is replaced"
+);
+assert(modelFor(conn()) === "claude-new-1", "a pick the new list lacks means the new default");
+adoptStudioModels({ models: [], defaultModel: "" });
+assert(PLATFORM.models.length === 1, "an empty report changes nothing");
+PLATFORM.models.splice(0, 1, ...builtIn);
+PLATFORM.defaultModel = builtInDefault;
+
 console.log("rail checks passed");

@@ -711,7 +711,7 @@ class TestSettings(unittest.TestCase):
     def test_environment_beats_dotenv_beats_file_and_is_typed(self):
         s = settings.load(env={"STUDIO_PORT": "9000", "STUDIO_MODEL": "claude-opus-5"},
                           dotenv={"STUDIO_PORT": "9500", "BRIDGE_PORT": "9001", "BRIDGE_HOST": "0.0.0.0"},
-                          overlay="")
+                          overlay="", studio_file="")
         self.assertEqual(s.get("studio.port"), 9000)
         self.assertIsInstance(s.get("studio.port"), int)
         self.assertEqual(s.default_model, "opus")
@@ -720,10 +720,10 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(s.overrides["bridge.port"], ".env")
         self.assertNotIn("studio.host", s.overrides)
         with self.assertRaises(settings.SettingsError):
-            settings.load(env={"STUDIO_PORT": "eighty"}, dotenv={}, overlay="")
+            settings.load(env={"STUDIO_PORT": "eighty"}, dotenv={}, overlay="", studio_file="")
 
     def test_explicit_bridge_url_wins(self):
-        s = settings.load(env={"BRIDGE_URL": "http://tutor.local:1234/"}, dotenv={}, overlay="")
+        s = settings.load(env={"BRIDGE_URL": "http://tutor.local:1234/"}, dotenv={}, overlay="", studio_file="")
         self.assertEqual(s.bridge_url, "http://tutor.local:1234")
         self.assertEqual(s.page()["bridgeUrl"], "http://tutor.local:1234")
 
@@ -732,7 +732,7 @@ class TestSettings(unittest.TestCase):
             "studio": {"port": 8100},
             "models": {"default": "mini", "list": [{"id": "claude-mini-9", "alias": "mini", "label": "Mini"}]},
         })
-        s = settings.load(env={}, dotenv={}, overlay=overlay)
+        s = settings.load(env={}, dotenv={}, overlay=overlay, studio_file="")
         self.assertEqual(s.get("studio.port"), 8100)
         self.assertEqual(s.get("studio.host"), settings.SETTINGS.get("studio.host"), "untouched keys survive")
         self.assertEqual(s.default_model, "mini")
@@ -740,21 +740,65 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(s.overrides["studio.port"], overlay)
         self.assertIn({"key": "studio.port", "value": 8100, "source": overlay}, s.describe())
 
+    def test_secrets_are_masked_and_stay_off_the_page(self):
+        """`SECRET_KEYS` (the API key, the Jupyter token) show as set or empty on the settings
+        page and never reach `page()`."""
+        s = settings.load(env={"ANTHROPIC_API_KEY": "sk-ant-test-secret"}, dotenv={}, overlay="",
+                          studio_file="")
+        self.assertEqual(s.get("anthropic.apiKey"), "sk-ant-test-secret")
+        rows = {r["key"]: r["value"] for r in s.describe()}
+        self.assertEqual(rows["anthropic.apiKey"], "(set)")
+        self.assertEqual(rows["jupyter.token"], "(set)")
+        self.assertNotIn("sk-ant-test-secret", json.dumps(s.describe()))
+        self.assertNotIn("sk-ant-test-secret", json.dumps(s.page()))
+        self.assertNotIn("apiKey", json.dumps(s.page()))
+        blank = settings.load(env={}, dotenv={}, overlay="", studio_file="")
+        self.assertEqual({r["key"]: r["value"] for r in blank.describe()}["anthropic.apiKey"], "")
+
+    def test_studio_layer_sits_between_overlay_and_environment(self):
+        """The list Studio's settings page saves lives in <state>/settings.json, read over
+        the platform defaults and the overlay, under .env and the environment; reload()
+        picks up a change without a restart."""
+        studio = self._file("studio-settings.json", {
+            "models": {"list": [{"id": "claude-new-1", "alias": "new", "label": "New"}]},
+            "studio": {"port": 8200},
+        })
+        s = settings.load(env={"STUDIO_PORT": "9300"}, dotenv={}, overlay="", studio_file=studio)
+        self.assertEqual([m["id"] for m in s.models], ["claude-new-1"])
+        self.assertEqual(s.overrides["models.list"], settings.STUDIO_SOURCE)
+        self.assertEqual(s.default_model, "new", "an unknown default falls back to the first")
+        self.assertEqual(s.get("studio.port"), 9300, "the environment still wins over Studio")
+        self.assertEqual(s.studio_file, studio)
+
+        with open(studio, "w", encoding="utf-8") as fh:
+            json.dump({"models": {"list": [{"id": "claude-newer-2", "alias": "newer"}]}}, fh)
+        s.reload()
+        self.assertEqual([m["id"] for m in s.models], ["claude-newer-2"])
+        self.assertEqual(s.get("studio.port"), 9300)
+
+        off = settings.load(env={}, dotenv={}, overlay="", studio_file="")
+        self.assertEqual(off.studio_file, "")
+        self.assertNotIn("models.list", off.overrides)
+        missing = settings.load(env={}, dotenv={}, overlay="",
+                                studio_file=os.path.join(self.tmp, "absent.json"))
+        self.assertEqual([m["id"] for m in missing.models], [m["id"] for m in off.models],
+                         "no file, no layer")
+
     def test_paths_resolve_relative_to_the_repo(self):
         s = settings.load(env={"COURSES_DIR": "../elsewhere", "STUDIO_STATE_ROOT": self.tmp},
-                          dotenv={}, overlay="")
+                          dotenv={}, overlay="", studio_file="")
         self.assertEqual(s.courses_dir, os.path.normpath(os.path.join(settings.REPO_ROOT, "..", "elsewhere")))
         self.assertEqual(s.state_dir, os.path.normpath(self.tmp))
         self.assertEqual(s.progress_dir, os.path.join(os.path.normpath(self.tmp), "progress"))
 
     def test_missing_or_broken_file_is_loud(self):
         with self.assertRaises(settings.SettingsError):
-            settings.load(os.path.join(self.tmp, "absent.json"), env={}, dotenv={}, overlay="")
+            settings.load(os.path.join(self.tmp, "absent.json"), env={}, dotenv={}, overlay="", studio_file="")
         broken = os.path.join(self.tmp, "broken.json")
         with open(broken, "w", encoding="utf-8") as fh:
             fh.write("{")
         with self.assertRaises(settings.SettingsError):
-            settings.load(broken, env={}, dotenv={}, overlay="")
+            settings.load(broken, env={}, dotenv={}, overlay="", studio_file="")
 
 
 class TestShippedMarketingCourse(unittest.TestCase):
@@ -964,12 +1008,12 @@ class TestJupyterSettings(unittest.TestCase):
     CFG.platform (CLAUDE.md "Notebooks")."""
 
     def test_urls_and_token(self):
-        s = settings.load(env={"JUPYTER_PORT": "9888", "JUPYTER_HOST": "0.0.0.0"}, dotenv={}, overlay="")
+        s = settings.load(env={"JUPYTER_PORT": "9888", "JUPYTER_HOST": "0.0.0.0"}, dotenv={}, overlay="", studio_file="")
         self.assertEqual(s.jupyter_url, "http://127.0.0.1:9888")
         self.assertEqual(s.jupyter_internal_url, s.jupyter_url)
         self.assertNotIn(s.get("jupyter.token"), json.dumps(s.page()), "the token never reaches a built page")
         s = settings.load(env={"JUPYTER_URL": "http://jupyter.local:1234/",
-                               "JUPYTER_INTERNAL_URL": "http://jupyter:8888"}, dotenv={}, overlay="")
+                               "JUPYTER_INTERNAL_URL": "http://jupyter:8888"}, dotenv={}, overlay="", studio_file="")
         self.assertEqual(s.jupyter_url, "http://jupyter.local:1234")
         self.assertEqual(s.jupyter_internal_url, "http://jupyter:8888")
         self.assertIn("JUPYTER_TOKEN", settings.ENV_KEYS)

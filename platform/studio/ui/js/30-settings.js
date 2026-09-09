@@ -11,10 +11,11 @@ async function viewSettingsPage() {
     return;
   }
   if (route.name !== "settings") return;
+  loadModelEditor(s.modelList || {}, s.discovery || {});
   const models = (s.models || [])
     .map(
       m =>
-        `<label class="radio"><input type="radio" name="model" value="${esc(m.id)}" ${s.model === m.id ? "checked" : ""} onchange="saveStudioSettings()"> <b>${esc(m.name)}</b> <span class="sub" style="margin:0">— ${esc(m.note)}</span></label>`
+        `<label class="radio"><input type="radio" name="model" value="${esc(m.id)}" ${s.model === m.id ? "checked" : ""} onchange="saveStudioSettings()"> <b>${esc(m.name)}</b>${m.note ? ` <span class="sub" style="margin:0">— ${esc(m.note)}</span>` : ""}</label>`
     )
     .join("");
   $("#view").innerHTML = `
@@ -28,6 +29,8 @@ async function viewSettingsPage() {
       <div class="radios">${models}</div>
       <div id="settingsmsg"></div>
     </div>
+
+    ${modelEditorCard()}
 
     <div class="card">
       <p class="eyebrow">Reader profiles</p>
