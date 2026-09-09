@@ -329,6 +329,7 @@ function viewNew() {
           <label class="radio" style="margin:0"><input type="radio" name="f-notebooks" value="no"> <b>No</b></label>
         </div>
       </div>
+      ${modelChoice("f", "the curriculum, every module and the study data")}
       <div class="actions" style="margin-top:6px">
         <button class="btn" id="planbtn">Plan the course</button>
         <a class="btn ghost" href="#/">Cancel</a>
@@ -350,16 +351,21 @@ async function startGeneration() {
   btn.disabled = true;
   btn.textContent = "Designing the curriculum…";
   try {
-    const { job: j } = await api("/api/generate", {
-      theme,
-      hours: Number($("#f-hours").value) || 20,
-      practitioner: $("#f-practitioner").value.trim(),
-      audience: $("#f-audience").value.trim(),
-      notes: $("#f-notes").value.trim(),
-      figures: $("#f-figures").checked,
-      notebooks:
-        (document.querySelector('input[name="f-notebooks"]:checked') || {}).value || "auto",
-    });
+    const notebooks =
+      (document.querySelector('input[name="f-notebooks"]:checked') || {}).value || "auto";
+    const brief = Object.assign(
+      {
+        theme,
+        hours: Number($("#f-hours").value) || 20,
+        practitioner: $("#f-practitioner").value.trim(),
+        audience: $("#f-audience").value.trim(),
+        notes: $("#f-notes").value.trim(),
+        figures: $("#f-figures").checked,
+        notebooks,
+      },
+      modelBrief("f")
+    );
+    const { job: j } = await api("/api/generate", brief);
     location.hash = "#/job/" + j.id;
   } catch (err) {
     toast(err.message);

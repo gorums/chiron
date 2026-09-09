@@ -219,7 +219,7 @@ function paintJob(full) {
               "rsj",
               (STATE.courses || []).find(c => c.id === courseId),
               "for modules without any"
-            )
+            ) + modelChoice("rsj", "the modules still missing")
           : ""
       }
       <div class="actions">${job.kind === "generate" && courseId ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(courseId)}','rsj')">Resume the run</button>` : ""}${back}</div></div>`;

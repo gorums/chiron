@@ -117,4 +117,17 @@ assert(messageLabel(m, { r: "u", t: "q", sec: B }) === m.sections[B].h, "section
 assert(messageLabel(m, { r: "u", t: "q", step: "apply" }) === "Apply", "step label");
 assert(messageLabel(m, { r: "u", t: "q" }) === "", "no place, no label");
 
+/* the rail's menu lets the reader pick the tutor's model: the build's list, the current
+   one marked, and an id this build does not offer leaves the choice alone */
+const listed = PLATFORM.models.map(x => x.id);
+assert(listed.length >= 2, "a build lists more than one model");
+conn().model = "";
+assert(modelFor(conn()) === PLATFORM.defaultModel, "an empty pick means the default");
+assert(modelOptions().split("<option").length - 1 === listed.length, "every model is offered");
+setTutorModel(listed[1]);
+assert(conn().model === listed[1], "a pick from the menu is kept");
+assert(modelOptions().indexOf(`value="${listed[1]}" selected`) >= 0, "and shown as selected");
+setTutorModel("not-a-model");
+assert(conn().model === listed[1], "an unknown id changes nothing");
+
 console.log("rail checks passed");

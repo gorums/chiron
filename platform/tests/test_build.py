@@ -587,7 +587,7 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
     # Addresses, endpoints, model names and ports reach the page through CFG.platform,
     # built from platform/settings.json. A literal here would be a second source of truth.
     HARDCODED = ("api.anthropic.com/", "claude-sonnet", "claude-opus", "claude-haiku",
-                 "127.0.0.1", "localhost:", ":8787", ":8790", "anthropic-version\": \"20")
+                 "claude-fable", "127.0.0.1", "localhost:", ":8787", ":8790", "anthropic-version\": \"20")
 
     def test_no_hardcoded_endpoints_or_models_in_the_front_end(self):
         offenders = []

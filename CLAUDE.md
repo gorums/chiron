@@ -613,7 +613,19 @@ context variant fails with `unrecognized_model`) — which is how a run died at 
 `claude_cli.model_chain()` tries the requested alias, then Studio's default (`prefs`, env
 `STUDIO_MODEL`, else `models.default` in `settings.json`), then the bare CLI as a last
 resort. `prefs.MODELS` is the only list the Settings page offers, and it is `models.list`
-from `settings.json`.
+from `settings.json`. **Every form that writes a course picks its model** - new course,
+resume, add a module, patch or rewrite - from the same list (`ui/js/28-model.js`:
+`modelChoice`, `modelBrief`), preselected to Studio's default and sent as `model` in the
+request; `Handler._model` keeps a known alias or id for that job alone and falls back to
+the default otherwise. `/api/state` carries the list as `claude.models` so no form needs a
+second request. The one-click actions - Review with Claude, Draw figures, Write notebooks -
+have no form, so the Modules tab carries one pick for all three (`quickModelBar`,
+`quickModelBrief`; `modelPick.quick`, kept for the session) and their row-menu entries name
+the model that will run. In the course page the tutor's model sits in the rail's chat menu
+(`modelOptions` in `17-rail.js`, `setTutorModel` in `14-conn.js`) as well as on the Settings
+page; both write `STATE.bridge.model`, which every `askBridge` call sends. The default is
+Opus 5: the best writing for the price, with Fable 5.1 on the list for the course that has
+to be right and Sonnet or Haiku for a cheap patch.
 
 **A run can be resumed.** `generate()` saves the approved curriculum to `plan/plan.json`;
 `brief["resume"]` reloads it through `curriculum.load_plan` (or `reconstruct_plan()` rebuilds

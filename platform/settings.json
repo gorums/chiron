@@ -41,19 +41,25 @@
     "apiVersion": "2023-06-01"
   },
   "models": {
-    "default": "sonnet",
+    "default": "opus",
     "list": [
       {
         "id": "claude-sonnet-5",
         "alias": "sonnet",
         "label": "Claude Sonnet 5",
-        "note": "the sensible default: fast, capable, and always accepted headless"
+        "note": "fast and cheap; fine for a patch, a review or the tutor, thinner for a whole course"
       },
       {
         "id": "claude-opus-5",
         "alias": "opus",
         "label": "Claude Opus 5",
-        "note": "slower and dearer; for a course where the reasoning has to be best"
+        "note": "the default: the best writing for the price, and every run so far has finished on it"
+      },
+      {
+        "id": "claude-fable-5-1",
+        "alias": "fable",
+        "label": "Claude Fable 5.1",
+        "note": "the most capable; twice Opus's price and long turns; for the course that has to be right"
       },
       {
         "id": "claude-haiku-4-5-20251001",

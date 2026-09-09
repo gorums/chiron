@@ -38,8 +38,8 @@ function notebooksMenuItem(c, m) {
   const label = m.notebooks > 0 ? "Replace the notebooks" : "Write notebooks";
   const sub =
     m.notebooks > 0
-      ? `${m.notebooks} now · replaced by new ones`
-      : "a Jupyter notebook for its exercise, by Claude";
+      ? `${m.notebooks} now · replaced by new ones, by ${modelName(quickModel())}`
+      : `a Jupyter notebook for its exercise, by ${modelName(quickModel())}`;
   return `<button role="menuitem" onclick="closeMenus();writeNotebooks('${c.id}','${m.id}',false)" ${can ? "" : "disabled"}>${label}<small>${sub}</small></button>`;
 }
 
@@ -47,7 +47,7 @@ async function writeNotebooks(id, mid, all) {
   const base = `/api/courses/${encodeURIComponent(id)}`;
   const url = mid ? `${base}/modules/${encodeURIComponent(mid)}/notebooks` : `${base}/notebooks`;
   try {
-    const { job: j } = await api(url, { all: !!all });
+    const { job: j } = await api(url, Object.assign({ all: !!all }, quickModelBrief()));
     location.hash = "#/job/" + j.id;
   } catch (err) {
     toast(err.message);

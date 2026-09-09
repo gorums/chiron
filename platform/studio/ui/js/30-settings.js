@@ -24,7 +24,7 @@ async function viewSettingsPage() {
 
     <div class="card">
       <p class="eyebrow">Model</p>
-      <p class="sub" style="font-size:13.5px">The model Studio writes courses with and answers the tutor's questions through. If it is unavailable, Studio falls back to the platform default before giving up.</p>
+      <p class="sub" style="font-size:13.5px">The default for every generation and tutor call. Each form that writes a course - new, resume, add a module, patch or rewrite - offers the same list and can pick another model for that run alone. If a model is unavailable, Studio falls back to this one before giving up.</p>
       <div class="radios">${models}</div>
       <div id="settingsmsg"></div>
     </div>

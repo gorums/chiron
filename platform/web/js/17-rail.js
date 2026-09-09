@@ -346,6 +346,17 @@ function renderRailHead() {
       }
     </div>`;
 }
+/* The tutor's model, as <option>s with the current one selected: the same list the
+   Settings page offers, so the reader can switch without leaving the module. */
+function modelOptions() {
+  const current = modelFor(conn());
+  return PLATFORM.models
+    .map(
+      m =>
+        `<option value="${esc(m.id)}" ${m.id === current ? "selected" : ""}>${esc(m.label)}</option>`
+    )
+    .join("");
+}
 function toggleChatMenu() {
   rail.menuOpen = !rail.menuOpen;
   renderChatMenu();
@@ -408,6 +419,8 @@ function renderChatMenu() {
     ${loose.length ? `<div class="cmhead">Whole module</div>` + loose.map(convoRow).join("") : ""}
     ${others.length ? `<div class="cmhead">Other modules</div>` + others.map(convoRow).join("") : ""}
     <div class="cmfoot">
+      <label class="cmmodel">Answers from
+        <select aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>
       <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat here</button>
       ${cur && cur.msgs.length ? `<button class="btn sm" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
       <button class="btn sm ghost" onclick="go('#/marks')">All conversations</button>

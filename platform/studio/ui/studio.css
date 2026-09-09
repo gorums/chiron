@@ -1436,3 +1436,6 @@ table.paths td:first-child {
   flex: 1;
   font-size: 13.5px;
 }
+.modelbar select {
+  max-width: 320px;
+}

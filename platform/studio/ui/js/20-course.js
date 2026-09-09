@@ -141,7 +141,7 @@ function paintModules(c) {
           <button class="btn sm ghost kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" title="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">⋯</button>
           <div class="menu hidden" id="menu-${m.id}" role="menu">
             <a role="menuitem" href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(m.path)}">Edit the text<small>the markdown, by hand</small></a>
-            <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${STATE.claude.available ? "" : "disabled"}>${rv && !rv.ownerOnly ? "Review again" : "Review with Claude"}<small>a verdict, gaps, errors, quiz issues</small></button>
+            <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${STATE.claude.available ? "" : "disabled"}>${rv && !rv.ownerOnly ? "Review again" : "Review with Claude"}<small>a verdict, gaps, errors, quiz issues · ${esc(modelName(quickModel()))}</small></button>
             <button role="menuitem" onclick="closeMenus();acceptModule('${c.id}','${m.id}',${isGood ? "false" : "true"})">${isGood ? "Withdraw “good”" : "Mark as good"}<small>${isGood ? "back to the review's verdict" : "your verdict outranks the review"}</small></button>
             <button role="menuitem" onclick="closeMenus();toggleRewrite('${m.id}')">Patch or rewrite…<small>with notes, by Claude</small></button>
             ${figuresMenuItem(c, m)}
@@ -156,6 +156,7 @@ function paintModules(c) {
         <label for="rwn-${m.id}">What should change in ${esc(m.id)}?</label>
         <textarea id="rwn-${m.id}" rows="3" placeholder="Go much deeper on the worked example in Core concepts; the current version stops before the arithmetic. Keep the exercise.">${esc(route.query.rewrite === m.id && route.query.q ? route.query.q : "")}</textarea>
         ${mediaChoices("rw-" + m.id, c, "for a full rewrite")}
+        ${modelChoice("rw-" + m.id, "the patch or the new module")}
         <div class="rwmodes">
           <label class="radio"><input type="radio" name="rwmode-${m.id}" value="patch" ${route.query.rewrite === m.id && route.query.q ? "checked" : ""}> <b>Patch</b> <span class="sub" style="margin:0">— change only what the notes say. Every other sentence, the cards and the untouched quiz items stay as they are. Right for a review's findings.</span></label>
           <label class="radio"><input type="radio" name="rwmode-${m.id}" value="rewrite" ${route.query.rewrite === m.id && route.query.q ? "" : "checked"}> <b>Rewrite</b> <span class="sub" style="margin:0">— write the module again from its design, with the notes as direction. New text, new quiz, new cards.</span></label>
@@ -184,7 +185,7 @@ function paintModules(c) {
     })
     .join("");
   $("#tabbody").innerHTML =
-    (parts && figuresBar(c) + notebooksBar(c) + parts) ||
+    (parts && quickModelBar() + figuresBar(c) + notebooksBar(c) + parts) ||
     `<div class="card"><p class="sub" style="margin:0">This course has no readable modules yet.</p></div>`;
   if (route.query.rewrite) {
     const el = document.getElementById("rwn-" + route.query.rewrite);
@@ -256,7 +257,7 @@ async function reviewModule(id, mid) {
   try {
     const { job: j } = await api(
       `/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/review`,
-      {}
+      quickModelBrief()
     );
     location.hash = "#/job/" + j.id;
   } catch (err) {
@@ -588,7 +589,7 @@ async function rewriteModule(id, mid) {
   try {
     const { job: j } = await api(
       `/api/courses/${encodeURIComponent(id)}/modules/${encodeURIComponent(mid)}/rewrite`,
-      Object.assign({ notes: notes.trim(), mode }, mediaBrief("rw-" + mid))
+      Object.assign({ notes: notes.trim(), mode }, mediaBrief("rw-" + mid), modelBrief("rw-" + mid))
     );
     location.hash = "#/job/" + j.id;
   } catch (err) {
@@ -635,6 +636,7 @@ function paintAdd(c) {
       <textarea id="x-notes" placeholder="What confused you, what you want it to assume you already know, what to avoid.">${esc(seedNotes)}</textarea>
     </div>
     ${mediaChoices("x", c, "for the new module")}
+    ${modelChoice("x", "the design, the module and its study data")}
     <div class="actions">
       <button class="btn" id="extendbtn" onclick="extendCourse('${c.id}')" ${STATE.claude.available ? "" : "disabled"}>Design and write it</button>
     </div>
@@ -662,7 +664,8 @@ async function extendCourse(id) {
           minutes: Number($("#x-min").value) || 60,
           notes: $("#x-notes").value.trim(),
         },
-        mediaBrief("x")
+        mediaBrief("x"),
+        modelBrief("x")
       )
     );
     location.hash = "#/job/" + j.id;
@@ -706,6 +709,7 @@ function toggleResume(id) {
   out.innerHTML = `<div class="inlineform" style="margin-top:12px">
     <b>Resume the run.</b> <span class="sub" style="margin:0;font-size:13px">Keeps every module already written and writes only what is missing.</span>
     ${mediaChoices("rs", c, "for modules without any")}
+    ${modelChoice("rs", "the modules still missing")}
     <div class="actions">
       <button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(id)}','rs')">Resume</button>
       <button class="btn sm ghost" onclick="toggleResume('${esc(id)}')">Cancel</button>
@@ -716,7 +720,7 @@ async function resumeCourse(id, prefix) {
   try {
     const { job: j } = await api(
       `/api/courses/${encodeURIComponent(id)}/resume`,
-      mediaBrief(prefix || "rs")
+      Object.assign(mediaBrief(prefix || "rs"), modelBrief(prefix || "rs"))
     );
     location.hash = "#/job/" + j.id;
   } catch (err) {

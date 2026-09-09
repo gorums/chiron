@@ -256,7 +256,7 @@ def state() -> Dict[str, Any]:
     return {
         "courses": courses,
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or "",
-                   "model": PREFS.model},
+                   "model": PREFS.model, "models": models_view()},
         "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
         "jupyter": jupyter_public(),
         "root": REPO_ROOT,
@@ -277,13 +277,19 @@ def profiles_view() -> Dict[str, Any]:
     return {"active": PREFS.profile, "profiles": progress.profiles(PROGRESS_DIR)}
 
 
+def models_view() -> List[Dict[str, str]]:
+    """The models a form may pick from, as the UI shows them: `/api/state` carries the list
+    so every writing form can offer it without a second request."""
+    return [{"id": m[0], "name": m[1], "note": m[2]} for m in prefs.MODELS]
+
+
 def settings_view() -> Dict[str, Any]:
     """`GET /api/settings`: the model, every resolved platform setting with its source, and
     where things are."""
     return {
         "model": PREFS.model,
         "profile": PREFS.profile,
-        "models": [{"id": m[0], "name": m[1], "note": m[2]} for m in prefs.MODELS],
+        "models": models_view(),
         "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or ""},
         "jupyter": jupyter_public(),
         "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,

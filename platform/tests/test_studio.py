@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -585,7 +586,11 @@ class TestModelChoice(unittest.TestCase):
     """Every CLI call names a model; the chain says which ones, in order."""
 
     def test_requested_then_default(self):
-        self.assertEqual(claude_cli.model_chain("claude-opus-5"), ["opus", claude_cli.DEFAULT_MODEL])
+        from coursekit.settings import SETTINGS
+        other = next(m["id"] for m in SETTINGS.models
+                     if m.get("alias") != claude_cli.DEFAULT_MODEL)
+        alias = claude_cli.MODEL_ALIASES[other]
+        self.assertEqual(claude_cli.model_chain(other), [alias, claude_cli.DEFAULT_MODEL])
         self.assertEqual(claude_cli.model_chain(""), [claude_cli.DEFAULT_MODEL])
         self.assertEqual(claude_cli.model_chain("nonsense"), [claude_cli.DEFAULT_MODEL])
         self.assertEqual(claude_cli.model_chain(claude_cli.DEFAULT_MODEL), [claude_cli.DEFAULT_MODEL])
@@ -597,12 +602,25 @@ class TestModelChoice(unittest.TestCase):
         self.assertEqual(claude_cli.MODEL_ALIASES, SETTINGS.model_aliases)
         view = catalog.settings_view()
         self.assertEqual([m["id"] for m in view["models"]], [m[0] for m in prefs.MODELS])
+        self.assertEqual(catalog.state()["claude"]["models"], view["models"],
+                         "every writing form offers the list, so /api/state carries it")
         self.assertEqual(view["paths"]["settings"], SETTINGS.path)
+
         self.assertIn("STUDIO_PORT", view["envKeys"])
         keys = {row["key"] for row in view["platform"]}
         self.assertIn("studio.port", keys)
         self.assertIn("page.tutor.maxTokens", keys)
         self.assertEqual(server.DEFAULT_PORT, SETTINGS.get("studio.port"))
+
+    def test_a_request_may_name_the_model_for_one_job(self):
+        """Every writing form sends `model`; a known alias or id is used for that job alone,
+        anything else means Studio's default."""
+        from studio import server
+        pick = lambda brief: server.Handler._model(None, brief)  # noqa: E731
+        self.assertEqual(pick({"model": "haiku"}), "haiku")
+        self.assertEqual(pick({"model": "claude-fable-5-1"}), "claude-fable-5-1")
+        self.assertEqual(pick({"model": "claude-fable-5-1[1m]"}), catalog.PREFS.model)
+        self.assertEqual(pick({}), catalog.PREFS.model)
 
     def test_prefs_store(self):
         import shutil
@@ -1522,6 +1540,39 @@ class TestStaleReviews(unittest.TestCase):
 class TestServerConventions(unittest.TestCase):
     """The route table and the Studio UI, checked without starting a server."""
 
+    def test_index_html_loads_every_ui_script_in_load_order(self):
+        """`ui/index.html` names its scripts by hand: a file added to `ui/js/` that is not
+        listed there boots under the smoke test and is silently absent in the browser."""
+        ui = os.path.join(os.path.dirname(HERE), "studio", "ui")
+        with open(os.path.join(ui, "index.html"), encoding="utf-8") as fh:
+            listed = re.findall(r'<script src="/ui/js/([^"]+)"', fh.read())
+        on_disk = sorted(f for f in os.listdir(os.path.join(ui, "js")) if f.endswith(".js"))
+        self.assertEqual(listed, on_disk)
+
+    def test_every_claude_action_in_the_ui_sends_a_model(self):
+        """Every place the UI works with Claude picks its model: the writing forms through
+        `modelChoice` / `modelBrief`, the one-click actions - review, figures, notebooks -
+        through the Modules tab's pick (`quickModelBrief`). A call that sends none would
+        silently run on the default while the page shows a pick."""
+        ui = os.path.join(os.path.dirname(HERE), "studio", "ui", "js")
+
+        def body(name, fn):
+            with open(os.path.join(ui, name), encoding="utf-8") as fh:
+                src = fh.read()
+            start = src.index("async function %s(" % fn)
+            return src[start:src.index("\n}\n", start)]
+
+        forms = {("10-library.js", "startGeneration"): '"f"', ("20-course.js", "extendCourse"): '"x"',
+                 ("20-course.js", "rewriteModule"): '"rw-" + mid',
+                 ("20-course.js", "resumeCourse"): 'prefix || "rs"'}
+        for (name, fn), prefix in forms.items():
+            self.assertIn("modelBrief(%s)" % prefix, body(name, fn), "%s in %s" % (fn, name))
+        for name, fn in (("20-course.js", "reviewModule"), ("25-figures.js", "drawFigures"),
+                         ("27-notebooks.js", "writeNotebooks")):
+            self.assertIn("quickModelBrief()", body(name, fn), "%s in %s" % (fn, name))
+        with open(os.path.join(ui, "20-course.js"), encoding="utf-8") as fh:
+            self.assertIn("quickModelBar()", fh.read(), "the Modules tab shows the pick")
+
     def test_every_route_is_registered_once(self):
         from studio import server
         seen = {}
@@ -1797,6 +1848,40 @@ class TestNotebookWriting(unittest.TestCase):
         self.assertEqual(result["modules"], 6)
         self.assertEqual([w for w in asked if w.startswith(("the figures for", "the notebooks for"))], [])
         self.assertEqual(result["notebooks"], 0)
+
+    def test_the_model_a_form_picked_reaches_every_call_of_the_run(self):
+        """`model` in the brief names the model for that run only: every CLI call asks for it."""
+        models = []
+
+        def fake_ask(prompt, **kw):
+            models.append(kw.get("model"))
+            if "study data for module" in prompt:
+                return json.dumps({"predict": "p",
+                                   "quiz": [{"q": "Q", "options": ["a", "b", "c", "d"], "answer": 2, "why": "w"}],
+                                   "cards": [{"front": "f", "back": "b"}], "elaborate": ["e"],
+                                   "transfer": {"scenario": "s", "prompt": "p", "model": "m"}})
+            if "one-tap questions" in prompt:
+                return json.dumps([["a", "b", "c"]] * 3)
+            return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
+
+        from coursekit import assessments as ck_assess
+        assess = ck_assess.load_assessments(self.cfg)
+        sugg = ck_assess.load_suggestions(self.cfg)
+        data_dir = os.path.join(self.fixture.root, "data")
+        shutil.rmtree(data_dir)
+        files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
+        files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
+        original = claude_cli.ask
+        claude_cli.ask = fake_ask
+        try:
+            os.remove(self.modules[-1].source)
+            generator.generate(jobs.Job("generate"), self.tmp, os.path.join(self.tmp, "dist"),
+                               {"id": "fixture", "resume": True, "figures": False,
+                                "notebooks": False, "model": "haiku"})
+        finally:
+            claude_cli.ask = original
+        self.assertTrue(models, "the missing module was written")
+        self.assertEqual(set(models), {"haiku"})
 
 
 class TestJupyter(unittest.TestCase):

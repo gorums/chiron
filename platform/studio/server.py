@@ -37,18 +37,18 @@ trust both. The table at the bottom of the class lists every route in one place.
     GET  /api/courses/<id>/reviews          every stored "review this module" result
     POST /api/courses/<id>/settings         change it (id is locked)
     POST /api/courses/<id>/delete           move the course and its build to state/trash/
-    POST /api/courses/<id>/resume           finish a generation run that died  {figures, notebooks} -> {job}
-    POST /api/courses/<id>/extend           add a module  {topic, part, minutes, notes} -> {job}
+    POST /api/courses/<id>/resume           finish a generation run that died  {figures, notebooks, model} -> {job}
+    POST /api/courses/<id>/extend           add a module  {topic, part, minutes, notes, model} -> {job}
     POST /api/courses/<id>/figures          draw figures for every module without any  {all} -> {job}
     POST /api/courses/<id>/notebooks        write notebooks for every module without any  {all} -> {job}
-    POST /api/courses/<id>/modules/<mid>/rewrite   rewrite one module  {notes} -> {job}
+    POST /api/courses/<id>/modules/<mid>/rewrite   rewrite one module  {notes, mode, model} -> {job}
     POST /api/courses/<id>/modules/<mid>/remove    take one module out (file to state/trash/)
     POST /api/courses/<id>/modules/<mid>/move      reorder, or move to another part  {part, index}
     POST /api/courses/<id>/modules/<mid>/review    have Claude read it critically  -> {job}
     POST /api/courses/<id>/modules/<mid>/figures   draw (or redraw) its figures  -> {job}
     POST /api/courses/<id>/modules/<mid>/notebooks write (or replace) its notebooks  -> {job}
     POST /api/courses/<id>/modules/<mid>/accept    the owner's own verdict  {accepted: bool}
-    POST /api/generate                      start a generation job  -> {job}
+    POST /api/generate                      start a generation job  {theme, hours, ..., model} -> {job}
     POST /api/jobs/<id>/answer              supply the approved curriculum
     POST /api/jobs/<id>/cancel              stop a job
     GET  /api/jobs/<id>/events              Server-Sent Events, replayed from ?from=<n>
@@ -253,7 +253,8 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def _model(self, brief: Dict[str, Any]) -> str:
-        """The model a job should use: the request's, else Studio's default."""
+        """The model a job should use: the request's, else Studio's default. Every writing
+        form offers the list from settings.json; an unknown name falls back to the default."""
         asked = str(brief.get("model") or "").strip()
         return asked if asked in claude_cli.MODEL_ALIASES else PREFS.model
 

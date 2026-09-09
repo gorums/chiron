@@ -31,8 +31,8 @@ function figuresMenuItem(c, m) {
   const label = m.figures > 0 ? "Redraw the figures" : "Draw figures";
   const sub =
     m.figures > 0
-      ? `${m.figures} now · replaced by new ones`
-      : "SVG diagrams for its sections, by Claude";
+      ? `${m.figures} now · replaced by new ones, by ${modelName(quickModel())}`
+      : `SVG diagrams for its sections, by ${modelName(quickModel())}`;
   return `<button role="menuitem" onclick="closeMenus();drawFigures('${c.id}','${m.id}',false)" ${can ? "" : "disabled"}>${label}<small>${sub}</small></button>`;
 }
 
@@ -40,7 +40,7 @@ async function drawFigures(id, mid, all) {
   const base = `/api/courses/${encodeURIComponent(id)}`;
   const url = mid ? `${base}/modules/${encodeURIComponent(mid)}/figures` : `${base}/figures`;
   try {
-    const { job: j } = await api(url, { all: !!all });
+    const { job: j } = await api(url, Object.assign({ all: !!all }, quickModelBrief()));
     location.hash = "#/job/" + j.id;
   } catch (err) {
     toast(err.message);

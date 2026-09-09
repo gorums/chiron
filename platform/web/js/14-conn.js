@@ -19,6 +19,19 @@ function conn() {
 function modelFor(b) {
   return PLATFORM.models.some(m => m.id === b.model) ? b.model : PLATFORM.defaultModel;
 }
+/* The reader's pick for the tutor, from the rail's menu or the Settings page. Only a model
+   this build lists is kept; anything else leaves the current choice alone. */
+function setTutorModel(id) {
+  if (!PLATFORM.models.some(m => m.id === id)) return;
+  conn().model = id;
+  save();
+  toast("Answers now come from " + tutorModelLabel());
+}
+function tutorModelLabel() {
+  const id = modelFor(conn());
+  const found = PLATFORM.models.find(m => m.id === id);
+  return found ? found.label : id;
+}
 function isLocalFile() {
   return location.protocol === "file:";
 }
