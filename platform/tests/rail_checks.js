@@ -130,4 +130,13 @@ assert(modelOptions().indexOf(`value="${listed[1]}" selected`) >= 0, "and shown 
 setTutorModel("not-a-model");
 assert(conn().model === listed[1], "an unknown id changes nothing");
 
+/* the same picker sits under the box, so the reader sees which Claude answers without
+   opening the menu; it is the menu's list, marked for syncModelPickers to keep in step */
+const picker = modelPicker();
+assert(picker.indexOf("data-model-pick") >= 0, "the footer picker is one syncModelPickers finds");
+assert(picker.indexOf(`value="${listed[1]}" selected`) >= 0, "and shows the current model");
+assert(picker.split("<option").length - 1 === listed.length, "with every model offered");
+setTutorModel(listed[0]);
+assert(modelPicker().indexOf(`value="${listed[0]}" selected`) >= 0, "a new pick shows at once");
+
 console.log("rail checks passed");

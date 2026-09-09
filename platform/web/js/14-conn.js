@@ -25,6 +25,7 @@ function setTutorModel(id) {
   if (!PLATFORM.models.some(m => m.id === id)) return;
   conn().model = id;
   save();
+  if (typeof syncModelPickers === "function") syncModelPickers();
   toast("Answers now come from " + tutorModelLabel());
 }
 function tutorModelLabel() {

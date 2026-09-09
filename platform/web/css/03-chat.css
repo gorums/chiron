@@ -472,6 +472,43 @@ body.rail-bottom .suggest {
   font-size: 16px;
   line-height: 1;
 }
+.railmeta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 7px;
+  min-width: 0;
+}
+.railmeta .hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+.modelpick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+}
+.modelpick select {
+  min-width: 0;
+  max-width: 180px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.modelpick select:hover,
+.modelpick select:focus {
+  border-color: var(--line-2);
+  background: var(--surface);
+}
 .msgctx {
   font-size: 11.5px;
   opacity: 0.7;

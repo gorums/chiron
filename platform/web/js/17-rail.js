@@ -289,9 +289,10 @@ function renderRail() {
         <textarea id="railin" rows="1" placeholder="${placeholder}"></textarea>
         <button class="btn primary" id="railsend" onclick="railSend()" aria-label="Send">↑</button>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:7px">
-        <span style="font-size:11px;color:var(--muted)">${connMode() === "none" ? "not connected" : "⌘/Ctrl+↵ to send"}</span>
-        ${c && c.msgs.length ? `<button class="btn sm ghost" style="margin-left:auto;font-size:11.5px" onclick="compactConvo('${c.id}')" title="Summarise this chat and continue in a fresh one">Compact</button>` : ""}
+      <div class="railmeta">
+        ${modelPicker()}
+        <span class="hint">${connMode() === "none" ? "not connected" : "⌘/Ctrl+↵ to send"}</span>
+        ${c && c.msgs.length ? `<button class="btn sm ghost" style="font-size:11.5px" onclick="compactConvo('${c.id}')" title="Summarise this chat and continue in a fresh one">Compact</button>` : ""}
       </div>
     </div>`;
   renderRailHead();
@@ -357,6 +358,19 @@ function modelOptions() {
     )
     .join("");
 }
+/* The picker itself, shown under the box so the reader always sees which Claude will
+   answer; every copy on the page carries data-model-pick and is kept in step by
+   syncModelPickers(). */
+function modelPicker() {
+  return `<label class="modelpick" title="Which Claude answers in this chat">${ico("spark", 12)}
+    <select data-model-pick aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>`;
+}
+function syncModelPickers() {
+  const id = modelFor(conn());
+  document.querySelectorAll("select[data-model-pick]").forEach(el => {
+    el.value = id;
+  });
+}
 function toggleChatMenu() {
   rail.menuOpen = !rail.menuOpen;
   renderChatMenu();
@@ -420,7 +434,7 @@ function renderChatMenu() {
     ${others.length ? `<div class="cmhead">Other modules</div>` + others.map(convoRow).join("") : ""}
     <div class="cmfoot">
       <label class="cmmodel">Answers from
-        <select aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>
+        <select data-model-pick aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>
       <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat here</button>
       ${cur && cur.msgs.length ? `<button class="btn sm" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
       <button class="btn sm ghost" onclick="go('#/marks')">All conversations</button>

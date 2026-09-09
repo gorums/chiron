@@ -621,9 +621,11 @@ the default otherwise. `/api/state` carries the list as `claude.models` so no fo
 second request. The one-click actions - Review with Claude, Draw figures, Write notebooks -
 have no form, so the Modules tab carries one pick for all three (`quickModelBar`,
 `quickModelBrief`; `modelPick.quick`, kept for the session) and their row-menu entries name
-the model that will run. In the course page the tutor's model sits in the rail's chat menu
-(`modelOptions` in `17-rail.js`, `setTutorModel` in `14-conn.js`) as well as on the Settings
-page; both write `STATE.bridge.model`, which every `askBridge` call sends. The default is
+the model that will run. In the course page the tutor's model sits under the chat box, always visible
+(`modelPicker` in `17-rail.js`), in the rail's chat menu and on the Settings page; every
+copy carries `data-model-pick` so `setTutorModel` (`14-conn.js`) can keep them in step
+through `syncModelPickers`, and all of them write `STATE.bridge.model`, which every
+`askBridge` call sends. The default is
 Opus 5: the best writing for the price, with Fable 5.1 on the list for the course that has
 to be right and Sonnet or Haiku for a cheap patch.
 
