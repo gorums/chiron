@@ -39,23 +39,23 @@ function loadModelEditor(list, discovery) {
 function modelEditorCard() {
   const source = modelEditor.custom
     ? `<span class="pill on">Studio's own list</span> saved in <span class="mono">state/settings.json</span>`
-    : `<span class="pill">the platform's list</span> from <span class="mono">platform/settings.json</span>`;
+    : `<span class="pill">the built-in list</span> from <span class="mono">platform/settings.json</span>`;
   const reset = modelEditor.custom
-    ? `<button class="btn sm ghost" onclick="resetModelList()">Back to the platform's list</button>`
+    ? `<button class="btn sm" onclick="resetModelList()">Back to the built-in list</button>`
     : "";
   return `<div class="card" id="modelcard">
-    <p class="eyebrow">Models on offer</p>
-    <p class="sub" style="font-size:13.5px">Every picker in Studio and in a course page opened from here offers this list, in this order. Add a model the day it ships, retire one that is gone, and <b>Test</b> it before trusting it with a run: the test asks Claude Code once with that model only. In use: ${source}.</p>
-    <div class="modelrows" id="modelrows">${modelEditor.rows.map((r, i) => modelRow(r, i)).join("")}</div>
-    <div class="actions" style="margin-top:12px">
-      <button class="btn sm ghost" onclick="addModelRow()">Add a model</button>
+    <h3 class="eyebrow">Models on offer</h3>
+    <p class="sub">Every picker in Studio and in a course page opened from here offers this list, in this order. Add a model the day it ships, retire one that is gone, and <b>Test</b> it before trusting it with a run: the test asks Claude Code once with that model only. In use: ${source}.</p>
+    <div class="modelrows gap-top" id="modelrows">${modelEditor.rows.map((r, i) => modelRow(r, i)).join("")}</div>
+    <div class="actions gap-top">
+      <button class="btn sm" onclick="addModelRow()">Add a model</button>
       <span class="spacer"></span>
       ${reset}
-      <button class="btn sm" onclick="saveModelList()">Save the list</button>
+      <button class="btn sm primary" onclick="saveModelList()">Save the list</button>
     </div>
     <div id="modelmsg">${modelEditor.message ? `<div class="problems">${esc(modelEditor.message)}</div>` : ""}</div>
     ${discoveryLine()}
-    <p class="sub" style="font-size:12px;margin:10px 0 0">A course page opened from Studio takes the new list on its next load; one opened off disk keeps the list it was built with until the course is rebuilt. The bridge reads it when it starts.</p>
+    <p class="sub result">A course page opened from Studio takes the new list on its next load; one opened off disk keeps the list it was built with until the course is rebuilt. The bridge reads it when it starts.</p>
   </div>`;
 }
 
@@ -85,8 +85,8 @@ function discoveryLine() {
   const when = last ? `Last check ${esc(last.at.replace("T", " "))}.` : "No check has run yet.";
   const every = d.hours > 0 ? `every ${d.hours} hours` : "off (discovery.hours is 0)";
   return `<div class="discovery">
-    <p class="sub" style="font-size:12.5px;margin:12px 0 4px"><b>Kept up to date automatically</b>, ${every}: Claude Code's catalog (${cliText}) and Anthropic's model list (${apiText}). ${when}${changes}</p>
-    <div class="actions" style="margin:0"><button class="btn sm ghost" onclick="discoverModels()" ${modelEditor.checking ? "disabled" : ""}>${modelEditor.checking ? "Checking…" : "Check now"}</button></div>
+    <p class="sub result"><b>Kept up to date automatically</b>, ${every}: Claude Code's catalog (${cliText}) and Anthropic's model list (${apiText}). ${when}${changes}</p>
+    <div class="actions"><button class="btn sm" onclick="discoverModels()" ${modelEditor.checking ? "disabled" : ""}>${modelEditor.checking ? `<span class="spin"></span> Checking…` : "Check now"}</button></div>
   </div>`;
 }
 
@@ -122,19 +122,26 @@ function modelRow(row, i) {
     <div class="fields">${inputs}</div>
     <div class="tools">
       ${modelTestResult(row.id)}
-      <button class="btn sm ghost" onclick="testModelRow(${i})" ${testing ? "disabled" : ""} title="Ask Claude Code once with this model only">${testing ? "Testing…" : "Test"}</button>
-      <button class="btn sm ghost" onclick="moveModelRow(${i}, -1)" ${first ? "disabled" : ""} title="Move up" aria-label="Move up">↑</button>
-      <button class="btn sm ghost" onclick="moveModelRow(${i}, 1)" ${last ? "disabled" : ""} title="Move down" aria-label="Move down">↓</button>
-      <button class="btn sm ghost rm" onclick="removeModelRow(${i})" title="Remove from the list" aria-label="Remove">×</button>
+      <button class="btn sm" onclick="testModelRow(${i})" ${testing ? "disabled" : ""} title="Ask Claude Code once with this model only">${testing ? `<span class="spin"></span> Testing…` : "Test"}</button>
+      <button class="btn sm" onclick="moveModelRow(${i}, -1)" ${first ? "disabled" : ""} title="Move up" aria-label="Move up">${ico("up", 13)}</button>
+      <button class="btn sm" onclick="moveModelRow(${i}, 1)" ${last ? "disabled" : ""} title="Move down" aria-label="Move down">${ico("down", 13)}</button>
+      <button class="btn sm rm" onclick="removeModelRow(${i})" title="Remove from the list" aria-label="Remove">${ico("close", 13)}</button>
     </div>
-  </div>`;
+  </div>
+  ${modelTestError(row.id)}`;
 }
 
 function modelTestResult(id) {
   const r = modelEditor.results[id];
   if (!r) return "";
-  const text = r.ok ? `answers in ${r.seconds}s` : `refused: ${r.error}`;
-  return `<span class="pill ${r.ok ? "on" : "off"}" title="${esc(text)}">${r.ok ? "works" : "refused"}</span>`;
+  return `<span class="pill ${r.ok ? "on" : "off"}">${r.ok ? `answers in ${r.seconds}s` : "refused"}</span>`;
+}
+
+/* A refusal is the whole point of the Test button, so it is printed, not left in a title. */
+function modelTestError(id) {
+  const r = modelEditor.results[id];
+  if (!r || r.ok) return "";
+  return `<p class="problems modelerr">${esc(id)} refused: ${esc(r.error)}</p>`;
 }
 
 function editModelRow(i, key, value) {
@@ -180,7 +187,7 @@ async function testModelRow(i) {
   modelEditor.testing = "";
   renderModelEditor();
   const r = modelEditor.results[id];
-  toast(r.ok ? `${id} answers` : `${id} refused: ${r.error}`);
+  toast(r.ok ? `${id} answers` : `${id} refused: ${r.error}`, { kind: r.ok ? "ok" : "bad" });
 }
 
 /* Save the whole list; the server validates it and every picker takes it from /api/state. */

@@ -73,7 +73,7 @@ function viewCheck() {
       <h2>${cp.kind === "course" ? "Everything, mixed" : esc(partName(cp.pid)) + ", mixed"}</h2>
       <p class="sub">No module heading to lean on. Answer from what you actually remember; a hint or a miss drops that module back to Practised.</p></div>
       <div id="cpbody"></div>
-      <p style="text-align:center;margin-top:18px"><button class="btn ghost sm" onclick="abandonCheck()">Abandon this checkpoint</button></p></div>`;
+      <p class="centered gap-top"><button class="btn sm" onclick="askAbandonCheck()">Abandon this checkpoint</button></p></div>`;
     QUIZ = {
       kind: "cp",
       host: "#cpbody",
@@ -86,31 +86,41 @@ function viewCheck() {
   }
   // the hub
   let h = `<div class="wrap-wide"><h2 class="big">Checkpoints</h2>
-    <p class="sub" style="margin-bottom:22px">A module quiz measures recognition ten minutes after reading. A checkpoint asks the same questions weeks later, mixed with everything else, and that is the number that predicts whether you can use it. Take one when a part is done, and again every couple of weeks.</p>
-    ${STATE.cp && !STATE.cp.finished ? `<div class="card" style="margin-bottom:18px;border-color:var(--accent)"><p class="eyebrow">In progress</p><p class="sub" style="margin-bottom:10px">${STATE.cp.kind === "course" ? "Course challenge" : "Checkpoint · " + esc(partName(STATE.cp.pid))} · question ${STATE.cp.i + 1} of ${STATE.cp.items.length}</p><button class="btn primary" onclick="go('#/check/run')">Continue</button> <button class="btn ghost" onclick="abandonCheck()">Abandon</button></div>` : ""}
+    <p class="lede" title="${esc(help("checkpoint"))}">A module quiz measures recognition ten minutes after reading. A checkpoint asks the same questions weeks later, mixed with everything else, and that is the number that predicts whether you can use it. Take one when a part is done, and again every couple of weeks.</p>
+    ${STATE.cp && !STATE.cp.finished ? `<div class="card accented gap-bottom"><h3 class="eyebrow">In progress</h3><p class="sub gap-bottom">${STATE.cp.kind === "course" ? "Course challenge" : "Checkpoint · " + esc(partName(STATE.cp.pid))} · question ${STATE.cp.i + 1} of ${STATE.cp.items.length}</p><div class="rowline wrapped"><button class="btn primary" onclick="go('#/check/run')">Continue</button><button class="btn" onclick="askAbandonCheck()">Abandon</button></div></div>` : ""}
     <div class="grid g2">`;
   DATA.parts.forEach(p => {
     const ms = MODS.filter(m => m.part === p.id),
       el = eligibleFor("part", p.id),
       last = lastCheck("part", p.id);
-    h += `<div class="card"><p class="eyebrow">${esc(p.name)}</p>
-      <p class="sub" style="margin-bottom:10px">${el.length} of ${ms.length} modules ready${last ? ` · last: ${Math.round((last.score / last.total) * 100)}% on ${fmtDay(last.day)}` : " · never taken"}</p>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${ms.map(m => `<span class="chip lvl l${mastery(m).lvl}" title="${mastery(m).name}">${m.id}</span>`).join("")}</div>
-      <button class="btn ${el.length >= 2 ? "primary" : ""}" ${el.length >= 2 ? "" : "disabled"} onclick="startCheckpoint('part','${p.id}')">Start · ${el.length * 2} questions</button></div>`;
+    h += `<div class="card"><h3 class="eyebrow">${esc(p.name)}</h3>
+      <p class="sub gap-bottom">${el.length} of ${ms.length} modules ready${last ? ` · last: ${Math.round((last.score / last.total) * 100)}% on ${fmtDay(last.day)}` : " · never taken"}</p>
+      <div class="rowline wrapped gap-bottom">${ms.map(m => `<span class="chip lvl l${mastery(m).lvl}" title="${mastery(m).name} — ${esc(help(mastery(m).name))}">${m.id}</span>`).join("")}</div>
+      <button class="btn ${el.length >= 2 ? "primary" : ""}" ${el.length >= 2 ? "" : 'disabled title="Two modules have to be Practised before a checkpoint can mix them"'} onclick="startCheckpoint('part','${p.id}')">Start · ${el.length * 2} questions</button></div>`;
   });
   const elc = eligibleFor("course"),
     lastc = lastCheck("course");
-  h += `<div class="card" style="border-color:var(--warm)"><p class="eyebrow" style="color:var(--warm)">Course challenge</p>
-    <p class="sub" style="margin-bottom:10px">${elc.length} of ${MODS.length} modules ready${lastc ? ` · last: ${Math.round((lastc.score / lastc.total) * 100)}% on ${fmtDay(lastc.day)}` : " · never taken"}</p>
-    <p class="sub" style="margin-bottom:12px">One or two questions from every module you have finished, in no order at all. This is the exam the course would set if it could.</p>
-    <button class="btn ${elc.length >= 2 ? "primary" : ""}" ${elc.length >= 2 ? "" : "disabled"} onclick="startCheckpoint('course','')">Start · ${Math.min(40, elc.length * (elc.length > 15 ? 1 : 2))} questions</button></div>`;
+  h += `<div class="card warmcard"><h3 class="eyebrow warnnote">Course challenge</h3>
+    <p class="sub gap-bottom">${elc.length} of ${MODS.length} modules ready${lastc ? ` · last: ${Math.round((lastc.score / lastc.total) * 100)}% on ${fmtDay(lastc.day)}` : " · never taken"}</p>
+    <p class="sub gap-bottom">One or two questions from every module you have finished, in no order at all. This is the exam the course would set if it could.</p>
+    <button class="btn ${elc.length >= 2 ? "primary" : ""}" ${elc.length >= 2 ? "" : 'disabled title="Two modules have to be Practised before a course challenge can mix them"'} onclick="startCheckpoint('course','')">Start · ${Math.min(40, elc.length * (elc.length > 15 ? 1 : 2))} questions</button></div>`;
   h += `</div>`;
   const hist = (STATE.cpHist || []).slice().reverse().slice(0, 12);
   if (hist.length) {
-    h += `<div class="card" style="margin-top:18px"><p class="eyebrow">History</p>${hist.map(x => `<div class="calrow"><span>${fmtDay(x.day)}</span><span>${x.kind === "course" ? "Course challenge" : esc(partName(x.pid))}</span><span style="text-align:right;color:${x.score / x.total >= 0.8 ? "var(--ok)" : x.score / x.total >= 0.6 ? "var(--warm)" : "var(--bad)"}">${Math.round((x.score / x.total) * 100)}%</span></div>`).join("")}</div>`;
+    h += `<div class="card gap-top"><h3 class="eyebrow">History</h3>${hist.map(x => `<div class="calrow"><span>${fmtDay(x.day)}</span><span>${x.kind === "course" ? "Course challenge" : esc(partName(x.pid))}</span><span class="score ${x.score / x.total >= 0.8 ? "ok" : x.score / x.total >= 0.6 ? "warm" : "bad"}">${Math.round((x.score / x.total) * 100)}%</span></div>`).join("")}</div>`;
   }
   h += `</div>`;
   v.innerHTML = h;
+}
+/* Abandoning throws away every answer given so far, and there is no way back to them. */
+function askAbandonCheck() {
+  confirmModal(
+    "Abandon this checkpoint?",
+    "The answers you have given are thrown away and nothing is recorded. You can start a fresh one whenever you like.",
+    "Abandon it",
+    abandonCheck,
+    true
+  );
 }
 function abandonCheck() {
   STATE.cp = null;
@@ -153,24 +163,32 @@ function cpResults() {
   const pct = Math.round((hist.score / hist.total) * 100);
   const mods = Object.keys(hist.byMod).map(byId).filter(Boolean);
   const slipped = mods.filter(m => hist.byMod[m.id].ok < hist.byMod[m.id].n);
-  $("#view").innerHTML = `<div class="wrap"><div class="card" style="text-align:center">
-    <p class="eyebrow">${cp.kind === "course" ? "Course challenge" : "Checkpoint · " + esc(partName(cp.pid))}</p>
-    <div style="font-family:var(--serif);font-size:52px;font-weight:600;line-height:1;margin:8px 0 4px;color:${pct >= 80 ? "var(--ok)" : pct >= 60 ? "var(--warm)" : "var(--bad)"}">${pct}%</div>
-    <p class="sub" style="margin-bottom:16px">${hist.score} of ${hist.total} · ${mods.length} modules</p>
-    <p style="max-width:520px;margin:0 auto 18px;color:var(--text-2)">${pct >= 80 ? "That is retention, not recognition. The modules you held are now Proficient." : pct >= 60 ? "Most of it held. The modules that slipped are back to Practised — their cards and mistakes will bring them round." : "A lot slipped, which is what checkpoints are for: better to find out here than in front of a client. Work the mistake queue, then retake in a week."}</p>
-    <div style="display:flex;gap:9px;justify-content:center;flex-wrap:wrap">
-      ${mistakeCount() ? `<button class="btn primary" onclick="go('#/review/mistakes')">Fix the mistakes (${mistakeCount()})</button>` : ""}
+  const verdict =
+    pct >= 80
+      ? "That is retention, not recognition. The modules you held are now Proficient."
+      : pct >= 60
+        ? "Most of it held. The modules that slipped are back to Practised — their cards and mistakes will bring them round."
+        : "A lot slipped, which is what a checkpoint is for: better to find out here than the first time you need it. Work the mistakes, then retake in a week.";
+  const score = scoreBlock({
+    eyebrow: cp.kind === "course" ? "Course challenge" : "Checkpoint · " + partName(cp.pid),
+    pct,
+    line: `${hist.score} of ${hist.total} · ${mods.length} modules`,
+    verdict,
+    overconf: (hist.a || []).filter(x => x && x.conf === 3 && !x.ok).length,
+    actions: `${mistakeCount() ? `<button class="btn primary" onclick="go('#/review/mistakes')">Fix the mistakes (${mistakeCount()})</button>` : ""}
       <button class="btn" onclick="go('#/check')">Checkpoints</button>
-      <button class="btn" onclick="go('#/home')">Dashboard</button></div></div>
-    <div class="card" style="margin-top:16px"><p class="eyebrow">Module by module</p>
+      <button class="btn" onclick="go('#/home')">Dashboard</button>`,
+  });
+  $("#view").innerHTML = `<div class="wrap">${score}
+    <div class="card gap-top"><h3 class="eyebrow">Module by module</h3>
       ${mods
         .map(m => {
           const b = hist.byMod[m.id],
             ms = mastery(m);
-          return `<button class="mrow" style="padding:8px 10px;border-left:0;border-radius:8px" onclick="go('#/m/${m.id}')"><span class="dot ${masteryClass(m)}"></span><span class="code">${m.id}</span><span class="t">${esc(m.short)}</span><span style="font-size:12px;color:${b.ok === b.n ? "var(--ok)" : "var(--bad)"}">${b.ok}/${b.n}</span><span class="tag" style="margin-left:8px">${ms.name}</span></button>`;
+          return `<a class="mrow boxed" href="#/m/${m.id}" title="${ms.name} — ${esc(help(ms.name))}"><span class="dot ${masteryClass(m)}"></span><span class="code">${m.id}</span><span class="t">${esc(m.short)}</span><span class="score ${b.ok === b.n ? "ok" : "bad"}">${b.ok}/${b.n}</span><span class="tag">${ms.name}</span></a>`;
         })
         .join("")}
-      ${slipped.length ? `<p class="sub" style="margin-top:12px">Slipped: ${slipped.map(m => m.id).join(", ")}. Re-read just the section behind each miss, not the whole module.</p>` : ""}
+      ${slipped.length ? `<p class="sub gap-top">Slipped: ${slipped.map(m => m.id).join(", ")}. Re-read just the section behind each miss, not the whole module.</p>` : ""}
     </div></div>`;
   renderSidebar();
 }

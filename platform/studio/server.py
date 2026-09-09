@@ -12,6 +12,8 @@ bad id, 404 for a missing course) and a `mid` group is checked for shape, so a h
 trust both. The table at the bottom of the class lists every route in one place.
 
     GET  /                                  the UI
+    GET  /ui/shared/<file>                  the design system both surfaces are built from
+                                            (platform/web: 00-tokens.css, 01-base.css, 00-dom.js)
     GET  /api/state                         courses (with progress), Claude availability, jobs,
                                             the active profile, the study calendar, Jupyter
     GET  /api/jupyter                       the Jupyter server: reachable?, its address, the token a served page uses
@@ -96,6 +98,15 @@ from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, TRASH_
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI_DIR = os.path.join(HERE, "ui")
+
+# The design system lives in platform/web/ because the course page inlines it; Studio links
+# the same three files at /ui/shared/ rather than keeping a copy that drifts.
+_WEB = os.path.join(os.path.dirname(HERE), "web")
+SHARED_UI = {
+    "00-tokens.css": os.path.join(_WEB, "css", "00-tokens.css"),
+    "01-base.css": os.path.join(_WEB, "css", "01-base.css"),
+    "00-dom.js": os.path.join(_WEB, "js", "00-dom.js"),
+}
 
 # `studio.port` / `studio.host` in settings.json; STUDIO_PORT and STUDIO_HOST override them.
 # The host is loopback unless told otherwise. A container sets 0.0.0.0 to be reachable
@@ -291,6 +302,15 @@ class Handler(BaseHTTPRequestHandler):
     @route("GET", r"/(index\.html)?")
     def ui_index(self):
         self._static(os.path.join(UI_DIR, "index.html"))
+
+    @route("GET", r"/ui/shared/(?P<name>[A-Za-z0-9._-]+)")
+    def ui_shared(self, name: str):
+        """The tokens, primitives and DOM helpers the course page inlines. Studio links the
+        same files, which is what keeps one `.btn` from meaning two things."""
+        source = SHARED_UI.get(name)
+        if not source:
+            return self._fail("Not found", 404)
+        self._static(source)
 
     @route("GET", r"/ui/(?P<path>.+)")
     def ui_file(self, path: str):

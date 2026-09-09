@@ -1,0 +1,127 @@
+/* Every colour, shadow, font, radius and size the platform has.
+   Served to both surfaces: the reader inlines it, Studio links it at /ui/shared/.
+   Nothing outside this file may carry a hex colour or a raw font size — a test says so. */
+
+:root {
+  --bg: #f7f5f1;
+  --surface: #ffffff;
+  --surface-2: #f1eee8;
+  --surface-3: #e9e5dd;
+  --text: #191817;
+  --text-2: #4a4744;
+  --muted: #67625b;
+  --line: #e2ddd4;
+  --line-2: #cfc8bb;
+  --accent: #0f6b60;
+  --accent-2: #0b544b;
+  --accent-soft: #dcefec;
+  --accent-ink: #0a4f47;
+  --on-accent: #ffffff;
+  --warm: #96450a;
+  --warm-soft: #fdf1e0;
+  --ok: #10643d;
+  --ok-soft: #dff2e6;
+  --bad: #a32b2b;
+  --bad-soft: #fbe6e4;
+  --overlay: rgba(15, 14, 13, 0.45);
+  --img-bg: #ffffff;
+  --on-bad: #ffffff;
+  /* ink and rule for the print stylesheet, which is always on white paper */
+  --print-ink: #000000;
+  --print-line: #bbbbbb;
+  /* a hover that works on any surface without knowing which one it is on */
+  --hover-veil: rgba(127, 127, 127, 0.35);
+  --hover-veil-2: rgba(127, 127, 127, 0.4);
+  --shadow: 0 1px 2px rgba(25, 24, 23, 0.05), 0 8px 24px rgba(25, 24, 23, 0.06);
+  --shadow-lg: 0 2px 6px rgba(25, 24, 23, 0.07), 0 24px 60px rgba(25, 24, 23, 0.13);
+  --fig-1: #0f6b60;
+  --fig-2: #b45309;
+  --fig-3: #3b5bdb;
+  --fig-4: #a32b2b;
+  --fig-soft: #ebe7df;
+  --fig-line: #9c958a;
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-xs: 6px;
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --fs-xxs: 11px;
+  --fs-tiny: 12px;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-md: 13.5px;
+  --fs-base: 16px;
+
+  --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131518;
+    --surface: #1a1d21;
+    --surface-2: #22262b;
+    --surface-3: #2b3037;
+    --text: #eceae7;
+    --text-2: #c3c0bb;
+    --muted: #9c978f;
+    --line: #2b2f35;
+    --line-2: #3a4048;
+    --accent: #4fd1c0;
+    --accent-2: #6fe0d1;
+    --accent-soft: #16302d;
+    --accent-ink: #8ceadd;
+    --on-accent: #0b1a18;
+    --warm: #e0a458;
+    --warm-soft: #2e2415;
+    --ok: #5cc98d;
+    --ok-soft: #14301f;
+    --bad: #f08b84;
+    --bad-soft: #33191a;
+    --overlay: rgba(4, 6, 8, 0.62);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 60px rgba(0, 0, 0, 0.5);
+    --fig-1: #4fd1c0;
+    --fig-2: #e0a458;
+    --fig-3: #8da2fb;
+    --fig-4: #f08b84;
+    --fig-soft: #2b3037;
+    --fig-line: #6b7078;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131518;
+  --surface: #1a1d21;
+  --surface-2: #22262b;
+  --surface-3: #2b3037;
+  --text: #eceae7;
+  --text-2: #c3c0bb;
+  --muted: #9c978f;
+  --line: #2b2f35;
+  --line-2: #3a4048;
+  --accent: #4fd1c0;
+  --accent-2: #6fe0d1;
+  --accent-soft: #16302d;
+  --accent-ink: #8ceadd;
+  --on-accent: #0b1a18;
+  --warm: #e0a458;
+  --warm-soft: #2e2415;
+  --ok: #5cc98d;
+  --ok-soft: #14301f;
+  --bad: #f08b84;
+  --bad-soft: #33191a;
+  --overlay: rgba(4, 6, 8, 0.62);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 60px rgba(0, 0, 0, 0.5);
+  --fig-1: #4fd1c0;
+  --fig-2: #e0a458;
+  --fig-3: #8da2fb;
+  --fig-4: #f08b84;
+  --fig-soft: #2b3037;
+  --fig-line: #6b7078;
+}

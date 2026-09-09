@@ -98,7 +98,9 @@ platform/                   the engine — knows nothing about any subject
   coursekit/                the build package
   studio/                   the local web app: generate + build from a browser
     ui/                     its front end: index.html + studio.css + js/ (one file per screen)
-  web/                      the course page's source: shell.html + css/ + js/ (one file per concern)
+  web/                      the course page's source: shell.html + css/ + js/ (one file per concern).
+                            00-tokens.css, 01-base.css and 00-dom.js are the design system
+                            Studio links too (see "The design system")
   tests/                    test_build.py, test_studio.py, page_smoke.js (boots front-end code under node)
 courses/<id>/               one course = one separate git repository (gitignored here;
                             the directory itself moves with COURSES_DIR)
@@ -268,6 +270,68 @@ are otherwise order-independent, but `21-boot.js` runs the app and must stay las
 new file by picking a free number, or a letter suffix on the neighbour it belongs beside
 (`09b-checkpoint.js` sorts after `09-review.js`), not by renaming everything after it.
 
+### The design system: three files, two surfaces
+
+**The reader and Studio are one product, so they are built from one set of parts.** Three
+files under `platform/web/` are the whole design system; the page inlines them with the rest
+of its source, and Studio links the same files at `/ui/shared/` (`SHARED_UI` in `server.py`,
+`GET /ui/shared/<file>`). A copy in the other surface is the bug this replaced: `.btn` used
+to mean *filled* in Studio and *outlined* in the page.
+
+| | |
+|---|---|
+| `web/css/00-tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-base` |
+| `web/css/01-base.css` | the primitives: reset, one `:focus-visible` ring, the `.btn` family, the form block, `.card`, `.tag`, `.pill`, `.badge`, `.bar`, `.chip`, `.note`, `.problems`, `.toast`, `.menu`, `.empty`, `.scrim`, `.spin`/`.pulse`, `.topbar`, and the spacing utilities (`.gap-top`, `.rowline`, `.grow`, …) that keep `style=` out of the markup |
+| `web/js/00-dom.js` | `$`, `$$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, and `HELP` / `help(term)` |
+
+`web/css/01b-shell.css` holds the reader's own frame (the three-column grid, the sidebar) and
+Studio's `studio.css` holds Studio's; neither surface loads the other's.
+
+- **`.btn` is outlined. `.primary` is the filled one, and there is one per region** — the
+  next thing to do. `.ghost`, `.sm`, `.warm`, `.danger` and `.iconbtn` are the rest of the
+  family; a variant outside that list has no rule, and a test says so.
+- **`.tag` says what something is** (`ok`, `warn`, `bad`, `acc`, `stale`), **`.pill` says what
+  state a thing is in** (`on`, `off`, `live`), **`.badge` is a count**. Studio's verdicts are
+  `.tag`, not a family of their own.
+- **`help(term)` is the one glossary.** Mastery levels, freeze, mistake card, calibration,
+  checkpoint, compact, the verdict scale, patch versus rewrite, resume, stale, profile,
+  anchor, practitioner, curriculum — each defined once in `00-dom.js` and printed as a
+  `title` where the word appears, instead of on a page the reader has to go and find.
+- **One theme key, `platform_theme`.** Studio and a served page read and write it, so a dark
+  Studio never opens a light course page; a page off disk falls back to `STATE.theme`.
+- Four guards in `TestCodeConventions` hold this: no colour outside `00-tokens.css`, no font
+  size off the scale, no `.btn` variant without a rule, no class used in a template that no
+  stylesheet defines, and a ceiling on inline `style=` per tree.
+
+### One vocabulary
+
+Both surfaces name the same thing the same way. The words are a contract with the reader as
+much as a variable name is a contract with the next person to read the code.
+
+| Say | Never | Meaning |
+|---|---|---|
+| course | | one folder, one repository |
+| curriculum | plan | the whole outline Studio proposes and you approve |
+| module design | spec, plan | one module's outline before it is written |
+| module, section, step | lesson, chapter | as in the page |
+| Predict · Read · Retrieve · Elaborate · Apply · Close the gaps | Review (for a step) | the six steps, everywhere |
+| Practice | Review, Retrieval practice | the flashcard deck, `#/review` |
+| Fix mistakes | mistake queue | `#/review/mistakes` |
+| mastery: Not started · Read · Practised · Proficient · Mastered | | each with a `help()` line |
+| tutor | Claude, assistant, chat panel | who answers in the page |
+| Claude | model | who writes and reviews in Studio |
+| Claude Code | | the installed CLI; the status pill only |
+| model | | the picker |
+| Rebuild | publish, render | write `dist/` again |
+| Stop (a run) / Cancel (a form) | | |
+| Mark as good / Unmark | This is good, Withdraw | the owner's own verdict |
+| Patch or rewrite… | Apply, Rewrite with this | the one action |
+| Your gaps | profile, learner memory | `#/learner` |
+| needs fixing | broken | a course whose check fails |
+
+`KIND_LABELS` in `ui/js/00-core.js` is the same rule for job kinds: no screen prints a raw
+`kind`.
+
 ### What the reader can do
 
 The page runs one learning cycle per module — Predict → Read → Retrieve → Elaborate → Apply →
@@ -431,6 +495,14 @@ without changing the window.
 
 A `##` section whose body is empty is dropped from the render *and* from the count — which
 is usually why a count mismatch appears out of nowhere.
+
+**A section ticks itself once the reader has scrolled past it.** `tickScrolledPast` in
+`07-module.js` runs off the same scroll handler that decides which section is current, and
+ticks any section whose bottom edge has left the reading band (`page.ui.readLine`) — the
+whole section, so a glance at the first paragraph never counts. The tick is drawn in place
+rather than by redrawing the step, which would throw the reader back to the top. A tick
+taken back by hand stays off for the rest of the visit (`untickedByHand`), so the reader can
+argue with it; leaving the module forgets that.
 
 ### Figures
 
@@ -764,13 +836,24 @@ collide.
 the plumbing every screen uses, `90-router.js` boots the app and must stay last), and
 hash-routed: `#/` library with a "today" strip and progress cards, `#/new`,
 `#/course/<id>` (tabs: Modules, Add a module, Questions, Files, Settings),
-`#/course/<id>/edit?path=`, `#/job/<id>`, and `#/settings` — Studio-wide: the model, whether
+`#/course/<id>/edit?path=`, `#/job/<id>`, `#/jobs` (the recent runs, so a finished or failed
+one is reachable without the back button), and `#/settings` — Studio-wide: the model, whether
 Jupyter is up, every resolved platform setting with the layer it came from, where things
 are, and a live log viewer polling `/api/logs`. The course
 page reads `GET /api/courses/<id>`, which parses modules and is therefore not used for the
 listing; `/api/state` counts module files instead (`catalog.module_ids`). `test_studio.py`
 boots the whole UI under node with `page_smoke.js`, so a name one file uses and no file
 declares fails the suite.
+
+**Nothing hijacks the screen you asked for.** A live run is a banner with a link
+(`liveJobBanner`), not a redirect; a missing Claude Code is one sentence at the top
+(`claudeGate`, `claudeBanner`), not a row of silently greyed buttons; the nav highlights the
+section that owns the route, not only the three top-level ones (`NAV_OWNER`). Under 720px
+the nav collapses into a ☰ menu, because otherwise New course and Settings are unreachable.
+
+**A course says when it is out of date.** `catalog.newest_source` compares the newest
+`.md`/`.json`/`.svg`/`.ipynb` in the course against the build's timestamp; `dirty` in the
+summary is what turns Rebuild into the one primary button on the course page.
 
 ## Authoring content
 
@@ -866,6 +949,17 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
 - **Stored shapes are a contract.** Everything under `STATE` is in readers' localStorage
   and in `state/progress/`; a message is `{r, t, ts}` because every save says so. Add a
   field with a default in `blank()` and `upgrade()`; never rename or repurpose one.
+- **No colour, size or component of your own** (see "The design system"): a colour comes
+  from `00-tokens.css`, a button from the `.btn` family, a spacing from a `.gap-*` or
+  `.rowline` utility. An inline `style=` is for a value only the code knows - a bar's width,
+  a colour picked from a score - and a test caps how many there may be.
+- **A control says its name and its state.** An icon button carries `aria-label`; a toggle
+  carries `aria-pressed`; a menu button carries `aria-expanded` and `aria-haspopup`; a
+  dialog carries `role="dialog" aria-modal="true"`, traps Tab and hands the focus back.
+  Every input has a label, `.visually-hidden` when the layout does not want to show one.
+- **Every action answers.** A request shows it is running (`busy()` in Studio, `graderStart`
+  in the page), a failure lands where the eye already is with a way to retry, and anything
+  that cannot be undone asks first through `confirmModal` - never `confirm()`.
 - **No literal that belongs to a setting or a course** (see "Settings" and "The two-layer
   rule"): addresses, models, limits and layout sizes come from `CFG.platform`; every
   subject-specific string comes from `CFG`. A test fails on both.

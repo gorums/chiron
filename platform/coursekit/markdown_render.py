@@ -14,12 +14,17 @@ _MD = markdown.Markdown(extensions=["tables", "fenced_code", "sane_lists", "attr
 # into the notebook itself (see `notebooks.py`).
 _REL_LINK = re.compile(r'<a href="(?!http)(?!notebooks/)[^"]*?"[^>]*>(.*?)</a>', re.S)
 _TAG = re.compile(r"<[^>]+>")
+# A wide table has to scroll sideways in a narrow reading column. Doing that with
+# `display:block` on the <table> costs it its own semantics — a screen reader stops
+# announcing rows and columns — so the scrolling goes on a wrapper instead.
+_TABLE = re.compile(r"<table>(.*?)</table>", re.S)
 _WS = re.compile(r"\s+")
 
 
 def to_html(text: str) -> str:
     _MD.reset()
-    return _REL_LINK.sub(r"<em>\1</em>", _MD.convert(text))
+    html = _REL_LINK.sub(r"<em>\1</em>", _MD.convert(text))
+    return _TABLE.sub(r'<div class="tablewrap"><table>\1</table></div>', html)
 
 
 def to_text(html: str) -> str:

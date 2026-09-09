@@ -1,7 +1,5 @@
 /* ============================ helpers ============================ */
-const $ = s => document.querySelector(s);
-const esc = s =>
-  String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+/* $, esc, toast, ico, fmtH, fmtClock and help() live in 00-dom.js, shared with Studio. */
 const MODS = DATA.modules;
 const byId = id => MODS.find(m => m.id === id);
 const moduleIndex = id => MODS.findIndex(m => m.id === id);
@@ -29,6 +27,14 @@ function isDone(m) {
 }
 function doneCount() {
   return MODS.filter(isDone).length;
+}
+/* Where to send someone who has finished what they were doing: the first module that is
+   not complete, starting after `from` when there is one, else the first anywhere. */
+function nextUnfinished(from) {
+  const at = from ? moduleIndex(from) : -1;
+  return (
+    MODS.slice(at + 1).find(m => !isDone(m)) || MODS.find(m => !isDone(m)) || MODS[at + 1] || null
+  );
 }
 function minutesDone() {
   return MODS.filter(isDone).reduce((a, m) => a + m.minutes, 0);
@@ -341,55 +347,10 @@ function shuffled(arr) {
   return q;
 }
 
-function toast(msg) {
-  const t = $("#toast");
-  t.textContent = msg;
-  t.classList.add("on");
-  clearTimeout(t._x);
-  t._x = setTimeout(() => t.classList.remove("on"), 2100);
-}
-function fmtH(mins) {
-  const h = mins / 60;
-  return (h % 1 === 0 ? h : h.toFixed(1)) + "h";
-}
 /* seconds → "12m" under an hour, "1.5h" above */
 function fmtSpent(sec) {
   const m = Math.round(sec / 60);
   return m < 60 ? m + "m" : fmtH(m);
-}
-/* One small icon set, inline SVG so it renders the same on every OS. `ico(name)` returns markup. */
-const ICON_PATHS = {
-  home: "M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
-  review: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5",
-  check: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
-  stats: "M4 20V10M10 20V4M16 20v-7M22 20H2",
-  marks: "M4 20h4l10-10-4-4L4 16zM13 7l4 4",
-  library: "M4 5h6v14H4zM14 5h6v14h-6z",
-  settings:
-    "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8 4-1.5-.4.3-1.6-1.4-.8-1 1.2-1.4-.9.4-1.5-1.6-.5-.7 1.4H11l-.7-1.4-1.6.5.4 1.5-1.4.9-1-1.2-1.4.8.3 1.6L4 12l1.5.4-.3 1.6 1.4.8 1-1.2 1.4.9-.4 1.5 1.6.5.7-1.4h2.4l.7 1.4 1.6-.5-.4-1.5 1.4-.9 1 1.2 1.4-.8-.3-1.6z",
-  plan: "M4 6h16M4 12h10M4 18h7",
-  record: "M6 3h12v18l-6-4-6 4z",
-  courses: "M3 7h18v13H3zM3 7l3-4h12l3 4",
-  plus: "M12 5v14M5 12h14",
-  close: "M6 6l12 12M18 6 6 18",
-  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
-  pencil: "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
-  play: "M7 4v16l13-8z",
-  pause: "M8 5v14M16 5v14",
-  speak: "M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11",
-  flag: "M5 21V4h11l-1 4 1 4H5",
-  ask: "M9 9a3 3 0 1 1 4.5 2.6c-1 .6-1.5 1.2-1.5 2.4M12 18h.01",
-  learner: "M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21a8 8 0 0 1 16 0M15 6h4M17 4v4",
-};
-function ico(name, size) {
-  const d = ICON_PATHS[name] || "";
-  const px = size || 16;
-  return `<svg class="ic" width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
-}
-function fmtClock(sec) {
-  const m = Math.floor(sec / 60),
-    s = Math.floor(sec % 60);
-  return m + ":" + String(s).padStart(2, "0");
 }
 function fmtDay(dayNum) {
   return new Date(dayNum * DAY).toLocaleDateString(undefined, { day: "numeric", month: "short" });

@@ -60,24 +60,24 @@ function renderToday(cont) {
   const rows = [];
   if (due)
     rows.push(
-      `<button class="trow" onclick="go('#/review')"><span class="ico">${ico("review", 14)}</span><span>Review <b>${due}</b> card${due > 1 ? "s" : ""}${md ? ` · ${md} mistake${md > 1 ? "s" : ""}` : ""}</span><span class="t">~${Math.max(1, Math.round(due * 0.4))} min</span></button>`
+      `<button class="trow" onclick="go('#/review')" title="${esc(help("practice deck"))}"><span class="ico">${ico("review", 14)}</span><span>Practise <b>${due}</b> card${due > 1 ? "s" : ""}${md ? ` · ${md} mistake${md > 1 ? "s" : ""}` : ""}</span><span class="t">~${Math.max(1, Math.round(due * 0.4))} min</span></button>`
     );
   else if (mistakeCount())
     rows.push(
-      `<button class="trow" onclick="go('#/review/mistakes')"><span class="ico">✗</span><span>Fix <b>${mistakeCount()}</b> queued mistake${mistakeCount() > 1 ? "s" : ""}</span><span class="t">~${Math.max(1, Math.round(mistakeCount() * 0.5))} min</span></button>`
+      `<button class="trow" onclick="go('#/review/mistakes')" title="${esc(help("mistake card"))}"><span class="ico">${ico("close", 13)}</span><span>Fix <b>${mistakeCount()}</b> mistake${mistakeCount() > 1 ? "s" : ""}</span><span class="t">~${Math.max(1, Math.round(mistakeCount() * 0.5))} min</span></button>`
     );
   let next = "";
   if (cont) {
-    const step = resumeStep(cont),
-      name = STEPS[+(step.slice(1) || 0)].n,
+    const stepAt = resumeStepIndex(cont),
+      name = STEPS[stepAt].n,
       started = modPct(cont) > 0;
     const weak = weakPrereqs(cont);
     next = `<div class="nextmod">
       <h3>${cont.id} · ${esc(cont.title)}</h3>
       <p class="sub">${cont.minutes} minutes · ${esc(partName(cont.part))}${started ? resumeLabel(cont) || " · " + name.toLowerCase() : ""}</p>
-      ${started ? `<div class="bar" style="margin:10px 0 12px"><i style="width:${Math.round(modPct(cont) * 100)}%"></i></div>` : ""}
-      ${weak.length ? `<p class="sub" style="margin:0 0 10px;color:var(--warm)">Builds on ${weak.map(x => x.m.id + " (" + x.ms.name.toLowerCase() + ")").join(", ")} — worth a look first.</p>` : ""}
-      <button class="btn primary" onclick="go('#/m/${cont.id}${step}')">${started ? "Resume" : "Begin"} ${cont.id}</button>
+      ${started ? `<div class="bar nextbar"><i style="width:${Math.round(modPct(cont) * 100)}%"></i></div>` : ""}
+      ${weak.length ? `<p class="sub warnnote gap-bottom">Builds on ${weak.map(x => x.m.id + " (" + x.ms.name.toLowerCase() + ")").join(", ")} — worth a look first.</p>` : ""}
+      <a class="btn primary" href="${resumeHash(cont)}">${started ? "Resume" : "Begin"} ${cont.id}</a>
     </div>`;
   }
   offers
@@ -89,7 +89,7 @@ function renderToday(cont) {
     );
   if (openQs())
     rows.push(
-      `<button class="trow" onclick="markFilter='open';go('#/marks')"><span class="ico">?</span><span>Close <b>${openQs()}</b> open question${openQs() > 1 ? "s" : ""}</span><span class="t">~5 min</span></button>`
+      `<button class="trow" onclick="markFilter='open';go('#/marks')" title="Passages you marked with a question and have not closed"><span class="ico">${ico("ask", 14)}</span><span>Close <b>${openQs()}</b> open question${openQs() > 1 ? "s" : ""}</span><span class="t">~5 min</span></button>`
     );
   const streakLine =
     STATE.streak.last === todayNum()
@@ -97,10 +97,13 @@ function renderToday(cont) {
       : STATE.streak.days
         ? `Streak <b>${STATE.streak.days}</b> — nothing yet today`
         : "No streak yet — one section, one card or one question starts it";
-  return `<div class="card today raised"><p class="eyebrow">${cont && modPct(cont) > 0 ? "Continue" : "Next"}</p>
+  const freezes = STATE.streak.freezes
+    ? ` · <span title="${esc(help("streak freeze"))}">❄ ${STATE.streak.freezes} freeze${STATE.streak.freezes > 1 ? "s" : ""}</span>`
+    : "";
+  return `<div class="card today raised"><h3 class="eyebrow">${cont && modPct(cont) > 0 ? "Continue" : "Next"}</h3>
     ${next}
-    ${rows.length ? `<p class="eyebrow" style="margin-top:16px">Also today</p><div class="trows">${rows.join("")}</div>` : ""}
-    <p class="sub" style="margin-top:12px;font-size:12.5px">${streakLine}${STATE.streak.freezes ? ` · ❄ ${STATE.streak.freezes} freeze${STATE.streak.freezes > 1 ? "s" : ""}` : ""}${pi.weekly && pi.thisWeek.length ? ` · this week: ${pi.thisWeek.map(m => m.id).join(", ")}` : ""}</p></div>`;
+    ${rows.length ? `<h3 class="eyebrow gap-top">Also today</h3><div class="trows">${rows.join("")}</div>` : ""}
+    <p class="sub gap-top">${streakLine}${freezes}${pi.weekly && pi.thisWeek.length ? ` · this week: ${pi.thisWeek.map(m => m.id).join(", ")}` : ""}</p></div>`;
 }
 function renderPlanCard() {
   const pl = STATE.plan || {},
@@ -123,17 +126,20 @@ function renderPlanCard() {
     else if (pi.behind <= -1) line += ` You are about <b>${-pi.behind}h ahead</b>.`;
     else line += ` On track.`;
   }
-  return `<div class="card"><p class="eyebrow">Study plan</p>
-    <p style="margin:0 0 12px;color:var(--text-2);font-size:14.5px">${line}</p>
+  return `<div class="card"><h3 class="eyebrow">Study plan</h3>
+    <p class="lede">${line}</p>
     <div class="planrow">
+      <label class="visually-hidden" for="planmode">How you want to plan</label>
       <select id="planmode"><option value="" ${!pl.mode ? "selected" : ""}>No plan</option><option value="weekly" ${pl.mode === "weekly" ? "selected" : ""}>Hours per week</option><option value="date" ${pl.mode === "date" ? "selected" : ""}>Target date</option></select>
+      <label class="visually-hidden" for="planweekly">Hours per week</label>
       <input type="number" id="planweekly" min="0.5" step="0.5" value="${pl.weekly || ""}" placeholder="hours / week" class="${pl.mode === "weekly" ? "" : "hidden"}">
+      <label class="visually-hidden" for="plandate">Target date</label>
       <input type="date" id="plandate" value="${pl.target || ""}" min="${iso(todayNum() + 1)}" class="${pl.mode === "date" ? "" : "hidden"}">
       <button class="btn sm primary" onclick="savePlan()">Save</button>
-      ${pl.mode ? `<button class="btn sm ghost" onclick="shiftPlan()" title="Start counting from today">Shift to today</button>` : ""}
+      ${pl.mode ? `<button class="btn sm" onclick="shiftPlan()" title="Start counting from today">Shift to today</button>` : ""}
     </div>
-    ${pi.weekly && pi.thisWeek.length ? `<p class="sub" style="margin-top:10px;font-size:12.5px">This week: ${pi.thisWeek.map(m => `<button class="chip" style="font-size:11.5px;padding:3px 8px" onclick="go('#/m/${m.id}')">${m.id} · ${esc(m.short)}</button>`).join(" ")}</p>` : ""}
-    ${STUDIO && "Notification" in window ? `<p class="sub" style="margin-top:10px;font-size:12px"><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="plannotify" ${STATE.ui && STATE.ui.notify ? "checked" : ""}> Remind me in this browser when cards are due</label></p>` : ""}
+    ${pi.weekly && pi.thisWeek.length ? `<p class="sub gap-top">This week: ${pi.thisWeek.map(m => `<a class="chip sm" href="#/m/${m.id}">${m.id} · ${esc(m.short)}</a>`).join(" ")}</p>` : ""}
+    ${STUDIO && "Notification" in window ? `<p class="sub gap-top"><label class="radio"><input type="checkbox" id="plannotify" ${STATE.ui && STATE.ui.notify ? "checked" : ""}> Remind me in this browser when cards are due</label></p>` : ""}
   </div>`;
 }
 function bindPlanCard() {
@@ -210,37 +216,37 @@ function viewRecord() {
   const sheets = DATA.library.templates.map(t => ({ t, n: sheetFilled(t.slug) })).filter(x => x.n);
   const dist = [0, 0, 0, 0, 0];
   MODS.forEach(m => dist[mastery(m).lvl]++);
-  let h = `<div class="wrap"><div class="readhead"><div class="crumb">${esc(CFG.title)} · course record</div>
+  let h = `<div class="wrap"><div class="readhead"><div class="crumb"><a href="#/stats">Progress</a> · course record</div>
     <h2>${done === MODS.length ? "Completed" : done + " of " + MODS.length + " modules"}</h2>
     <p class="sub">${milestoneCopy(done)}</p></div>
-    <div class="grid g4" style="margin-bottom:18px">
+    <div class="grid g4 gap-bottom">
       <div class="stat"><div class="n">${fmtH(minutesDone())}</div><div class="l">of ${fmtH(CFG.hours * 60)} curriculum</div></div>
       <div class="stat"><div class="n">${spent}m</div><div class="l">logged on the page</div></div>
       <div class="stat"><div class="n">${qs.total ? Math.round(qs.pct * 100) + "%" : "—"}</div><div class="l">accuracy · ${qs.total} answered</div></div>
       <div class="stat"><div class="n">${lastc ? Math.round((lastc.score / lastc.total) * 100) + "%" : "—"}</div><div class="l">${lastc ? "course challenge · " + fmtDay(lastc.day) : "no course challenge yet"}</div></div>
     </div>
-    <div class="card" style="margin-bottom:16px"><p class="eyebrow">Mastery by part</p>`;
+    <div class="card gap-bottom"><h3 class="eyebrow">Mastery by part</h3>`;
   DATA.parts.forEach(p => {
     const ms = MODS.filter(m => m.part === p.id);
-    h += `<div style="margin:10px 0"><div style="display:flex;gap:8px;align-items:baseline;margin-bottom:6px"><b style="font-size:14px">${esc(p.name)}</b><span class="sub" style="font-size:12px">${ms.filter(m => mastery(m).lvl >= 3).length} of ${ms.length} proficient or better</span></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">${ms.map(m => `<span class="chip lvl l${mastery(m).lvl}" title="${mastery(m).name}" onclick="go('#/m/${m.id}')">${m.id}</span>`).join("")}</div></div>`;
+    h += `<div class="partrow"><div class="rowline mapttl"><b>${esc(p.name)}</b><span class="sub">${ms.filter(m => mastery(m).lvl >= 3).length} of ${ms.length} proficient or better</span></div>
+      <div class="rowline wrapped">${ms.map(m => `<a class="chip lvl l${mastery(m).lvl}" href="#/m/${m.id}" title="${mastery(m).name} — ${esc(help(mastery(m).name))}">${m.id}</a>`).join("")}</div></div>`;
   });
-  h += `<div class="legend" style="padding:8px 0 0">${[4, 3, 2, 1].map(l => `<span><i class="dot l${l}"></i>${MASTERY[l]} · ${dist[l]}</span>`).join("")}</div></div>`;
+  h += `<div class="legend flat">${[4, 3, 2, 1].map(l => `<span title="${esc(help(MASTERY[l]))}"><i class="dot l${l}"></i>${MASTERY[l]} · ${dist[l]}</span>`).join("")}</div></div>`;
   const openByModule = MODS.map(m => ({ m, n: openGapItems(m.id).length })).filter(x => x.n);
   if (openByModule.length)
-    h += `<div class="card" style="margin-bottom:16px;border-color:var(--warm)"><p class="eyebrow" style="color:var(--warm)">Gaps still open</p>
-    <p class="sub" style="margin-bottom:10px">The course is not closed while these are. Each module's last step drills them.</p>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${openByModule.map(x => `<button class="btn sm" onclick="go('#/m/${x.m.id}/5')">${x.m.id} · ${x.n} open</button>`).join("")}</div></div>`;
+    h += `<div class="card warmcard gap-bottom"><h3 class="eyebrow warnnote">Gaps still open</h3>
+    <p class="sub gap-bottom">The course is not closed while these are. Each module's last step drills them.</p>
+    <div class="rowline wrapped">${openByModule.map(x => `<button class="btn sm" onclick="go(stepHash('${x.m.id}',5))">${x.m.id} · ${x.n} open</button>`).join("")}</div></div>`;
   if (cap.answer)
-    h += `<div class="card" style="margin-bottom:16px"><p class="eyebrow">Capstone · ${last.id} ${esc(last.title)}</p>
-    <div class="quote" style="max-height:none;margin-bottom:10px">${esc(cap.answer)}</div>
-    ${cap.fb ? `<div class="fb ${cap.fb.verdict || ""}"><b>Claude's read</b>${mdLite(cap.fb.text)}</div>` : ""}
+    h += `<div class="card gap-bottom"><h3 class="eyebrow">Capstone · ${last.id} ${esc(last.title)}</h3>
+    <div class="quote full gap-bottom">${esc(cap.answer)}</div>
+    ${cap.fb ? `<div class="fb ${cap.fb.verdict || ""}"><b>The tutor's read</b>${mdLite(cap.fb.text)}</div>` : ""}
     ${cap.score ? `<p class="sub">Self-scored: ${["", "missed it", "partly there", "got it"][cap.score]}.</p>` : ""}</div>`;
   if (sheets.length)
-    h += `<div class="card" style="margin-bottom:16px"><p class="eyebrow">Worksheets you filled in</p>${sheets.map(x => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="go('#/library/t-${x.t.slug}')">${esc(x.t.title)} · ${x.n}/${x.t.fields}</button>`).join("")}</div>`;
+    h += `<div class="card gap-bottom"><h3 class="eyebrow">Worksheets you filled in</h3><div class="rowline wrapped">${sheets.map(x => `<button class="btn sm" onclick="go('#/library/t-${x.t.slug}')">${esc(x.t.title)} · ${x.n}/${x.t.fields}</button>`).join("")}</div></div>`;
   const c3 = qs.conf[3];
-  h += `<div class="card" style="margin-bottom:16px"><p class="eyebrow">Calibration</p><p style="margin:0;color:var(--text-2)">${c3[1] >= 5 ? `When certain, right ${Math.round((c3[0] / c3[1]) * 100)}% of the time over ${c3[1]} answers.` : "Not enough confident answers to say yet."}</p></div>
-    <div style="display:flex;gap:9px;flex-wrap:wrap"><button class="btn" onclick="copyRecord()">Copy as text</button><button class="btn" onclick="window.print()">Print</button><button class="btn ghost" onclick="go('#/stats')">Stats</button></div></div>`;
+  h += `<div class="card gap-bottom"><h3 class="eyebrow" title="${esc(help("calibration"))}">Calibration</h3><p class="lede">${c3[1] >= 5 ? `When certain, right ${Math.round((c3[0] / c3[1]) * 100)}% of the time over ${c3[1]} answers.` : "Not enough confident answers to say yet."}</p></div>
+    <div class="rowline wrapped"><button class="btn primary" onclick="copyRecord()">Copy as text</button><button class="btn" onclick="window.print()">Print</button><button class="btn" onclick="go('#/stats')">Progress</button></div></div>`;
   $("#view").innerHTML = h;
 }
 function copyRecord() {

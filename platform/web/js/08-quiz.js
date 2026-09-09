@@ -9,6 +9,26 @@
 let QUIZ = null,
   shortGrading = false;
 
+/* The result card a quiz and a checkpoint both end on: one big percentage, one honest
+   sentence, the calibration note when it is earned, and the buttons for what comes next.
+   Both used to build their own; they drifted, and one of them carried a subject word. */
+function scoreBlock(o) {
+  const band = o.pct >= 80 ? "ok" : o.pct >= 60 ? "warm" : "bad";
+  const calib = o.overconf
+    ? `<div class="hint narrow gap-bottom-lg" title="${esc(help("calibration"))}"><span class="i">Calibration</span>
+       You were "certain" and wrong ${o.overconf} time${o.overconf > 1 ? "s" : ""}. That is the most
+       valuable signal on this page: a belief you hold confidently and cannot support is the one that
+       will catch you out when it matters.</div>`
+    : "";
+  return `<div class="card centered">
+    ${o.eyebrow ? `<h3 class="eyebrow">${esc(o.eyebrow)}</h3>` : ""}
+    <div class="bigscore ${band}">${o.pct}%</div>
+    <p class="sub gap-bottom">${o.line}</p>
+    <p class="lede narrow">${esc(o.verdict)}</p>
+    ${calib}
+    <div class="rowline center wrapped">${o.actions}</div></div>`;
+}
+
 function renderQuiz(m) {
   const p = progressOf(m.id);
   if (!p.quiz) p.quiz = { i: 0, a: [], finished: false, seed: Math.floor(Math.random() * 1e6) };
@@ -47,13 +67,14 @@ function drawQuiz() {
     st = qState(),
     t = it.type || "single";
   const n = QUIZ.items.length;
-  let h = `<div class="card">
+  let h = `${qs.i === 0 && QUIZ.kind !== "cp" ? `<p class="hint gap-bottom"><span class="i">Why</span> Pulling an answer out of memory, and being wrong, does more for retention than reading the passage again. Answer before you look anything up: a miss here is worth more than a hit.</p>` : ""}
+    <div class="card">
     <div class="qmeta"><span>Question ${qs.i + 1} of ${n}</span>
       <span class="bar"><i style="width:${Math.round((qs.i / n) * 100)}%"></i></span>
       ${QUIZ.kind === "cp" ? `<span class="tag acc">${mid}</span>` : ""}
       <span class="tag">${TYPE_LABEL[t] || ""}</span>
-      <span style="margin-left:auto">${qs.a.filter(x => x && x.ok).length} correct so far</span></div>
-    <h3 style="font-family:var(--serif);font-size:21px;line-height:1.35;font-weight:600;margin:0 0 16px">${t === "cloze" ? clozeHtml(it, st) : esc(it.q)}</h3>`;
+      <span class="pushright">${qs.a.filter(x => x && x.ok).length} correct so far</span></div>
+    <h3 class="h-serif qhead">${t === "cloze" ? clozeHtml(it, st) : esc(it.q)}</h3>`;
   h += answerArea(it, st);
   if (!st.answered) {
     const hints = it.hints || [];
@@ -63,13 +84,13 @@ function drawQuiz() {
         .map((x, i) => `<div class="hintbox"><b>Hint ${i + 1}</b>${esc(x)}</div>`)
         .join("");
     if (!st.committed) {
-      h += `<div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap;align-items:center">
+      h += `<div class="rowline wrapped gap-top">
         ${t !== "single" && t !== "tf" ? `<button class="btn primary" onclick="qCommit()">Lock in answer</button>` : ""}
-        ${hints.length && st.hinted < hints.length ? `<button class="btn sm ghost" onclick="qHint()">Hint ${st.hinted + 1} of ${hints.length}</button>` : ""}
-        ${st.hinted ? `<span class="sub" style="font-size:12px">A question answered after a hint goes into your mistake queue either way.</span>` : ""}
+        ${hints.length && st.hinted < hints.length ? `<button class="btn sm" onclick="qHint()">Hint ${st.hinted + 1} of ${hints.length}</button>` : ""}
+        ${st.hinted ? `<span class="sub" title="${esc(help("mistake card"))}">A question answered after a hint becomes a mistake card either way.</span>` : ""}
       </div>`;
     } else {
-      h += `<div class="conf"><span style="font-size:13px;color:var(--muted)">How sure are you?</span>
+      h += `<div class="conf"><span class="sub" title="${esc(help("calibration"))}">How sure are you?</span>
         ${[
           ["Guessing", 1],
           ["Fairly sure", 2],
@@ -81,12 +102,12 @@ function drawQuiz() {
           )
           .join("")}
         ${t !== "single" && t !== "tf" ? `<button class="btn sm ghost" onclick="qUncommit()">Change answer</button>` : ""}</div>
-        <p class="sub" style="margin-top:10px;font-size:12px">Rating your confidence trains calibration — knowing what you actually know is most of what separates a good ${esc(CFG.practitioner)} from a confident one.</p>`;
+        <p class="sub gap-top tiny">Rating your confidence trains calibration — knowing what you actually know is most of what separates a good ${esc(CFG.practitioner)} from a confident one.</p>`;
     }
   } else {
     h += verdictHtml(it, st);
     if (st.ok != null)
-      h += `<div style="display:flex;gap:9px;margin-top:16px"><button class="btn primary" onclick="qNext()">${qs.i === n - 1 ? "See results" : "Next question"} <kbd>↵</kbd></button></div>`;
+      h += `<div class="rowline gap-top"><button class="btn primary" onclick="qNext()">${qs.i === n - 1 ? "See results" : "Next question"} <kbd>↵</kbd></button></div>`;
   }
   h += `</div>`;
   host.innerHTML = h;
@@ -135,14 +156,14 @@ function answerArea(it, st) {
         .join("") +
       (locked
         ? ""
-        : `<p class="sub" style="font-size:12px;margin-top:4px">Select every option that applies, then lock in.</p>`)
+        : `<p class="sub tiny gap-top-sm">Select every option that applies, then lock in.</p>`)
     );
   }
   if (t === "numeric") {
     return `<div class="numrow"><input type="text" inputmode="decimal" id="qin" value="${esc(st.resp == null ? "" : st.resp)}" placeholder="Your figure" ${locked ? "disabled" : ""} oninput="qSet(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();qCommit()}">${it.unit ? `<span class="unit">${esc(it.unit)}</span>` : ""}</div>`;
   }
   if (t === "cloze")
-    return `<p class="sub" style="font-size:12.5px">Type the missing word or phrase into the blank above${locked ? "" : ", then lock in"}.</p>`;
+    return `<p class="sub">Type the missing word or phrase into the blank above${locked ? "" : ", then lock in"}.</p>`;
   if (t === "short") {
     return `<textarea id="qin" rows="4" placeholder="One or two sentences. Say the thing, do not describe it." ${locked ? "disabled" : ""} oninput="qSet(this.value)">${esc(st.resp || "")}</textarea>`;
   }
@@ -152,12 +173,12 @@ function answerArea(it, st) {
       .map(
         (oi, pos) => `<div class="orow ${st.answered ? (oi === pos ? "right" : "wrong") : ""}">
       <span class="k">${pos + 1}</span><span style="flex:1">${esc(it.options[oi])}</span>
-      ${locked ? "" : `<button class="iconbtn" ${pos === 0 ? "disabled" : ""} onclick="qMove(${pos},-1)" title="Move up">↑</button><button class="iconbtn" ${pos === order.length - 1 ? "disabled" : ""} onclick="qMove(${pos},1)" title="Move down">↓</button>`}
+      ${locked ? "" : `<button class="iconbtn" ${pos === 0 ? "disabled" : ""} onclick="qMove(${pos},-1)" title="Move “${esc(it.options[oi])}” up" aria-label="Move “${esc(it.options[oi])}” up">${ico("up", 15)}</button><button class="iconbtn" ${pos === order.length - 1 ? "disabled" : ""} onclick="qMove(${pos},1)" title="Move “${esc(it.options[oi])}” down" aria-label="Move “${esc(it.options[oi])}” down">${ico("down", 15)}</button>`}
     </div>`
       )
       .join(
         ""
-      )}</div>${locked ? "" : `<p class="sub" style="font-size:12px;margin-top:4px">Arrange from first to last, then lock in.</p>`}`;
+      )}</div>${locked ? "" : `<p class="sub">Arrange from first to last, then lock in.</p>`}`;
   }
   if (t === "match") {
     const rights = perm(it.pairs.length, qSeed());
@@ -191,13 +212,12 @@ function verdictHtml(it, st) {
   const t = it.type || "single";
   let h = "";
   if (t === "short") {
-    h += `<div class="why" style="margin-top:14px"><b style="color:var(--text);display:block;margin-bottom:6px">Model answer</b>${esc(it.model)}</div>`;
+    h += `<div class="why gap-top"><b class="whyttl">Model answer</b>${esc(it.model)}</div>`;
     if (st.ai)
       h += `<div class="fb ${st.ai.verdict}"><b>${st.ai.verdict === "correct" ? "Claude: that covers it" : st.ai.verdict === "partial" ? "Claude: partly there" : "Claude: not yet"}</b>${mdLite(st.ai.text)}</div>`;
-    else if (shortGrading)
-      h += `<div class="msg a typing" style="margin-top:12px"><i></i><i></i><i></i></div>`;
+    else if (shortGrading) h += `<div class="msg a typing gap-top"><i></i><i></i><i></i></div>`;
     if (st.ok == null && !shortGrading) {
-      h += `<div class="conf"><span style="font-size:13px;color:var(--muted)">${connMode() === "none" ? "How did yours compare?" : "Or score it yourself:"}</span>
+      h += `<div class="conf"><span class="sub">${connMode() === "none" ? "How did yours compare?" : "Or score it yourself:"}</span>
         ${[
           ["Missed it", 1],
           ["Partly there", 2],
@@ -205,11 +225,10 @@ function verdictHtml(it, st) {
         ]
           .map(([l, v]) => `<button class="btn sm" onclick="qSelf(${v})">${l}</button>`)
           .join("")}
-        ${connMode() !== "none" ? `<button class="btn sm primary" onclick="gradeShortNow()">Ask Claude to check</button>` : ""}</div>`;
+        ${connMode() !== "none" ? `<button class="btn sm primary" onclick="gradeShortNow()">Ask the tutor to check</button>` : ""}</div>`;
     } else if (st.self)
-      h += `<p class="sub" style="margin-top:10px">Self-scored: ${["", "missed it", "partly there", "got it"][st.self]}.</p>`;
-    if (st.ok != null)
-      h += `<div class="why"><b style="color:var(--text);display:block;margin-bottom:6px">Why</b>${esc(it.why)}</div>`;
+      h += `<p class="sub gap-top">Self-scored: ${["", "missed it", "partly there", "got it"][st.self]}.</p>`;
+    if (st.ok != null) h += `<div class="why"><b class="whyttl">Why</b>${esc(it.why)}</div>`;
     return h;
   }
   const head = st.ok
@@ -236,7 +255,7 @@ function verdictHtml(it, st) {
       .join("");
   }
   if (!st.ok || st.hinted)
-    h += `<p class="sub" style="margin-top:10px;font-size:12px">Added to your mistake queue — it comes back tomorrow as a card.</p>`;
+    h += `<p class="sub gap-top" title="${esc(help("mistake card"))}">Added to your mistakes — it comes back tomorrow as a card.</p>`;
   return h;
 }
 
@@ -366,7 +385,7 @@ async function gradeShortNow() {
     settle(mid, qi, it, st);
     save();
   } catch (e) {
-    toast((e && e.message) || "Could not reach Claude — score it yourself");
+    toast((e && e.message) || "The tutor did not answer — score it yourself");
   }
   shortGrading = false;
   drawQuiz();
@@ -393,27 +412,35 @@ function quizResults(m) {
   const pct = Math.round((ok / tot) * 100);
   const overconf = q.a.filter(x => x && x.conf === 3 && !x.ok).length;
   const queued = q.a.filter(x => x && (!x.ok || x.hinted)).length;
-  let h = `<div class="card" style="text-align:center">
-    <p class="eyebrow">Step 3 · Retrieve</p>
-    <div style="font-family:var(--serif);font-size:52px;font-weight:600;line-height:1;margin:8px 0 4px;color:${pct >= 80 ? "var(--ok)" : pct >= 60 ? "var(--warm)" : "var(--bad)"}">${pct}%</div>
-    <p class="sub" style="margin-bottom:16px">${ok} of ${tot} correct${queued ? ` · ${queued} in your mistake queue` : ""}</p>
-    <p style="max-width:520px;margin:0 auto 18px;color:var(--text-2)">${pct >= 85 ? "Strong. The material is in there. The flashcards will keep it there." : pct >= 60 ? "Reasonable first pass. Re-read the sections behind the ones you missed, then retake in a few days — the retake is where the learning happens." : "This is a normal first score and it is useful data. Go back to Read, work through the sections behind the misses, and retake. Nobody learns this in one pass."}</p>`;
-  if (overconf)
-    h += `<div class="hint" style="max-width:520px;margin:0 auto 18px;text-align:left"><span class="i">Calibration</span> You were "certain" and wrong ${overconf} time${overconf > 1 ? "s" : ""}. That is the most valuable signal on this page — those are the beliefs that will cost you money.</div>`;
-  h += `<div style="display:flex;gap:9px;justify-content:center;flex-wrap:wrap">
-    <button class="btn" onclick="retake('${m.id}')">Retake</button>
-    <button class="btn" onclick="go('#/m/${m.id}/1')">Back to reading</button>
-    ${queued ? `<button class="btn" onclick="go('#/review/mistakes')">Fix mistakes now</button>` : ""}
-    <button class="btn primary" onclick="go('#/m/${m.id}/3')">Continue to Elaborate</button></div></div>`;
-  h += `<div class="card" style="margin-top:16px"><p class="eyebrow">Every question, with the reasoning</p>`;
+  const verdict =
+    pct >= 85
+      ? "Strong. The material is in there. The flashcards will keep it there."
+      : pct >= 60
+        ? "Reasonable first pass. Re-read the sections behind the ones you missed, then retake in a few days — the retake is where the learning happens."
+        : "This is a normal first score and it is useful data. Go back to Read, work through the sections behind the misses, and retake. Nobody learns this in one pass.";
+  const queuedLine = queued
+    ? ` · <span title="${esc(help("mistake card"))}">${queued} added to your mistakes</span>`
+    : "";
+  let h = scoreBlock({
+    eyebrow: "Step 3 · Retrieve",
+    pct,
+    line: `${ok} of ${tot} correct${queuedLine}`,
+    verdict,
+    overconf,
+    actions: `<button class="btn" onclick="askRetake('${m.id}')">Retake</button>
+      <button class="btn" onclick="go(stepHash('${m.id}',1))">Back to reading</button>
+      ${queued ? `<button class="btn" onclick="go('#/review/mistakes')">Fix mistakes now</button>` : ""}
+      <button class="btn primary" onclick="go(stepHash('${m.id}',3))">Continue to Elaborate</button>`,
+  });
+  h += `<div class="card gap-top"><h3 class="eyebrow">Every question, with the reasoning</h3>`;
   items.forEach((it, i) => {
     const st = q.a[i] || {};
-    h += `<div style="padding:14px 0;border-top:${i ? "1px solid var(--line)" : "0"}">
-      <div style="display:flex;gap:9px;align-items:flex-start">
-        <span class="tag ${st.ok ? "ok" : ""}" style="${st.ok ? "" : "background:var(--bad-soft);color:var(--bad)"}">${st.ok ? "✓" : "✗"}</span>
-        <div><b style="font-size:15px">${esc(it.q)}</b> <span class="tag">${TYPE_LABEL[it.type || "single"]}</span>
-        <div style="font-size:14px;color:var(--muted);margin-top:5px">Correct: ${esc(correctText(it))}${!st.ok && st.resp != null ? " · yours: " + esc(respText(it, st.resp)) : ""}${st.hinted ? " · used " + st.hinted + " hint" + (st.hinted > 1 ? "s" : "") : ""}</div>
-        <div style="font-size:14px;color:var(--text-2);margin-top:7px">${esc(it.why)}</div></div></div></div>`;
+    h += `<div class="qreview ${i ? "" : "first"}">
+      <div class="rowline top">
+        <span class="tag ${st.ok ? "ok" : "bad"}">${st.ok ? "✓" : "✗"}</span>
+        <div><b class="qtext">${esc(it.q)}</b> <span class="tag">${TYPE_LABEL[it.type || "single"]}</span>
+        <div class="qgiven">Correct: ${esc(correctText(it))}${!st.ok && st.resp != null ? " · yours: " + esc(respText(it, st.resp)) : ""}${st.hinted ? " · used " + st.hinted + " hint" + (st.hinted > 1 ? "s" : "") : ""}</div>
+        <div class="qwhy">${esc(it.why)}</div></div></div></div>`;
   });
   h += `</div>`;
   $("#stepbody").innerHTML = h;
@@ -431,6 +458,16 @@ function respText(it, resp) {
       .join("  ·  ");
   if (t === "short") return String(resp || "").slice(0, 160);
   return String(resp);
+}
+/* A retake wipes the answers and the confidence ratings that went with them, which is
+   the only record of what was misjudged. It asks. */
+function askRetake(id) {
+  confirmModal(
+    "Retake this quiz?",
+    "Your current answers and confidence ratings for this module are replaced. Cards already in your mistake queue stay.",
+    "Retake it",
+    () => retake(id)
+  );
 }
 function retake(id) {
   progressOf(id).quiz = { i: 0, a: [], finished: false, seed: Math.floor(Math.random() * 1e6) };

@@ -11,11 +11,34 @@ function parseRoute() {
   if (bits[0] === "new") return { name: "new", id: null, query };
   if (bits[0] === "search") return { name: "search", id: null, query };
   if (bits[0] === "settings") return { name: "settings", id: null, query };
+  if (bits[0] === "jobs") return { name: "jobs", id: null, query };
   if (bits[0] === "job" && bits[1]) return { name: "job", id: bits[1], query };
   if (bits[0] === "course" && bits[1]) {
     return { name: bits[2] === "edit" ? "edit" : "course", id: decodeURIComponent(bits[1]), query };
   }
   return { name: "library", id: null, query };
+}
+
+/* Which nav item is the parent of the route being shown. Courses owns everything that is
+   about one course — the page, its editor, a job it started, a search across them all. */
+const NAV_OWNER = {
+  library: "nav-library",
+  course: "nav-library",
+  edit: "nav-library",
+  search: "nav-library",
+  job: "nav-library",
+  jobs: "nav-library",
+  new: "nav-new",
+  settings: "nav-settings",
+};
+function paintNav() {
+  const owner = NAV_OWNER[route.name] || "nav-library";
+  document.querySelectorAll(".topnav a").forEach(a => {
+    const on = a.id === owner;
+    a.classList.toggle("active", on);
+    if (on) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
 }
 
 function render() {
@@ -29,20 +52,13 @@ function render() {
     document.title = "Course Studio";
   }
   if (route.name !== "settings") clearInterval(logTimer);
-  document
-    .querySelectorAll(".topnav a")
-    .forEach(a =>
-      a.classList.toggle(
-        "active",
-        (route.name === "library" && a.id === "nav-library") ||
-          (route.name === "new" && a.id === "nav-new") ||
-          (route.name === "settings" && a.id === "nav-settings")
-      )
-    );
+  paintNav();
+  closeNavMenu();
   window.scrollTo(0, 0);
   if (route.name === "new") return viewNew();
   if (route.name === "search") return viewSearch();
   if (route.name === "settings") return viewSettingsPage();
+  if (route.name === "jobs") return viewJobs();
   if (route.name === "job") return viewJob();
   if (route.name === "course") return viewCourse();
   if (route.name === "edit") return viewEdit();
@@ -53,6 +69,7 @@ window.addEventListener("hashchange", () => {
   refresh().then(render).catch(render);
 });
 $("#themebtn").onclick = cycleTheme;
+$("#navmenubtn").onclick = toggleNavMenu;
 $("#searchform").onsubmit = e => {
   e.preventDefault();
   const q = $("#searchq").value.trim();
@@ -60,16 +77,9 @@ $("#searchform").onsubmit = e => {
 };
 
 refresh()
-  .then(() => {
-    // Reattach to a run that is still going, so closing the tab is not the same as stopping.
-    const live = (STATE.jobs || []).find(j => !FINISHED.includes(j.status));
-    if (live && (!location.hash || location.hash === "#/" || location.hash === "#")) {
-      location.hash = "#/job/" + live.id;
-      return;
-    }
-    render();
-  })
+  .then(render)
   .catch(err => {
     $("#view").innerHTML =
-      `<div class="card"><h3>Cannot reach the Studio server</h3><p class="sub">${esc(err.message)}</p></div>`;
+      `<div class="card"><h3>Cannot reach the Studio server</h3><p class="sub">${esc(err.message)}</p>
+       <div class="rowline gap-top"><button class="btn primary" onclick="location.reload()">Try again</button></div></div>`;
   });

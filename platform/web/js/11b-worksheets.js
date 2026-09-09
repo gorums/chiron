@@ -1,7 +1,7 @@
 /* ---------- worksheets you can fill in ----------
    The build turned every natural blank in a template into an input with a data-f number.
    Values live in STATE.sheets[slug][n]; a worksheet is a deliverable, so it syncs with the
-   rest of your progress and can be copied out as text or handed to Claude for review. */
+   rest of your progress and can be copied out as text or handed to the tutor for review. */
 function sheetVals(slug) {
   if (!STATE.sheets[slug]) STATE.sheets[slug] = {};
   return STATE.sheets[slug];
@@ -16,18 +16,23 @@ function viewWorksheet(t) {
   const v = sheetVals(t.slug),
     n = sheetFilled(t.slug),
     fb = v._fb;
+  // The way back is to the exercise this worksheet belongs to, not just to the library:
+  // a worksheet is opened from a module's Apply step and that is where it is finished.
+  const from = (t.uses || []).map(byId).filter(Boolean)[0];
   $("#view").innerHTML = `<div class="wrap">
-    <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
-      <button class="btn sm" onclick="go('#/library')">← Library</button>
-      <span style="flex:1"></span>
+    <div class="rowline wrapped">
+      ${from ? `<a class="btn sm" href="${stepHash(from.id, 4)}">← ${from.id} · Apply</a>` : ""}
+      <a class="btn sm" href="#/library">← Library</a>
+      <span class="spacer"></span>
       ${t.fields ? `<span class="sub" id="sheetcount">${n} of ${t.fields} filled</span>` : ""}
       <button class="btn sm" onclick="copySheet('${t.slug}')">Copy as text</button>
-      ${t.fields && connMode() !== "none" ? `<button class="btn sm primary" id="sheetreview" onclick="reviewSheet('${t.slug}')">Ask Claude to review</button>` : ""}
-      ${t.fields ? `<button class="btn sm ghost" onclick="clearSheet('${t.slug}')">Clear</button>` : ""}
+      ${t.fields && connMode() !== "none" ? `<button class="btn sm primary" id="sheetreview" onclick="reviewSheet('${t.slug}')">Ask the tutor to review it</button>` : ""}
+      ${t.fields ? `<button class="btn sm" onclick="clearSheet('${t.slug}')">Clear</button>` : ""}
     </div>
-    ${(t.uses || []).length ? `<p class="sub" style="margin-top:10px">Used in ${t.uses.map(id => `<a href="#/m/${id}/4">${id}</a>`).join(", ")}.</p>` : ""}
-    <div class="prose sheet" id="sheet" style="padding-left:0;margin-top:18px">${t.html}</div>
-    <div id="sheetfb">${fb ? `<div class="fb ${fb.verdict || ""}"><b>Claude's review · ${new Date(fb.at).toLocaleDateString()}</b>${mdLite(fb.text)}</div>` : ""}</div>
+    <h2 class="big gap-top">${esc(t.title)}</h2>
+    ${(t.uses || []).length ? `<p class="sub">Used in ${t.uses.map(id => `<a href="${stepHash(id, 4)}">${id}</a>`).join(", ")}.</p>` : ""}
+    <div class="prose sheet flat gap-top-lg" id="sheet">${t.html}</div>
+    <div id="sheetfb">${fb ? `<div class="fb ${fb.verdict || ""}"><b>The tutor's review · ${new Date(fb.at).toLocaleDateString()}</b>${mdLite(fb.text)}</div>` : ""}</div>
   </div>`;
   const host = $("#sheet");
   host.querySelectorAll("[data-f]").forEach(el => {
@@ -80,7 +85,7 @@ function copySheet(slug) {
 function clearSheet(slug) {
   confirmModal(
     "Clear this worksheet?",
-    "Everything you typed into it goes. Claude's last review of it stays.",
+    "Everything you typed into it goes. The tutor's last review of it stays.",
     "Clear it",
     () => {
       const fb = (STATE.sheets[slug] || {})._fb;

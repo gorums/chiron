@@ -519,7 +519,7 @@ async function refreshLearner(quiet) {
       if (!quiet) toast("Your profile is up to date");
     } else if (!quiet) toast("Could not read Claude's reply — try again");
   } catch (e) {
-    if (!quiet) toast((e && e.message) || "Could not reach Claude");
+    if (!quiet) toast((e && e.message) || "The tutor did not answer");
   }
   learnerRun.busy = false;
   if (route.view === "learner") viewLearner();

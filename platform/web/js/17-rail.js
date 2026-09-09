@@ -20,6 +20,7 @@ const rail = {
   menuOpen: false, // the conversation menu is showing
   sending: false, // a reply is on its way
   compacting: false, // a conversation is being summarised into a fresh one
+  finishing: false, // a role-play is being graded; a second click must not send it twice
 };
 
 /* ---- which conversation the rail draws ---- */
@@ -180,7 +181,7 @@ function attachParaButtons(mid) {
     const b = document.createElement("button");
     b.className = "parask";
     b.type = "button";
-    b.title = "Ask Claude about this paragraph";
+    b.title = "Ask the tutor about this paragraph";
     b.textContent = "?";
     b.addEventListener("click", ev => {
       ev.stopPropagation();
@@ -286,13 +287,14 @@ function renderRail() {
     <div class="chatmenu hidden" id="chatmenu"></div>
     <div class="railfoot">
       <div class="row">
+        <label class="visually-hidden" for="railin">${esc(placeholder)}</label>
         <textarea id="railin" rows="1" placeholder="${placeholder}"></textarea>
-        <button class="btn primary" id="railsend" onclick="railSend()" aria-label="Send">↑</button>
+        <button class="btn primary" id="railsend" onclick="railSend()" title="Send (Ctrl+Enter)" aria-label="Send the message">${ico("up", 15)}</button>
       </div>
       <div class="railmeta">
         ${modelPicker()}
-        <span class="hint">${connMode() === "none" ? "not connected" : "⌘/Ctrl+↵ to send"}</span>
-        ${c && c.msgs.length ? `<button class="btn sm ghost" style="font-size:11.5px" onclick="compactConvo('${c.id}')" title="Summarise this chat and continue in a fresh one">Compact</button>` : ""}
+        <span class="hint">${connMode() === "none" ? "not connected" : "Enter for a new line · ⌘/Ctrl+↵ sends"}</span>
+        ${c && c.msgs.length ? `<button class="btn sm" onclick="compactConvo('${c.id}')" title="${esc(help("compact"))}">Compact</button>` : ""}
       </div>
     </div>`;
   renderRailHead();
@@ -300,8 +302,10 @@ function renderRail() {
   bindRailGrip();
   const inp = document.getElementById("railin");
   inp.value = draft;
+  // Enter writes a newline. Only Ctrl/Cmd+Enter sends — a long answer typed into this box
+  // used to disappear at the first paragraph break.
   inp.addEventListener("keydown", e => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       railSend();
     }
@@ -329,19 +333,19 @@ function renderRailHead() {
   const others = convosFor(m.id).length;
   h.innerHTML = `
     <div class="railtop">
-      <span class="dotstat ${connMode() !== "none" ? "on" : ""}" title="${connMode() !== "none" ? "Connected" : "Not connected"}"></span>
-      <button class="convobtn" onclick="toggleChatMenu()" title="Chats in this module — one per section and per step">
+      <span class="dotstat ${connMode() !== "none" ? "on" : ""}" title="${connMode() !== "none" ? "The tutor is connected" : "The tutor is not connected"}"></span>
+      <button class="convobtn" onclick="toggleChatMenu()" aria-haspopup="menu" aria-expanded="${rail.menuOpen ? "true" : "false"}" title="Chats in this module — one per section and per step">
         <span class="ct">${secNo != null ? `<span class="secno">§${secNo + 1}</span> ` : ""}${esc(title)}</span><span class="cv">▾</span>
       </button>
-      <button class="iconbtn" style="width:28px;height:28px" title="New chat here" aria-label="New chat" onclick="startNew()">${ico("plus", 15)}</button>
-      <button class="iconbtn" style="width:28px;height:28px" title="Hide (a)" aria-label="Hide the tutor" onclick="toggleRail()">${ico("close", 14)}</button>
+      <button class="iconbtn small" title="New chat here" aria-label="Start a new chat here" onclick="startNew()">${ico("plus", 15)}</button>
+      <button class="iconbtn small" title="Hide the tutor (a)" aria-label="Hide the tutor" onclick="toggleRail()">${ico("close", 14)}</button>
     </div>
     <div class="railctx">
-      ${isRoleplay(c) ? `<div class="rpbar"><span class="tag warn">role-play</span><span style="flex:1;font-size:12.5px;color:var(--text-2)">${c.finished ? "Finished — feedback below" : "Claude is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
+      ${isRoleplay(c) ? `<div class="rpbar"><span class="tag warn">role-play</span><span class="grow sub">${c.finished ? "Finished — feedback below" : "The tutor is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" id="rpfinish" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
       ${
         rail.pinned
           ? `<div class="pinned"><span class="tag acc">selection</span>
-             <button class="iconbtn" style="width:22px;height:22px" title="Unpin" aria-label="Unpin the selection" onclick="unpin()">${ico("close", 12)}</button>
+             <button class="iconbtn tiny" title="Unpin the selection" aria-label="Unpin the selection" onclick="unpin()">${ico("close", 12)}</button>
              <div class="ptext">${esc(rail.pinned.text.length > 220 ? rail.pinned.text.slice(0, 220) + "…" : rail.pinned.text)}</div></div>`
           : `<div class="ctxline">${where} · <b>${esc(placeLabel(place))}</b>${others > 1 ? ` · ${others} chats in this module` : ""}</div>`
       }
@@ -362,7 +366,7 @@ function modelOptions() {
    answer; every copy on the page carries data-model-pick and is kept in step by
    syncModelPickers(). */
 function modelPicker() {
-  return `<label class="modelpick" title="Which Claude answers in this chat">${ico("spark", 12)}
+  return `<label class="modelpick" title="Which Claude answers in this chat">${ico("spark", 13)}
     <select data-model-pick aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>`;
 }
 function syncModelPickers() {
@@ -390,7 +394,7 @@ function renderChatMenu() {
     asked(c) ? `${asked(c)} question${asked(c) === 1 ? "" : "s"}` : "no questions yet";
   const del = c =>
     c
-      ? `<button class="iconbtn" style="width:24px;height:24px" title="Delete" aria-label="Delete" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>`
+      ? `<button class="iconbtn small" title="Delete this chat" aria-label="Delete this chat" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>`
       : "";
   const placeRow = (p, label, here) => {
     const c = convoAt(p);
@@ -420,7 +424,7 @@ function renderChatMenu() {
         <span class="t">${c.mid !== m.id ? `<span class="secno">${c.mid}</span> ` : ""}${esc(convoTitle(c))}</span>
         <span class="s">${count(c)} · ${new Date(c.updated).toLocaleDateString()}${c.parent ? " · carried over" : ""}</span>
       </button>
-      <button class="iconbtn" style="width:24px;height:24px" title="Rename" aria-label="Rename" onclick="renameConvo('${c.id}')">${ico("pencil", 12)}</button>
+      <button class="iconbtn small" title="Rename this chat" aria-label="Rename this chat" onclick="renameConvo('${c.id}')">${ico("pencil", 12)}</button>
       ${del(c)}</div>`;
   const loose = convosFor(m.id).filter(c => !hasPlace(c));
   const others = allConvos()
@@ -436,8 +440,8 @@ function renderChatMenu() {
       <label class="cmmodel">Answers from
         <select data-model-pick aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>
       <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat here</button>
-      ${cur && cur.msgs.length ? `<button class="btn sm" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
-      <button class="btn sm ghost" onclick="go('#/marks')">All conversations</button>
+      ${cur && cur.msgs.length ? `<button class="btn sm" title="${esc(help("compact"))}" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
+      <button class="btn sm" onclick="markFilter='chats';go('#/marks')">All conversations</button>
     </div>`;
 }
 /* a conversation picked from the menu or the Marks page: go to its place and show it */
@@ -468,8 +472,8 @@ function renderRailBody() {
   const c = convoShown();
   let h = "";
   if (connMode() === "none") {
-    h += `<div class="warnbar" style="margin:0 0 12px"><span>Not connected to Claude.</span>
-      <button class="btn sm" onclick="go('#/settings')">Connect</button></div>`;
+    h += `<div class="warnbar" id="railwarn"><span>The tutor is not connected.</span>
+      <button class="btn sm" onclick="go('#/settings')">Connect it</button></div>`;
   }
   if (c && c.summary) {
     h += `<div class="carried"><b>Carried over${c.parent && convos()[c.parent] ? " from “" + esc(convoTitle(convos()[c.parent])) + "”" : ""}</b>
@@ -521,7 +525,7 @@ function renderSuggest() {
       `<button class="chip ${cls}" onclick="askThis(this)" data-q="${esc(q)}" ${title ? `title="${title}"` : ""}>${esc(q)}</button>`;
     const tools = rail.pinned
       ? `<button class="chip gen" onclick="genQuestions()" ${rail.generating ? "disabled" : ""}>
-          ${rail.generating ? "Thinking of better questions…" : "✦ Ask Claude for sharper questions"}</button>`
+          ${rail.generating ? "Thinking of better questions…" : ico("spark", 12) + " Ask the tutor for sharper questions"}</button>`
       : place.step === "read"
         ? `<div class="toolchips">${TOOL_CHIPS.map(([l, q]) => `<button class="chip tool" onclick="askThis(this)" data-q="${esc(q)}">${l}</button>`).join("")}</div>`
         : "";
@@ -536,8 +540,8 @@ function renderSuggest() {
   const lead = document.getElementById("raillead2");
   if (lead)
     lead.innerHTML = isRoleplay(c)
-      ? `<p class="sub" style="font-size:12px;margin:0 0 8px">In character. Write "pause" to step out. When you are done, press <b>Finish &amp; get feedback</b> above.</p>`
-      : `<p class="sub" style="font-size:12px;margin:0 0 8px">${
+      ? `<p class="sub tiny" style="margin:0 0 8px">In character. Write "pause" to step out. When you are done, press <b>Finish &amp; get feedback</b> above.</p>`
+      : `<p class="sub tiny" style="margin:0 0 8px">${
           rail.pinned
             ? "Questions about <b>the passage you picked</b>:"
             : "Questions worth asking about <b>" + esc(placeLabel(place)) + "</b>:"
@@ -560,8 +564,10 @@ async function railSend() {
   if (connMode() === "none") {
     const ok = await checkBridge(true);
     if (!ok) {
-      toast("Not connected — open Settings");
-      go("#/settings");
+      // Keep what was typed and stay put: navigating away here used to drop the draft.
+      toast("The tutor is not connected. Your message is still in the box.", { kind: "bad" });
+      const warn = document.getElementById("railwarn");
+      if (warn) warn.scrollIntoView({ block: "nearest" });
       return;
     }
   }

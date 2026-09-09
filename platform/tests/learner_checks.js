@@ -27,23 +27,41 @@ p.elabFb = {
 let ev = learnerEvidence();
 assert(ev.length === 2, "one quiz miss and one graded exercise: got " + ev.length);
 assert(ev[0].kind === "graded" && ev[0].at === 9, "newest first");
-assert(ev[0].text.indexOf("Missing: the second-order effect") >= 0, "grader findings are picked up");
+assert(
+  ev[0].text.indexOf("Missing: the second-order effect") >= 0,
+  "grader findings are picked up"
+);
 assert(ev[0].text.indexOf("Wrong") < 0, "a finding of nothing is not a finding");
-assert(ev[0].ask === "What changes if the price doubles?", "the Ask-yourself line is kept: " + ev[0].ask);
+assert(
+  ev[0].ask === "What changes if the price doubles?",
+  "the Ask-yourself line is kept: " + ev[0].ask
+);
 assert(ev[1].weight === 3, "a certain miss weighs 3");
 assert(weakSpots()[0].m.id === m.id, "the module is a weak spot");
 
 let chips = gapChips(m.id);
 assert(chips.length === Math.min(2, LEARNER.gapChips), "two chips: " + JSON.stringify(chips));
 assert(chips[0] === "What changes if the price doubles?", "the newest evidence leads the chips");
-assert(chips[1].indexOf(quizItem.q) >= 0, "the missed question is a chip too");
+// the topic is trimmed to fit a chip, so match on the opening of the question
+assert(chips[1].indexOf(quizItem.q.slice(0, 60)) >= 0, "the missed question is a chip too");
 assert(learnerContext(m.id).indexOf("What went wrong in this module") >= 0, "the tutor is told");
 assert(learnerContext(MODS[MODS.length - 1].id) === "", "a module with no evidence gets nothing");
 
 /* a model reply is checked before it is stored: bad module ids are dropped */
-const good = { id: "g1", mid: m.id, topic: "Elasticity", why: "Missed twice.", ask: "When does a price cut lower revenue?" };
+const good = {
+  id: "g1",
+  mid: m.id,
+  topic: "Elasticity",
+  why: "Missed twice.",
+  ask: "When does a price cut lower revenue?",
+};
 const bad = { id: "g2", mid: "NOPE", topic: "x", why: "y", ask: "z" };
-const replyJson = JSON.stringify({ brief: "Terse and overconfident.", strengths: ["Definitions"], gaps: [good, bad], closed: [] });
+const replyJson = JSON.stringify({
+  brief: "Terse and overconfident.",
+  strengths: ["Definitions"],
+  gaps: [good, bad],
+  closed: [],
+});
 const reply = parseLearnerReply("Here you go:\n```json\n" + replyJson + "\n```");
 assert(reply && reply.gaps.length === 1, "one valid gap kept");
 assert(parseLearnerReply("no json here") === null, "junk is refused");
@@ -82,15 +100,27 @@ assert(openGaps().length === 0 && learner().gaps.length === 1, "left out means c
 /* step 6: the module's gap items, closing one, and what that changes */
 reopenGap("g1");
 let items = gapItems(m.id);
-assert(items.length === 3, "brief gap + quiz miss + graded exercise: " + JSON.stringify(items.map(i => i.key)));
+assert(
+  items.length === 3,
+  "brief gap + quiz miss + graded exercise: " + JSON.stringify(items.map(i => i.key))
+);
 assert(items[0].key === "g1" && items[0].source === "brief", "the brief's gap leads");
 const quizItem_ = items.find(i => i.source === "quiz");
-assert(quizItem_ && quizItem_.key === "q:0" && quizItem_.answer, "a quiz miss carries the right answer for the grader");
-assert(items.find(i => i.key === "e:0" && i.source === "graded"), "a partial exercise is an item under its grader key");
+assert(
+  quizItem_ && quizItem_.key === "q:0" && quizItem_.answer,
+  "a quiz miss carries the right answer for the grader"
+);
+assert(
+  items.find(i => i.key === "e:0" && i.source === "graded"),
+  "a partial exercise is an item under its grader key"
+);
 assert(!stepDone(m, 5), "the step is not done while items are open");
 closeGapItem(m.id, quizItem_, "self");
 assert(openGapItems(m.id).length === 2, "closing a quiz item takes it out");
-assert(progressOf(m.id).gapWork["q:0"].closed === true, "and it is recorded in the module's progress");
+assert(
+  progressOf(m.id).gapWork["q:0"].closed === true,
+  "and it is recorded in the module's progress"
+);
 assert(!gapChips(m.id).some(q => q.indexOf(quizItem.q) >= 0), "the chips skip a closed item");
 closeGapItem(m.id, items[0], "drill");
 assert(openGaps().length === 0, "closing a brief item closes the gap in the memory too");
@@ -100,5 +130,5 @@ progressOf(m.id).gapWork["q:0"].closed = true;
 gapWorkOf(m.id, "e:0").closed = true;
 progressOf(m.id).gapsAt = 1;
 assert(stepDone(m, 5), "every item closed and the step visited: done");
-assert(resumeStep(m) !== "/5", "nothing left to resume at the gaps step");
+assert(resumeStepIndex(m) !== 5, "nothing left to resume at the gaps step");
 console.log("learner checks passed");

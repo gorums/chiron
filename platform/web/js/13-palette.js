@@ -1,33 +1,81 @@
-/* ---------- modal / palette ---------- */
-function showModal(inner) {
-  $("#modalhost").innerHTML =
-    `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${inner}</div></div>`;
+/* ---------- modal / palette ----------
+   One dialog host. Whatever is inside it, the rules are the same: it says it is a dialog,
+   the focus goes into it and cannot leave by Tab, Escape closes it, and the focus goes back
+   to whatever opened it. Everything on the page that used to be a browser confirm() or
+   prompt() is one of these. */
+let modalReturn = null; // the element to give the focus back to
+function modalOpen() {
+  return !!$("#modalhost").innerHTML;
+}
+function showModal(inner, label) {
+  modalReturn = document.activeElement;
+  $("#modalhost").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()">
+       <div class="modal" role="dialog" aria-modal="true" ${label ? `aria-label="${esc(label)}"` : ""}>${inner}</div></div>`;
+  setTimeout(() => focusFirst($("#modalhost")), 20);
 }
 function closeModal() {
   $("#modalhost").innerHTML = "";
+  const back = modalReturn;
+  modalReturn = null;
+  if (back && document.body.contains(back)) back.focus();
 }
-/* In-page stand-ins for confirm() and prompt(): same look as every other modal, keyboard
-   friendly (Enter confirms, Esc cancels), and they do not block the page. */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea, input:not([type="hidden"]), select, [tabindex]:not([tabindex="-1"])';
+function focusables(host) {
+  return Array.from(host.querySelectorAll(FOCUSABLE)).filter(el => el.offsetParent !== null);
+}
+function focusFirst(host) {
+  const first = focusables(host)[0];
+  if (first) first.focus();
+}
+/* Tab inside an open dialog wraps around instead of walking off into the page behind it. */
+document.addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const host = $("#modalhost");
+  if (!host || !host.innerHTML) return;
+  const items = focusables(host);
+  if (!items.length) return;
+  const first = items[0],
+    last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
+/* In-page stand-ins for confirm() and prompt(): same look as every other dialog, keyboard
+   friendly, and they do not block the page. A dangerous one focuses Cancel, so Enter
+   cannot erase anything by reflex. */
 let modalCb = null;
 function confirmModal(title, body, okLabel, onOk, danger) {
   modalCb = onOk;
-  showModal(`<h3 style="font-family:var(--serif);font-size:21px;margin:0 0 8px;font-weight:600">${esc(title)}</h3>
-    <p class="sub" style="margin:0 0 18px;font-size:14px">${esc(body)}</p>
-    <div style="display:flex;gap:9px;justify-content:flex-end">
-      <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn primary" id="modalok" ${danger ? 'style="background:var(--bad);border-color:var(--bad);color:#fff"' : ""} onclick="modalOk()">${esc(okLabel || "OK")}</button></div>`);
+  showModal(
+    `<h3 class="h-serif">${esc(title)}</h3>
+    <p class="sub gap-bottom-lg">${esc(body)}</p>
+    <div class="rowline end">
+      <button class="btn" id="modalcancel" onclick="closeModal()">Cancel</button>
+      <button class="btn ${danger ? "danger" : "primary"}" id="modalok" onclick="modalOk()">${esc(okLabel || "OK")}</button></div>`,
+    title
+  );
   setTimeout(() => {
-    const b = document.getElementById("modalok");
+    const b = document.getElementById(danger ? "modalcancel" : "modalok");
     if (b) b.focus();
   }, 20);
 }
 function promptModal(title, value, okLabel, onOk) {
   modalCb = () => onOk(document.getElementById("modalin").value);
-  showModal(`<h3 style="font-family:var(--serif);font-size:21px;margin:0 0 12px;font-weight:600">${esc(title)}</h3>
+  showModal(
+    `<h3 class="h-serif">${esc(title)}</h3>
+    <label class="visually-hidden" for="modalin">${esc(title)}</label>
     <input type="text" id="modalin" value="${esc(value || "")}" onkeydown="if(event.key==='Enter'){event.preventDefault();modalOk()}">
-    <div style="display:flex;gap:9px;justify-content:flex-end;margin-top:14px">
+    <div class="rowline end gap-top">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn primary" onclick="modalOk()">${esc(okLabel || "Save")}</button></div>`);
+      <button class="btn primary" onclick="modalOk()">${esc(okLabel || "Save")}</button></div>`,
+    title
+  );
   setTimeout(() => {
     const i = document.getElementById("modalin");
     if (i) {
@@ -57,21 +105,25 @@ function buildIndex() {
       paletteIndex.push({
         t: s.h,
         c: m.id + " · " + m.short,
-        h: "#/m/" + m.id + "/1",
+        act: () => jumpToPassage(m.id, i, null),
         body: s.text,
       })
     );
   });
   DATA.library.glossary.forEach(g =>
-    paletteIndex.push({ t: g.term, c: "Glossary · " + g.def.slice(0, 70), h: "#/library/glossary" })
+    paletteIndex.push({
+      t: g.term,
+      c: "Glossary · " + g.def.slice(0, 70),
+      act: () => openGlossary(g.term),
+    })
   );
   DATA.library.models.forEach((m, i) =>
-    paletteIndex.push({ t: m.title, c: "Mental model", h: "#/library/models" })
+    paletteIndex.push({ t: m.title, c: "Mental model", act: () => openModelCard(i) })
   );
   DATA.library.templates.forEach(t =>
     paletteIndex.push({ t: t.title, c: "Worksheet", h: "#/library/t-" + t.slug })
   );
-  paletteIndex.push({ t: "Review due cards", c: "Spaced repetition", h: "#/review" });
+  paletteIndex.push({ t: "Practice the deck", c: "Spaced repetition", h: "#/review" });
   paletteIndex.push({
     t: "Fix mistakes",
     c: "Questions you missed, as cards",
@@ -86,7 +138,8 @@ function buildIndex() {
     c: "Highlights, notes, bookmarks, chats",
     h: "#/marks",
   });
-  paletteIndex.push({ t: "Settings", c: "Claude, reading preferences", h: "#/settings" });
+  paletteIndex.push({ t: "Settings", c: "The tutor, reading preferences", h: "#/settings" });
+  paletteIndex.push({ t: "Your gaps", c: "What the tutor has learned about you", h: "#/learner" });
   paletteIndex.push({ t: "Backup & restore", c: "Export your progress", act: openData });
   paletteIndex.push({
     t: "The plan",
@@ -96,9 +149,12 @@ function buildIndex() {
 }
 function openPalette() {
   if (!paletteIndex) buildIndex();
+  modalReturn = document.activeElement;
   $("#modalhost").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()">
-    <div class="palette"><input id="pq" type="text" placeholder="Search modules, sections, terms…" autocomplete="off">
-    <div class="results" id="pr"></div></div></div>`;
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Search everything">
+    <label class="visually-hidden" for="pq">Search modules, sections and terms</label>
+    <input id="pq" type="text" placeholder="Search modules, sections, terms…" autocomplete="off">
+    <div class="results" id="pr" role="listbox"></div></div></div>`;
   const q = $("#pq");
   q.addEventListener("input", () => {
     paletteCursor = 0;
@@ -156,21 +212,24 @@ function paintRes() {
     ? paletteResults
         .map(
           (r, i) =>
-            `<button class="res ${i === paletteCursor ? "on" : ""}" onclick="pickRes(${i})"><div class="t">${esc(r.t)}</div><div class="c">${esc(r.c || "")}</div></button>`
+            `<button class="res ${i === paletteCursor ? "on" : ""}" role="option" aria-selected="${i === paletteCursor}" onclick="pickRes(${i})"><div class="t">${esc(r.t)}</div><div class="c">${esc(r.c || "")}</div></button>`
         )
         .join("")
-    : `<div style="padding:22px;text-align:center;color:var(--muted);font-size:13.5px">Nothing found</div>`;
+    : `<div class="nores">Nothing found</div>`;
 }
 function openHelp() {
-  showModal(`<h3 style="font-family:var(--serif);font-size:22px;margin:0 0 14px;font-weight:600">Keyboard shortcuts</h3>
-  <div style="display:grid;gap:9px;font-size:14px">
+  showModal(
+    `<h3 class="h-serif">How this course works</h3>
+  <p class="lede">${howItWorksHtml()}</p>
+  <h3 class="h-serif gap-top-lg">Keyboard shortcuts</h3>
+  <div class="keylist">
     ${[
       ["select", "Select text to highlight it or ask about it"],
-      ["a", "Show / hide the chat rail"],
+      ["a", "Show / hide the tutor"],
       ["s", "Show / hide the sidebar"],
       ["i", "Jump to the chat box"],
       ["/", "Search everything"],
-      ["j / k", "Next / previous module"],
+      ["j / k", "Next unfinished module / previous module"],
       ["a–h / 1–8", "Pick an option in a quiz"],
       ["1–3", "Rate confidence, then continue"],
       ["1–4", "Grade a flashcard"],
@@ -181,11 +240,10 @@ function openHelp() {
       ["?", "This panel"],
       ["Esc", "Close"],
     ]
-      .map(
-        ([k, d]) =>
-          `<div style="display:flex;gap:12px"><kbd style="min-width:52px;text-align:center">${k}</kbd><span style="color:var(--text-2)">${d}</span></div>`
-      )
+      .map(([k, d]) => `<div class="keyrow"><kbd>${k}</kbd><span>${d}</span></div>`)
       .join("")}
   </div>
-  <div class="hint" style="margin-top:18px"><span class="i">Note</span> Progress is stored in this browser. Use Backup &amp; restore, under Settings, to move it or keep a copy.</div>`);
+  <div class="hint gap-top-lg"><span class="i">Note</span> Progress is stored in this browser. Use Backup &amp; restore, under Settings, to move it or keep a copy.</div>`,
+    "How this course works"
+  );
 }

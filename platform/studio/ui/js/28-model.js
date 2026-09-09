@@ -17,9 +17,10 @@ function modelChoice(prefix, what) {
     )
     .join("");
   const when = what ? ` ${esc(what)}` : "";
-  return `<div class="field model" style="margin:10px 0">
-    <label for="${prefix}-model">Model <span class="hint">writes${when}; the default is set under Settings &amp; logs</span></label>
+  return `<div class="field model">
+    <label for="${prefix}-model">Model</label>
     <select id="${prefix}-model">${options}</select>
+    <span class="fhint">Writes${when}. The default is set under <a href="#/settings">Settings &amp; logs</a>; this picks for this run only.</span>
   </div>`;
 }
 
@@ -55,7 +56,7 @@ function quickModel() {
 function setQuickModel(id) {
   modelPick.quick = id;
   toast("Review, figures and notebooks now run on " + modelName(quickModel()));
-  if (typeof viewCourse === "function" && route.view === "course") viewCourse();
+  if (route.name === "course") viewCourse();
 }
 
 function quickModelBar() {
@@ -68,10 +69,10 @@ function quickModelBar() {
         `<option value="${esc(m.id)}" ${m.id === current ? "selected" : ""}>${esc(m.name)}${m.note ? " — " + esc(m.note) : ""}</option>`
     )
     .join("");
-  return `<div class="card tight figbar modelbar">
-    <div><b>Model.</b> <span class="sub" style="margin:0">Review with Claude, Draw figures and Write notebooks run on the model picked here, for this session. The default is set under <a href="#/settings">Settings &amp; logs</a>; Patch or rewrite, Add a module and Resume pick their own on their forms.</span></div>
-    <div class="actions" style="margin:0"><select id="quick-model" aria-label="Model for review, figures and notebooks" onchange="setQuickModel(this.value)">${options}</select></div>
-  </div>`;
+  const why =
+    "Review with Claude, Draw figures and Write notebooks run on this, for this session only. Patch or rewrite, Add a module and Resume pick their own on their forms.";
+  return `<label for="quick-model" title="${esc(why)}">Model</label>
+    <select id="quick-model" title="${esc(why)}" aria-label="Model for review, figures and notebooks" onchange="setQuickModel(this.value)">${options}</select>`;
 }
 
 /* What a one-click action sends. */

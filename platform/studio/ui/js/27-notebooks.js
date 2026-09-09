@@ -12,29 +12,23 @@ function notebooksBar(c) {
   const withNotebooks = mods.filter(m => m.notebooks > 0).length;
   const total = mods.reduce((n, m) => n + (m.notebooks || 0), 0);
   const missing = mods.length - withNotebooks;
-  const can = STATE.claude.available;
+  const can = claudeReady();
   const jupyter = STATE.jupyter || {};
-  const summary =
-    withNotebooks === 0
-      ? "No notebooks yet."
-      : `${total} notebook${total === 1 ? "" : "s"} across ${withNotebooks} of ${mods.length} modules.`;
   const server = jupyter.available
-    ? `Jupyter is running at <span class="mono">${esc(jupyter.url)}</span>, so they run inside the course page.`
-    : `Jupyter is not running, so the course page shows their saved runs only. Start it with <span class="mono">docker compose up</span> or <span class="mono">build.py jupyter</span>.`;
+    ? `Jupyter is running at ${jupyter.url}, so these run inside the course page.`
+    : `Jupyter is not running, so the course page shows their saved runs only. Start it with docker compose up, or build.py jupyter.`;
+  const why = `A Jupyter file Claude writes for a section (kernel ${c.notebooks.kernel}): the reader runs and edits it inside the module. ${server}`;
   const action =
     missing > 0
-      ? `<button class="btn sm" ${can ? "" : "disabled"} onclick="writeNotebooks('${c.id}',null,false)">Write notebooks for the ${missing === mods.length ? "modules" : missing + " without"}</button>`
-      : `<button class="btn sm ghost" ${can ? "" : "disabled"} onclick="writeNotebooks('${c.id}',null,true)">Replace every notebook</button>`;
-  return `<div class="card tight figbar">
-    <div><b>Notebooks.</b> <span class="sub" style="margin:0">${summary} A notebook is a Jupyter file Claude writes for a section (kernel <span class="mono">${esc(c.notebooks.kernel)}</span>): the reader runs and edits it inside the module. Stored under <span class="mono">notebooks/</span>, rendered by the build. ${server}</span></div>
-    <div class="actions" style="margin:0">${action}</div>
-  </div>`;
+      ? `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="writeNotebooks('${c.id}',null,false)">Write the missing ${missing}</button>`
+      : `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="writeNotebooks('${c.id}',null,true)">Replace all</button>`;
+  return `<b>Notebooks</b> <span class="sub" title="${esc(why)}">${total} in ${withNotebooks}/${mods.length} modules</span> ${action}`;
 }
 
 /* One row menu entry, only in a course that declares notebooks. */
 function notebooksMenuItem(c, m) {
   if (!c.notebooks) return "";
-  const can = STATE.claude.available;
+  const can = claudeReady();
   const label = m.notebooks > 0 ? "Replace the notebooks" : "Write notebooks";
   const sub =
     m.notebooks > 0
@@ -50,6 +44,6 @@ async function writeNotebooks(id, mid, all) {
     const { job: j } = await api(url, Object.assign({ all: !!all }, quickModelBrief()));
     location.hash = "#/job/" + j.id;
   } catch (err) {
-    toast(err.message);
+    toast(err.message, { kind: "bad" });
   }
 }

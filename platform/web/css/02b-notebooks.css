@@ -58,7 +58,7 @@
 .nb-n {
   display: block;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xxs);
   color: var(--muted);
   margin: 0 0 3px;
 }
@@ -83,7 +83,7 @@
   max-width: 100%;
   margin: 6px 0 0;
   border-radius: 6px;
-  background: #fff;
+  background: var(--img-bg);
 }
 .notebook.live .nb-static {
   display: none;

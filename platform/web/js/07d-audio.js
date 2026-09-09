@@ -235,7 +235,11 @@ function audioHighlight(el) {
   const bar = document.querySelector(".topbar");
   const top = bar ? bar.getBoundingClientRect().bottom : 0;
   if (r.top < top || r.bottom > window.innerHeight) {
-    el.scrollIntoView({ block: "center", behavior: uiPrefs().nomotion ? "auto" : "smooth" });
+    // The reader's own preference, and then the system's: either one turns it off.
+    el.scrollIntoView({
+      block: "center",
+      behavior: uiPrefs().nomotion ? "auto" : scrollBehavior(),
+    });
   }
 }
 /* Say a sentence in the chosen voice, from Settings. */
@@ -304,11 +308,11 @@ function audioSettingsCard() {
   const voiceRow = voices.length
     ? `<select onchange="setReading('voice',this.value)" style="padding:10px 12px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px;max-width:100%">${options}</select>`
     : `<span class="sub">This browser offers no voices.</span>`;
-  return `<div class="card" style="margin-bottom:20px">
+  return `<div class="card gap-bottom-lg">
     <p class="eyebrow">Listening</p>
-    <p class="sub" style="margin-bottom:6px">The Read step can be read aloud by a voice your system provides. Kept in this browser only.</p>
+    <p class="sub gap-bottom-sm">The Read step can be read aloud by a voice your system provides. Kept in this browser only.</p>
     <div class="setrow"><span class="lab">Voice<small>Voices for the course's language; more come with the operating system or the browser.</small></span>${voiceRow}</div>
-    <div class="setrow" style="border-bottom:0"><span class="lab">Speed</span><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="chips" style="margin:0">${rates}</div>
+    <div class="setrow last"><span class="lab">Speed</span><div class="rowline wrapped"><div class="chips flush">${rates}</div>
       <button class="btn sm" onclick="audioSample()">Hear a sample</button></div></div>
   </div>`;
 }

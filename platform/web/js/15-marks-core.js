@@ -128,6 +128,11 @@ function wrapText(el, text, cls, id) {
     const mk = document.createElement("mark");
     mk.className = "hl " + cls;
     mk.dataset.k = id;
+    // A highlight opens its note and its chat, so it is a control: reachable by Tab,
+    // and answering Enter and Space like every other one.
+    mk.tabIndex = 0;
+    mk.setAttribute("role", "button");
+    mk.setAttribute("aria-label", "Open what you marked here");
     mk.appendChild(r.extractContents());
     r.insertNode(mk);
     return true;

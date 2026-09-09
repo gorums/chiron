@@ -50,6 +50,39 @@ async function gradeShort(it, answer) {
   const user = `Question: ${it.q}\n\nWhat a good answer contains: ${it.model}\n\nThe reader wrote:\n"""\n${answer}\n"""\n\nMark "correct" only if the reader's answer carries the substance of the model answer in their own words; "partial" if it has some of it; "wrong" if it misses the point or asserts something false.`;
   return parseVerdict(await askBridge(sys, [{ role: "user", content: user }]));
 }
+/* One way of running a graded call: the button says what it is doing and goes back to
+   what it said before, and a failure lands in the reply box with a Retry — not in a toast
+   that is gone in two seconds while the box sits empty. */
+function graderStart(btn, working) {
+  if (!btn) return "";
+  const was = btn.dataset.label || btn.textContent;
+  btn.dataset.label = was;
+  btn.disabled = true;
+  btn.textContent = working;
+  return was;
+}
+function graderDone(btn, doneLabel) {
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = doneLabel;
+  btn.dataset.label = doneLabel;
+}
+function graderFailed(btn, box, err, retry) {
+  const message = (err && err.message) || "The tutor did not answer.";
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.label || btn.textContent;
+  }
+  if (box)
+    box.innerHTML = `<div class="fb wrong"><b>Nothing came back</b>
+      <p>${esc(message)}</p>
+      <div class="rowline wrapped gap-top">
+        <button class="btn sm" onclick="${retry}">Try again</button>
+        <a class="btn sm" href="#/settings">Check the connection</a>
+      </div></div>`;
+  else toast(message, { kind: "bad" });
+}
+
 async function checkElab(mid, i) {
   const m = byId(mid),
     p = progressOf(mid),
@@ -64,10 +97,7 @@ async function checkElab(mid, i) {
   save();
   const btn = document.getElementById("elabck" + i),
     box = document.getElementById("elabfb" + i);
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Checking…";
-  }
+  graderStart(btn, "Checking…");
   try {
     const sys =
       graderPersona() +
@@ -94,13 +124,10 @@ async function checkElab(mid, i) {
     markDay();
     maybeRefreshLearner();
     if (box)
-      box.innerHTML = `<div class="fb ${fb.verdict}"><b>What Claude saw</b>${mdLite(fb.text)}</div>`;
+      box.innerHTML = `<div class="fb ${fb.verdict}"><b>What the tutor saw</b>${mdLite(fb.text)}</div>`;
+    graderDone(btn, "Check again");
   } catch (e) {
-    toast((e && e.message) || "Could not reach Claude");
-  }
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = "Check again";
+    graderFailed(btn, box, e, `checkElab('${mid}',${i})`);
   }
 }
 async function checkTransfer(mid) {
@@ -118,10 +145,7 @@ async function checkTransfer(mid) {
   const btn = document.getElementById("trck"),
     box = document.getElementById("trfb"),
     t = m.assess.transfer;
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Grading…";
-  }
+  graderStart(btn, "Grading…");
   try {
     const sys =
       graderPersona() +
@@ -146,14 +170,11 @@ async function checkTransfer(mid) {
     markDay();
     maybeRefreshLearner();
     if (box)
-      box.innerHTML = `<div class="fb ${fb.verdict}"><b>Claude's read · ${fb.verdict}</b>${mdLite(fb.text)}</div>`;
+      box.innerHTML = `<div class="fb ${fb.verdict}"><b>The tutor's read · ${fb.verdict}</b>${mdLite(fb.text)}</div>`;
     renderSidebar();
+    graderDone(btn, "Grade it again");
   } catch (e) {
-    toast((e && e.message) || "Could not reach Claude");
-  }
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = "Grade it again";
+    graderFailed(btn, box, e, `checkTransfer('${mid}')`);
   }
 }
 
@@ -177,7 +198,7 @@ function startRoleplay(mid) {
   renderRail();
   const inp = document.getElementById("railin");
   if (inp) inp.focus();
-  toast("In character — Claude stays the other side until you finish");
+  toast("In character — the tutor stays the other side until you finish");
 }
 function roleplaySystem(m, rp) {
   return `${rp.persona} Stay in character for the whole conversation: you are not a tutor and you do not coach, explain the course, or break character unless the reader writes "pause". Respond the way this person really would — with their own concerns, doubts and pushback — in one to four sentences per turn. The situation: ${rp.situation}${STATE.biz ? ` ${(CFG.anchor || {}).label}: ${STATE.biz}.` : ""} Do not make it easy; do not make it impossible.`;
@@ -192,7 +213,10 @@ async function finishRoleplay(mid) {
     toast("Have at least a couple of exchanges first");
     return;
   }
-  toast("Getting feedback…");
+  if (rail.finishing) return;
+  rail.finishing = true;
+  const fbtn = document.getElementById("rpfinish");
+  graderStart(fbtn, "Getting feedback…");
   try {
     const transcript = c.msgs
       .filter(x => x.r !== "e")
@@ -216,8 +240,10 @@ async function finishRoleplay(mid) {
     renderRail();
     if (route.view === "m" && route.step === 4) renderStep(m, 4);
   } catch (e) {
-    toast((e && e.message) || "Could not reach Claude");
+    toast((e && e.message) || "The tutor did not answer.", { kind: "bad" });
+    graderDone(fbtn, "Finish & get feedback");
   }
+  rail.finishing = false;
 }
 
 /* ---- a filled worksheet ---- */
@@ -230,10 +256,7 @@ async function reviewSheet(slug) {
   }
   const btn = document.getElementById("sheetreview"),
     box = document.getElementById("sheetfb");
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Reviewing…";
-  }
+  graderStart(btn, "Reviewing…");
   try {
     const mods = (t.uses || []).map(byId).filter(Boolean);
     const ctx = mods
@@ -251,12 +274,9 @@ async function reviewSheet(slug) {
     markDay();
     maybeRefreshLearner();
     if (box)
-      box.innerHTML = `<div class="fb ${fb.verdict}"><b>Claude's review</b>${mdLite(fb.text)}</div>`;
+      box.innerHTML = `<div class="fb ${fb.verdict}"><b>The tutor's review</b>${mdLite(fb.text)}</div>`;
+    graderDone(btn, "Review again");
   } catch (e) {
-    toast((e && e.message) || "Could not reach Claude");
-  }
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = "Review again";
+    graderFailed(btn, box, e, `reviewSheet('${slug}')`);
   }
 }

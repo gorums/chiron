@@ -894,6 +894,158 @@ class TestCodeConventions(unittest.TestCase):
                     big.append("%s: %d lines" % (os.path.basename(path), n))
         self.assertEqual(big, [], "\n".join(big))
 
+    # ---- the design system: one place for colour, one scale for type ----
+
+    CSS_DIRS = ("platform/web/css", "platform/studio/ui")
+    JS_DIRS = ("platform/web/js", "platform/studio/ui/js")
+    # The scale: the tokens, the display sizes the two surfaces use for headings, and the
+    # three relative sizes inside prose. A number outside this set is a new rung.
+    FONT_SIZES = {"9px", "10px", "10.5px", "11.5px", "12.5px", "13px", "13.5px", "14px",
+                  "14.5px", "15px", "15.5px", "16px", "16.5px", "17px", "18px", "19px",
+                  "20px", "21px", "22px", "23px", "24px", "25px", "26px", "27px", "28px",
+                  "30px", "32px", "52px", "0.87em", "1em", "1.17em", "inherit"}
+    BTN_VARIANTS = {"primary", "ghost", "warm", "danger", "sm", "iconbtn", "disabled", "rm"}
+
+    def _css_files(self):
+        out = []
+        for rel in self.CSS_DIRS:
+            base = os.path.join(self.REPO, rel)
+            out += [os.path.join(base, n) for n in sorted(os.listdir(base)) if n.endswith(".css")]
+        return out
+
+    def _js_files(self):
+        out = []
+        for rel in self.JS_DIRS:
+            base = os.path.join(self.REPO, rel)
+            out += [os.path.join(base, n) for n in sorted(os.listdir(base)) if n.endswith(".js")]
+        return out
+
+    def test_only_the_token_file_carries_a_colour(self):
+        """Every colour the platform has is in web/css/00-tokens.css. A hex or an rgba()
+        anywhere else is a second palette starting (CLAUDE.md "The design system")."""
+        import re
+        colour = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(")
+        offenders = []
+        for path in self._css_files():
+            if os.path.basename(path) == "00-tokens.css":
+                continue
+            with open(path, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    if colour.search(line):
+                        offenders.append("%s:%d %s" % (os.path.basename(path), n, line.strip()))
+        self.assertEqual(offenders, [], "\n".join(offenders))
+
+    def test_font_sizes_come_from_the_scale(self):
+        """A size is a token (--fs-*) or one of the display sizes already in use. A new
+        number here means the type scale has quietly grown a rung."""
+        import re
+        rule = re.compile(r"font-size:\s*([^;}\n]+)")
+        offenders = []
+        for path in self._css_files():
+            with open(path, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    for m in rule.finditer(line):
+                        value = m.group(1).strip()
+                        if value.startswith("var(") or value in self.FONT_SIZES:
+                            continue
+                        offenders.append("%s:%d %s" % (os.path.basename(path), n, value))
+        self.assertEqual(offenders, [], "\n".join(offenders))
+
+    def test_no_button_variant_outside_the_family(self):
+        """`.btn` has one family. A variant defined nowhere is a button that looks like a
+        mistake on one screen and nothing at all on another."""
+        import re
+        found = set()
+        for path in self._css_files():
+            with open(path, encoding="utf-8") as fh:
+                for m in re.finditer(r"\.btn((?:\.[a-z-]+)+)", fh.read()):
+                    found.update(m.group(1).strip(".").split("."))
+        self.assertEqual(found - self.BTN_VARIANTS, set(),
+                         "button variants with no rule: %s" % (found - self.BTN_VARIANTS))
+
+    def test_every_class_the_front_end_uses_exists_in_the_css(self):
+        """A class in a template with no rule behind it renders as nothing — which is how
+        `.card.tight` and `.disabled` came to be used in Studio and defined nowhere."""
+        import re
+        defined = set()
+        for path in self._css_files():
+            with open(path, encoding="utf-8") as fh:
+                defined.update(re.findall(r"\.([A-Za-z][A-Za-z0-9_-]*)", fh.read()))
+        used, offenders = set(), []
+        for path in self._js_files():
+            with open(path, encoding="utf-8") as fh:
+                for m in re.finditer(r'class="([^"${}]+)"', fh.read()):
+                    used.update(m.group(1).split())
+        for name in sorted(used - defined):
+            offenders.append(name)
+        self.assertEqual(offenders, [], "classes used with no CSS rule: %s" % offenders)
+
+    # The pairs the design system leans on at 13.5px and below, where AA asks for 4.5:1.
+    # Read out of 00-tokens.css so the check moves when the palette does.
+    CONTRAST_PAIRS = [("--muted", "--bg"), ("--muted", "--surface"), ("--text-2", "--bg"),
+                      ("--text-2", "--surface"), ("--accent-ink", "--accent-soft"),
+                      ("--ok", "--ok-soft"), ("--warm", "--warm-soft"), ("--bad", "--bad-soft"),
+                      ("--on-accent", "--accent")]
+
+    @staticmethod
+    def _luminance(hex_colour):
+        raw = hex_colour.lstrip("#")
+        if len(raw) == 3:
+            raw = "".join(c * 2 for c in raw)
+        channels = []
+        for i in (0, 2, 4):
+            v = int(raw[i:i + 2], 16) / 255
+            channels.append(v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    def _themes(self):
+        """The light palette and the dark one, as name -> hex, from the token file."""
+        import re
+        path = os.path.join(self.REPO, "platform", "web", "css", "00-tokens.css")
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        light, dark = {}, {}
+        # Each `:root...{ ... }` block, with enough of what comes before it to tell whether
+        # it is the dark one (`[data-theme="dark"]`, or inside a prefers-color-scheme query).
+        for m in re.finditer(r":root([^{]*)\{([^}]*)\}", text):
+            found = dict(re.findall(r"(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{3,6})\s*;", m.group(2)))
+            context = text[max(0, m.start() - 120):m.end()]
+            is_dark = 'data-theme="dark"' in m.group(1) or "prefers-color-scheme: dark" in context
+            (dark if is_dark else light).update(found)
+        if not light or not dark:
+            raise AssertionError("could not read both palettes out of 00-tokens.css")
+        merged_dark = dict(light)
+        merged_dark.update(dark)
+        return {"light": light, "dark": merged_dark}
+
+    def test_small_text_meets_AA_in_both_themes(self):
+        """Every colour pair the platform prints small text in clears 4.5:1. `--muted` on
+        `--bg` used to sit at about 4.0 (CLAUDE.md "The design system")."""
+        bad = []
+        for theme, palette in self._themes().items():
+            for fg, bg in self.CONTRAST_PAIRS:
+                if fg not in palette or bg not in palette:
+                    bad.append("%s: %s or %s is not defined" % (theme, fg, bg))
+                    continue
+                a, b = self._luminance(palette[fg]), self._luminance(palette[bg])
+                ratio = (max(a, b) + 0.05) / (min(a, b) + 0.05)
+                if ratio < 4.5:
+                    bad.append("%s: %s on %s is %.2f:1" % (theme, fg, bg, ratio))
+        self.assertEqual(bad, [], "\n".join(bad))
+
+    def test_inline_styles_stay_rare(self):
+        """An inline style is for a value only the code knows — a bar's width, a colour
+        from a score. Anything else belongs in a stylesheet."""
+        import re
+        counts = {}
+        for path in self._js_files():
+            with open(path, encoding="utf-8") as fh:
+                counts[path] = len(re.findall(r'style="', fh.read()))
+        reader = sum(v for k, v in counts.items() if "web" in k)
+        studio = sum(v for k, v in counts.items() if "studio" in k)
+        self.assertLessEqual(reader, 60, "inline styles in web/js: %d" % reader)
+        self.assertLessEqual(studio, 30, "inline styles in studio/ui/js: %d" % studio)
+
 
 
 GOOD_NB = json.dumps({

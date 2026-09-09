@@ -38,7 +38,7 @@ function handleSel() {
   bar.innerHTML = `<button onclick="doMark('hl')">★ Highlight</button>
     <span class="div"></span><button onclick="doMark('note')">✎ Note</button>
     <span class="div"></span><button onclick="doMark('q')">⚑ Open question</button>
-    <span class="div"></span><button onclick="doMark('ask')">? Ask Claude</button>`;
+    <span class="div"></span><button onclick="doMark('ask')">Ask the tutor</button>`;
   document.body.appendChild(bar);
 }
 function doMark(kind) {
@@ -85,4 +85,12 @@ document.addEventListener("click", e => {
   }
   const mk = e.target.closest && e.target.closest("mark.hl");
   if (mk && mk.dataset.k) openPanel(route.id, mk.dataset.k, "ask");
+});
+/* A highlight is a button, so Enter and Space open it the way a click does. */
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const mk = e.target.closest && e.target.closest("mark.hl");
+  if (!mk || !mk.dataset.k) return;
+  e.preventDefault();
+  openPanel(route.id, mk.dataset.k, "ask");
 });

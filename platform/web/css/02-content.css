@@ -1,13 +1,4 @@
 /* ---------- cards & type ---------- */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 20px;
-}
-.card.raised {
-  box-shadow: var(--shadow);
-}
 .nextmod h3 {
   font-family: var(--serif);
   font-size: 22px;
@@ -15,28 +6,6 @@
   margin: 0 0 4px;
   font-weight: 600;
   letter-spacing: -0.3px;
-}
-.card.tight {
-  padding: 15px;
-}
-h2.big {
-  font-family: var(--serif);
-  font-size: 27px;
-  line-height: 1.2;
-  margin: 0 0 6px;
-  font-weight: 600;
-  letter-spacing: -0.4px;
-}
-.sub {
-  color: var(--muted);
-  font-size: 13.5px;
-  margin: 0;
-}
-.eyebrow {
-  font-size: 12.5px;
-  color: var(--muted);
-  font-weight: 600;
-  margin: 0 0 8px;
 }
 .grid {
   display: grid;
@@ -68,47 +37,13 @@ h2.big {
   color: var(--muted);
   margin-top: 3px;
 }
-.bar {
-  height: 6px;
-  border-radius: 99px;
-  background: var(--surface-3);
-  overflow: hidden;
-}
-.bar > i {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  border-radius: 99px;
-  transition: width 0.4s;
-}
-.tag {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 99px;
-  background: var(--surface-2);
-  color: var(--muted);
-}
-.tag.ok {
-  background: var(--ok-soft);
-  color: var(--ok);
-}
-.tag.warn {
-  background: var(--warm-soft);
-  color: var(--warm);
-}
-.tag.acc {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-}
 
 /* ---------- reading ---------- */
 .readhead {
   margin-bottom: 18px;
 }
 .readhead .crumb {
-  font-size: 12px;
+  font-size: var(--fs-tiny);
   color: var(--muted);
   margin-bottom: 7px;
 }
@@ -138,6 +73,7 @@ h2.big {
   font-size: 12.5px;
   color: var(--muted);
   font-weight: 500;
+  text-decoration: none;
 }
 .step:hover {
   border-color: var(--line-2);
@@ -146,16 +82,8 @@ h2.big {
 .step.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
-}
-:root[data-theme="dark"] .step.on {
-  color: #0b1a18;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .step.on {
-    color: #0b1a18;
-  }
 }
 .step .num {
   display: inline-flex;
@@ -169,7 +97,7 @@ h2.big {
   font-weight: 700;
 }
 .step.on .num {
-  background: rgba(255, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--on-accent) 25%, transparent);
 }
 .step.did {
   border-color: var(--accent);
@@ -213,6 +141,7 @@ h2.big {
 .check.on {
   background: var(--accent);
   border-color: var(--accent);
+  color: var(--on-accent);
 }
 .check svg {
   opacity: 0;
@@ -230,8 +159,10 @@ h2.big {
   letter-spacing: -0.3px;
   flex: 1;
 }
+/* A section already read is dimmed, not faded out: 0.62 put the body text below the
+   contrast a person can comfortably re-read, and re-reading is the point of the tick. */
 .sec.done .prose {
-  opacity: 0.62;
+  opacity: 0.85;
 }
 .prose {
   font-size: 16.5px;
@@ -299,13 +230,15 @@ h2.big {
   background: none;
   padding: 0;
 }
+.tablewrap {
+  overflow-x: auto;
+  margin: 16px 0;
+  max-width: 100%;
+}
 .prose table {
   width: 100%;
   border-collapse: collapse;
-  margin: 16px 0;
   font-size: 14.5px;
-  display: block;
-  overflow-x: auto;
 }
 .prose th {
   text-align: left;
@@ -400,7 +333,7 @@ h2.big {
 }
 .opt.sel .k {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .opt.right {
   border-color: var(--ok);
@@ -408,7 +341,7 @@ h2.big {
 }
 .opt.right .k {
   background: var(--ok);
-  color: #fff;
+  color: var(--on-accent);
 }
 .opt.wrong {
   border-color: var(--bad);
@@ -416,7 +349,7 @@ h2.big {
 }
 .opt.wrong .k {
   background: var(--bad);
-  color: #fff;
+  color: var(--on-accent);
 }
 .opt:disabled {
   cursor: default;
@@ -514,7 +447,7 @@ h2.big {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 14, 13, 0.45);
+  background: var(--overlay);
   backdrop-filter: blur(3px);
   z-index: 100;
   display: flex;
@@ -568,7 +501,7 @@ h2.big {
   color: var(--text);
 }
 .res .c {
-  font-size: 12px;
+  font-size: var(--fs-tiny);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -618,17 +551,6 @@ h2.big {
   margin: 0 0 4px;
   font-weight: 600;
 }
-.empty {
-  text-align: center;
-  padding: 50px 20px;
-  color: var(--muted);
-}
-.empty .big {
-  font-family: var(--serif);
-  font-size: 22px;
-  color: var(--text);
-  margin-bottom: 6px;
-}
 .calrow {
   display: grid;
   grid-template-columns: 110px 1fr 60px;
@@ -637,27 +559,6 @@ h2.big {
   padding: 8px 0;
   font-size: 13.5px;
 }
-.toast {
-  position: fixed;
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%) translateY(80px);
-  background: var(--text);
-  color: var(--bg);
-  padding: 11px 20px;
-  border-radius: 99px;
-  font-size: 13.5px;
-  font-weight: 500;
-  z-index: 200;
-  opacity: 0;
-  transition: 0.28s;
-  pointer-events: none;
-  box-shadow: var(--shadow-lg);
-}
-.toast.on {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
 .footnav {
   display: flex;
   gap: 10px;
@@ -665,22 +566,6 @@ h2.big {
   margin-top: 32px;
   padding-top: 20px;
   border-top: 1px solid var(--line);
-}
-.hint {
-  font-size: 12.5px;
-  color: var(--muted);
-  display: flex;
-  gap: 7px;
-  align-items: flex-start;
-  padding: 11px 14px;
-  background: var(--surface-2);
-  border-radius: 10px;
-  line-height: 1.5;
-}
-.hint .i {
-  flex: none;
-  font-weight: 700;
-  color: var(--accent);
 }
 .readbar {
   position: fixed;
@@ -824,4 +709,118 @@ h2.big {
   .speakbtn {
     display: none;
   }
+}
+
+/* ---- the boot skeleton: shapes where the content will be, not a spinner ---- */
+.skeleton {
+  margin: 20px 0 26px;
+}
+.sk {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  animation: skpulse 1.6s ease-in-out infinite;
+}
+.sk-title {
+  height: 30px;
+  width: 60%;
+}
+.sk-line {
+  height: 13px;
+  width: 90%;
+}
+.sk-line.short {
+  width: 55%;
+}
+.sk-card {
+  height: 110px;
+  border-radius: var(--radius);
+}
+@keyframes skpulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none;
+  }
+}
+
+/* ---- utilities the module view leans on, so its markup carries no style="" ---- */
+.card.accented {
+  border-color: var(--accent);
+}
+.eyebrow.accent-ink {
+  color: var(--accent-ink);
+}
+.warnnote {
+  color: var(--warm);
+}
+.readtop {
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.readtop .grow {
+  flex: 1;
+  min-width: 0;
+}
+.readtop .sub {
+  margin-bottom: 5px;
+}
+.elabq {
+  margin-bottom: 22px;
+}
+.qlabel {
+  display: block;
+  font-size: 16px;
+  font-weight: 650;
+  margin: 0 0 9px;
+  font-family: var(--sans);
+}
+.scenario {
+  background: var(--surface-2);
+  border-radius: 11px;
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+  font-size: 15.5px;
+  line-height: 1.65;
+}
+.whyttl {
+  color: var(--text);
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* ---- dialogs ---- */
+.nores {
+  padding: 22px;
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--fs-md);
+}
+.keylist {
+  display: grid;
+  gap: 9px;
+  font-size: 14px;
+}
+.keyrow {
+  display: flex;
+  gap: var(--s3);
+}
+.keyrow kbd {
+  min-width: 52px;
+  text-align: center;
+}
+.keyrow span {
+  color: var(--text-2);
+}
+.dump {
+  font-size: var(--fs-xxs);
 }

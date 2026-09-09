@@ -1,15 +1,23 @@
-/* ---------- keys ---------- */
+/* ---------- keys ----------
+   Single-letter shortcuts are for the page, not for a dialog: while a modal, the palette
+   or the chat menu is open, nothing below the Escape handler runs. */
 document.addEventListener("keydown", e => {
   const tag = (e.target.tagName || "").toLowerCase();
   const typing = tag === "input" || tag === "textarea" || tag === "select";
   if (e.key === "Escape") {
-    closeModal();
+    if (modalOpen()) return closeModal();
+    if (rail.menuOpen) {
+      rail.menuOpen = false;
+      renderChatMenu();
+      return;
+    }
     closePanel();
     clearSel();
-    $("#sidebar").classList.remove("open");
+    closeSidebar();
     return;
   }
-  if (typing) return;
+  if (typing || modalOpen()) return;
+  if (rail.menuOpen) return; // the chat menu owns the keyboard while it is open
   if (e.key === "/") {
     e.preventDefault();
     openPalette();
@@ -39,7 +47,6 @@ document.addEventListener("keydown", e => {
     }
     return;
   }
-  if ($("#modalhost").innerHTML) return;
   if (route.view === "review" && session) {
     if (e.key === " ") {
       e.preventDefault();
@@ -88,12 +95,17 @@ document.addEventListener("keydown", e => {
       return;
     }
   }
+  // j and k walk the course. Off a module, j goes where the reader actually left off
+  // rather than back to M01, which they have almost certainly finished.
   if (route.view === "m") {
     const i = moduleIndex(route.id);
     if (e.key === "j" && MODS[i + 1]) go("#/m/" + MODS[i + 1].id);
     if (e.key === "k" && MODS[i - 1]) go("#/m/" + MODS[i - 1].id);
   } else if (route.view !== "check") {
-    if (e.key === "j" || e.key === "k") go("#/m/" + MODS[0].id);
+    if (e.key === "j" || e.key === "k") {
+      const m = nextUnfinished();
+      if (m) go("#/m/" + m.id);
+    }
   }
 });
 window.addEventListener("scroll", () => {

@@ -1,13 +1,14 @@
 /* ---------- data backup ---------- */
 function openData() {
   const json = JSON.stringify(STATE);
-  showModal(`<h3 style="font-family:var(--serif);font-size:22px;margin:0 0 8px;font-weight:600">Backup &amp; restore</h3>
-  <p class="sub" style="margin-bottom:14px">Your progress lives in this browser only. Copy this text somewhere safe if you care about it, or paste a previous backup in to restore.</p>
-  <textarea id="dumpta" rows="6" style="font-family:var(--mono);font-size:11px">${esc(json)}</textarea>
-  <div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
-    <button class="btn" onclick="copyDump()">Copy backup</button>
-    <button class="btn" onclick="restore()">Restore from pasted text</button>
-    <button class="btn ghost" style="margin-left:auto;color:var(--bad)" onclick="wipe()">Erase all progress</button>
+  showModal(`<h3 class="h-serif">Backup &amp; restore</h3>
+  <p class="sub gap-bottom">${STUDIO ? "Progress is kept on the platform while Studio serves this page. A backup is how you move it to a page opened off disk, or keep a copy of your own." : "Your progress lives in this browser only. Copy this text somewhere safe if you care about it, or paste a previous backup in to restore."}</p>
+  <label class="visually-hidden" for="dumpta">Backup text</label>
+  <textarea id="dumpta" class="mono dump" rows="6">${esc(json)}</textarea>
+  <div class="rowline wrapped gap-top">
+    <button class="btn primary" onclick="copyDump()">Copy backup</button>
+    <button class="btn" onclick="askRestore()">Restore from pasted text</button>
+    <button class="btn danger pushright" onclick="wipe()">Erase all progress</button>
   </div>`);
 }
 function copyDump() {
@@ -21,13 +22,33 @@ function copyDump() {
       document.execCommand("copy");
       toast("Copied");
     } catch (e2) {
-      toast("Select the text and copy manually");
+      toast("Select the text and copy manually", { kind: "bad" });
     }
   }
 }
-function restore() {
+/* Restoring replaces everything, silently, and there is no undo — so it asks first, with
+   what is about to be thrown away named. */
+function askRestore() {
+  let o;
   try {
-    const o = JSON.parse($("#dumpta").value);
+    o = JSON.parse($("#dumpta").value);
+    if (!o || typeof o !== "object" || Array.isArray(o)) throw 0;
+  } catch (e) {
+    toast("That is not valid backup text", { kind: "bad" });
+    return;
+  }
+  const mods = Object.keys(o.progress || {}).length;
+  confirmModal(
+    "Replace your progress with this backup?",
+    `Everything on this device — completion, answers, highlights, notes, conversations and card scheduling — is replaced by the pasted backup${mods ? ` (${mods} module${mods === 1 ? "" : "s"})` : ""}. There is no undo.`,
+    "Replace it",
+    () => restore(o),
+    true
+  );
+}
+function restore(parsed) {
+  try {
+    const o = parsed || JSON.parse($("#dumpta").value);
     if (!o || typeof o !== "object") throw 0;
     STATE = Object.assign(blank(), o);
     save();
@@ -36,7 +57,7 @@ function restore() {
     render();
     toast("Progress restored");
   } catch (e) {
-    toast("That is not valid backup text");
+    toast("That is not valid backup text", { kind: "bad" });
   }
 }
 function wipe() {

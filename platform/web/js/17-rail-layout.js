@@ -68,6 +68,10 @@ function applyRail() {
   root.setProperty("--railh", railHeight() + "px");
   root.setProperty("--sidew", (side && !narrow ? LAYOUT.sideWidth : 0) + "px");
   document.body.classList.toggle("rail-on", show);
+  // On a narrow screen the rail covers the page, so it needs the same scrim the sidebar
+  // gets: something to tap to get out of, and the page behind held still.
+  if (narrow && show && pos !== "bottom") showScrim(toggleRail);
+  else if (!$("#sidebar").classList.contains("open")) hideScrim();
   ["rail-right", "rail-bottom"].forEach(c => document.body.classList.remove(c));
   document.body.classList.add("rail-" + pos);
   const app = document.getElementById("app"),
@@ -106,6 +110,38 @@ let railSaveTimer = null;
 function bindRailGrip() {
   const g = document.getElementById("railgrip");
   if (!g) return;
+  g.setAttribute("role", "separator");
+  g.setAttribute("tabindex", "0");
+  g.setAttribute("aria-label", "Resize the tutor panel");
+  g.setAttribute("aria-orientation", railPos() === "bottom" ? "horizontal" : "vertical");
+  // Arrow keys resize it too, and Home puts it back: a drag handle that only answers a
+  // mouse is a control a keyboard or a touch screen cannot reach.
+  g.addEventListener("keydown", e => {
+    const step = e.shiftKey ? 60 : 20;
+    const bottom = railPos() === "bottom";
+    const grow = bottom ? e.key === "ArrowUp" : e.key === "ArrowLeft";
+    const shrink = bottom ? e.key === "ArrowDown" : e.key === "ArrowRight";
+    if (!grow && !shrink && e.key !== "Home") return;
+    e.preventDefault();
+    if (!STATE.ui) STATE.ui = {};
+    if (e.key === "Home") {
+      STATE.ui.railW = LAYOUT.railDefault;
+      STATE.ui.railH = LAYOUT.railHeightDefault;
+    } else if (bottom) STATE.ui.railH = railHeight() + (grow ? step : -step);
+    else STATE.ui.railW = railWidth() + (grow ? step : -step);
+    applyRail();
+    save();
+  });
+  g.addEventListener("touchmove", e => {
+    if (!e.touches.length) return;
+    if (!STATE.ui) STATE.ui = {};
+    const t = e.touches[0];
+    if (railPos() === "bottom") STATE.ui.railH = Math.round(window.innerHeight - t.clientY);
+    else STATE.ui.railW = Math.round(window.innerWidth - t.clientX);
+    applyRail();
+    clearTimeout(railSaveTimer);
+    railSaveTimer = setTimeout(save, 300);
+  });
   g.addEventListener("mousedown", e => {
     e.preventDefault();
     if (!STATE.ui) STATE.ui = {};

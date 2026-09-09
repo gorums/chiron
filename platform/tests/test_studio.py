@@ -1864,7 +1864,9 @@ class TestServerConventions(unittest.TestCase):
         uses that no file declares."""
         import subprocess
         ui = os.path.join(PLATFORM, "studio", "ui", "js")
-        files = [os.path.join(ui, n) for n in sorted(os.listdir(ui)) if n.endswith(".js")]
+        # The shared design system loads first, exactly as index.html links it.
+        files = [os.path.join(PLATFORM, "web", "js", "00-dom.js")]
+        files += [os.path.join(ui, n) for n in sorted(os.listdir(ui)) if n.endswith(".js")]
         harness = os.path.join(HERE, "page_smoke.js")
         proc = subprocess.run(["node", harness] + files, capture_output=True, text=True,
                               encoding="utf-8", timeout=60)

@@ -6,26 +6,26 @@
 /*__CSS__*/
 </style>
 
-<div class="readbar" id="readbar" style="width:0"></div>
+<div class="readbar" id="readbar" style="width:0" aria-hidden="true"></div>
 <div id="app">
-  <aside id="sidebar"></aside>
+  <aside id="sidebar" aria-label="Course navigation"></aside>
   <div id="main">
-    <div class="topbar">
-      <button class="iconbtn" id="menubtn" aria-label="Menu">☰</button>
+    <header class="topbar">
+      <button class="iconbtn" id="menubtn" aria-label="Show or hide the course navigation" aria-expanded="true"></button>
       <button class="searchbtn" id="opensearch">
         <span>Search everything…</span><kbd>/</kbd>
       </button>
-      <span style="flex:1"></span>
+      <span class="spacer"></span>
       <button class="btn sm" id="reviewbtn" style="display:none"></button>
-      <button class="btn sm" id="railtoggle" onclick="toggleRail()" title="Show the tutor (a)">Ask Claude</button>
-      <button class="iconbtn" id="themebtn" title="Theme (t)" aria-label="Theme">◐</button>
-      <button class="iconbtn" id="helpbtn" title="Shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
-    </div>
-    <div class="view" id="view"></div>
+      <button class="btn sm" id="railtoggle" onclick="toggleRail()" aria-expanded="false" title="Show the tutor (a)">Ask the tutor</button>
+      <button class="iconbtn" id="themebtn" title="Theme (t)" aria-label="Theme"></button>
+      <button class="iconbtn" id="helpbtn" title="How this works, and the shortcuts (?)" aria-label="Help and keyboard shortcuts">?</button>
+    </header>
+    <main class="view" id="view"></main>
   </div>
-  <aside id="rail" class="hidden"></aside>
+  <aside id="rail" class="hidden" aria-label="Tutor"></aside>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div id="modalhost"></div>
 
 <script>

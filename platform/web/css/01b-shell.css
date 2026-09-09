@@ -1,0 +1,261 @@
+/* The reader's own shell: the three-column frame, the sidebar and the topbar's extras.
+   Studio does not load this file — it has a shell of its own. */
+
+#app {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  min-height: 100vh;
+}
+#sidebar {
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+}
+.view {
+  padding: 26px 22px 100px;
+  flex: 1;
+}
+.wrap {
+  max-width: 780px;
+  margin: 0 auto;
+}
+.wrap-wide {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+/* the reading column keeps its own, slightly smaller, input type */
+textarea,
+input[type="text"] {
+  font-size: 14.5px;
+  border-radius: 10px;
+  padding: 11px 13px;
+}
+
+/* ---------- sidebar ---------- */
+.brand {
+  padding: 20px 18px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.brand h1 {
+  font-family: var(--serif);
+  font-size: 19px;
+  margin: 0;
+  letter-spacing: -0.2px;
+  font-weight: 600;
+}
+.brand p {
+  margin: 3px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.ringwrap {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  width: 100%;
+  text-align: left;
+}
+.ringwrap:hover {
+  background: var(--surface-2);
+}
+.ring {
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+.ringtxt {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: 1.35;
+}
+.ringtxt b {
+  display: block;
+  font-size: 15px;
+  color: var(--text);
+  font-weight: 600;
+}
+.ringtxt .who {
+  display: inline;
+  font-size: var(--fs-sm);
+}
+.navsec {
+  padding: 14px 12px 4px;
+}
+.navsec.foot {
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+}
+.navsec h2 {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin: 0 0 6px 8px;
+  font-weight: 600;
+}
+.navlink {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  background: none;
+  border-radius: var(--s2);
+  font-size: var(--fs-md);
+  color: var(--text-2);
+  text-align: left;
+  text-decoration: none;
+}
+.navlink:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.navlink[aria-current="page"],
+.navlink.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.navlink .ico {
+  width: 16px;
+  flex: none;
+  opacity: 0.8;
+  display: flex;
+}
+.navlink .dotstat {
+  margin-left: auto;
+}
+.partgroup {
+  margin: 0 0 2px;
+}
+.parthead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: 12px 20px 5px;
+}
+.parthead .pn {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-weight: 600;
+}
+.parthead .ph {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  margin-left: auto;
+}
+.mrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 12px 6px 20px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: var(--fs-md);
+  color: var(--text-2);
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+.mrow:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.mrow[aria-current="page"],
+.mrow.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+.mrow .code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  flex: none;
+  width: 26px;
+}
+.mrow[aria-current="page"] .code,
+.mrow.active .code {
+  color: var(--accent-ink);
+}
+.mrow .t {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-2);
+  flex: none;
+}
+.dot.part {
+  border-color: var(--accent);
+  background: linear-gradient(90deg, var(--accent) 50%, transparent 50%);
+}
+.dot.done {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* sidebar can be hidden on a wide screen too; the ☰ button brings it back */
+body.side-off #sidebar {
+  display: none;
+}
+#menubtn {
+  display: inline-flex;
+}
+body.locked {
+  overflow: hidden;
+}
+
+/* ---------- topbar extras ---------- */
+.searchbtn {
+  flex: 1;
+  min-width: 0;
+  max-width: 400px;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+.searchbtn span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.searchbtn:hover {
+  border-color: var(--line-2);
+}
+.searchbtn kbd {
+  margin-left: auto;
+}
+
+.sidefoot {
+  height: 24px;
+}

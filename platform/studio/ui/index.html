@@ -7,31 +7,44 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui/shared/00-tokens.css">
+<link rel="stylesheet" href="/ui/shared/01-base.css">
 <link rel="stylesheet" href="/ui/studio.css">
 </head>
 <body>
 
-<header class="bar">
+<header class="topbar studiobar">
+  <button class="iconbtn" id="navmenubtn" aria-label="Menu" aria-expanded="false" aria-haspopup="true"></button>
   <a class="brand" href="#/">
     <h1>Course Studio</h1>
   </a>
-  <nav class="topnav">
+  <nav class="topnav" aria-label="Studio">
     <a href="#/" id="nav-library">Courses</a>
     <a href="#/new" id="nav-new">New course</a>
     <a href="#/settings" id="nav-settings">Settings &amp; logs</a>
   </nav>
   <form class="search" id="searchform" role="search"><input type="search" id="searchq" placeholder="Search every course" aria-label="Search every course" autocomplete="off"></form>
+  <a class="iconbtn searchjump" href="#/search" aria-label="Search every course" title="Search every course"></a>
   <span class="spacer"></span>
   <label class="profilepick" title="Whose progress Studio shows"><span>Reading as</span><select id="profilesel" aria-label="Reader profile"></select></label>
-  <a class="pill live hidden" id="jobstate" href="#/" title="What Studio is doing right now"></a>
-  <span class="pill" id="claudestate">checking…</span>
-  <button class="btn ghost sm" id="themebtn" title="Theme">◐</button>
+  <a class="iconbtn" href="#/settings" title="Add or remove reader profiles" aria-label="Manage reader profiles" id="profilelink"></a>
+  <a class="pill live hidden" id="jobstate" href="#/jobs" title="What Studio is doing right now"></a>
+  <a class="pill" id="claudestate" href="#/settings">checking…</a>
+  <button class="iconbtn" id="themebtn" title="Theme" aria-label="Theme"></button>
 </header>
+
+<div class="navmenu hidden" id="navmenu" role="menu" aria-label="Studio">
+  <a role="menuitem" href="#/">Courses</a>
+  <a role="menuitem" href="#/new">New course</a>
+  <a role="menuitem" href="#/jobs">Recent runs</a>
+  <a role="menuitem" href="#/settings">Settings &amp; logs</a>
+</div>
 
 <main id="view"></main>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="/ui/shared/00-dom.js"></script>
 <script src="/ui/js/00-core.js"></script>
 <script src="/ui/js/10-library.js"></script>
 <script src="/ui/js/20-course.js"></script>

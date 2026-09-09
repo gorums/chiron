@@ -1,48 +1,61 @@
-/* ============================ sidebar ============================ */
+/* ============================ sidebar ============================
+   Real links in a real <nav>: every item has an address, so it can be opened in a new tab,
+   read out as a list, and marked as the current page. */
+function navItem(view, hash, icon, label, badge) {
+  const on = (Array.isArray(view) ? view : [view]).includes(route.view);
+  return `<a class="navlink" href="${hash}" ${on ? 'aria-current="page"' : ""}><span class="ico">${ico(icon)}</span>${label}${badge || ""}</a>`;
+}
 function renderSidebar() {
   const pct = doneCount() / MODS.length;
   const due = dueCards().length,
     mdue = mistakesDue();
   const R = 20,
     C = 2 * Math.PI * R;
+  const spent = timeSpent() ? fmtSpent(timeSpent()) + " studied · " : "";
+  const who = PROFILE !== "default" ? `<br>Reading as <b class="who">${esc(PROFILE)}</b>` : "";
   let h = `<div class="brand"><h1>${esc(CFG.title)}</h1><p>${esc(CFG.tagline)}</p></div>
   <button class="ringwrap" onclick="go('#/stats')">
-    <svg class="ring" viewBox="0 0 46 46"><circle cx="23" cy="23" r="${R}" fill="none" stroke="var(--surface-3)" stroke-width="4"/>
+    <svg class="ring" viewBox="0 0 46 46" aria-hidden="true"><circle cx="23" cy="23" r="${R}" fill="none" stroke="var(--surface-3)" stroke-width="4"/>
     <circle cx="23" cy="23" r="${R}" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"
       stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" transform="rotate(-90 23 23)"/></svg>
-    <span class="ringtxt"><b>${doneCount()} of ${MODS.length} modules</b>${timeSpent() ? fmtSpent(timeSpent()) + " studied · " : ""}${fmtH(CFG.hours * 60)} course${PROFILE !== "default" ? `<br>Reading as <b style="display:inline;font-size:12px">${esc(PROFILE)}</b>` : ""}</span>
+    <span class="ringtxt"><b>${doneCount()} of ${MODS.length} modules</b>${spent}${fmtH(CFG.hours * 60)} course${who}</span>
   </button>
-  <div class="navsec">
-    ${STUDIO ? `<a class="navlink" href="${STUDIO.origin}/#/course/${STUDIO.id}" style="text-decoration:none"><span class="ico">${ico("courses")}</span>All courses${syncState === "on" ? `<span class="dotstat on" title="Progress is saved on the platform" style="margin-left:auto"></span>` : ""}</a>` : ""}
-    <button class="navlink ${route.view === "home" ? "active" : ""}" onclick="go('#/home')"><span class="ico">${ico("home")}</span>Dashboard</button>
-    <button class="navlink ${route.view === "review" ? "active" : ""}" onclick="go('#/review')"><span class="ico">${ico("review")}</span>Review${due ? `<span class="pill" title="${mdue ? mdue + " of these are mistakes to fix" : ""}">${due}</span>` : ""}</button>
-    <button class="navlink ${route.view === "check" ? "active" : ""}" onclick="go('#/check')"><span class="ico">${ico("check")}</span>Checkpoints${checkOffers().length ? `<span class="pill">${checkOffers().length}</span>` : ""}</button>
-    <button class="navlink ${route.view === "marks" ? "active" : ""}" onclick="go('#/marks')"><span class="ico">${ico("marks")}</span>Marks &amp; questions${openQs() ? `<span class="pill">${openQs()}</span>` : ""}</button>
-    <button class="navlink ${route.view === "stats" || route.view === "record" ? "active" : ""}" onclick="go('#/stats')"><span class="ico">${ico("stats")}</span>Progress</button>
-    <button class="navlink ${route.view === "learner" ? "active" : ""}" onclick="go('#/learner')"><span class="ico">${ico("learner")}</span>Your gaps${openGaps().length ? `<span class="pill" title="Gaps the tutor is working on">${openGaps().length}</span>` : ""}</button>
-    <button class="navlink ${route.view === "library" || route.view === "plan" ? "active" : ""}" onclick="go('#/library')"><span class="ico">${ico("library")}</span>Library</button>
-  </div>
-  <div class="legend">${[1, 2, 3, 4].map(l => `<span><i class="dot l${l}"></i>${MASTERY[l]}</span>`).join("")}</div>`;
+  <nav class="navsec" aria-label="Course">
+    ${STUDIO ? `<a class="navlink" href="${STUDIO.origin}/#/course/${STUDIO.id}"><span class="ico">${ico("courses")}</span>All courses${syncState === "on" ? `<span class="dotstat on" title="Your progress is being saved on the platform"></span>` : ""}</a>` : ""}
+    ${navItem("home", "#/home", "home", "Dashboard")}
+    ${navItem("review", "#/review", "review", "Practice", due ? `<span class="badge" title="${esc(mdue ? mdue + " of these are mistakes to fix. " + help("mistake card") : help("practice deck"))}">${due}</span>` : "")}
+    ${navItem("check", "#/check", "check", "Checkpoints", checkOffers().length ? `<span class="badge" title="${esc(help("checkpoint"))}">${checkOffers().length}</span>` : "")}
+    ${navItem("marks", "#/marks", "marks", "Marks &amp; questions", openQs() ? `<span class="badge" title="Questions you marked and have not closed">${openQs()}</span>` : "")}
+    ${navItem(["stats", "record"], "#/stats", "stats", "Progress")}
+    ${navItem("learner", "#/learner", "learner", "Your gaps", openGaps().length ? `<span class="badge" title="${esc(help("gap"))}">${openGaps().length}</span>` : "")}
+    ${navItem(["library", "plan"], "#/library", "library", "Library")}
+  </nav>
+  <div class="legend">${[1, 2, 3, 4].map(l => `<span title="${esc(help(MASTERY[l]))}"><i class="dot l${l}"></i>${MASTERY[l]}</span>`).join("")}</div>`;
   DATA.parts.forEach(p => {
     const ms = MODS.filter(m => m.part === p.id);
     h += `<div class="partgroup"><div class="parthead"><span class="pn">${esc(p.name)}</span><span class="ph">${p.hours}h</span></div>`;
     ms.forEach(m => {
-      const ms_ = mastery(m);
-      h += `<button class="mrow ${route.view === "m" && route.id === m.id ? "active" : ""}" onclick="go('#/m/${m.id}')" title="${ms_.name}">
+      const level = mastery(m);
+      const here = route.view === "m" && route.id === m.id;
+      const marked =
+        STATE.bookmarks && Object.keys(STATE.bookmarks).some(k => k.startsWith(m.id + ":"));
+      h += `<a class="mrow" href="#/m/${m.id}" ${here ? 'aria-current="page"' : ""} title="${level.name} — ${esc(help(level.name))}">
         <span class="dot ${masteryClass(m)}"></span>
-        <span class="code">${m.id}</span><span class="t">${esc(m.short)}</span>${STATE.bookmarks && Object.keys(STATE.bookmarks).some(k => k.startsWith(m.id + ":")) ? `<span class="bm" title="Bookmarked">${ico("flag", 11)}</span>` : ""}</button>`;
+        <span class="code">${m.id}</span><span class="t">${esc(m.short)}</span>${marked ? `<span class="bm" title="You bookmarked something in this module">${ico("flag", 11)}</span>` : ""}</a>`;
     });
     h += `</div>`;
   });
-  h += `<div class="navsec" style="border-top:1px solid var(--line);margin-top:10px">
-    <button class="navlink ${route.view === "settings" ? "active" : ""}" onclick="go('#/settings')"><span class="ico">${ico("settings")}</span>Settings<span class="dotstat ${bridgeChecking ? "busy" : connMode() !== "none" ? "on" : ""}" style="margin-left:auto" title="${connMode() !== "none" ? "Claude connected" : "Claude not connected"}"></span></button>
-  </div>
-  <div style="height:24px"></div>`;
+  const connected = connMode() !== "none";
+  h += `<nav class="navsec foot" aria-label="This device">
+    ${navItem("settings", "#/settings", "settings", "Settings", `<span class="dotstat ${bridgeChecking ? "busy" : connected ? "on" : ""}" title="${connected ? "The tutor is connected" : "The tutor is not connected"}"></span>`)}
+  </nav>
+  <div class="sidefoot"></div>`;
   $("#sidebar").innerHTML = h;
   const rb = $("#reviewbtn");
   if (due) {
     rb.style.display = "";
     rb.innerHTML = `${ico("review", 13)} ${due} due`;
+    rb.title = "Flashcards due today. " + help("practice deck");
     rb.onclick = () => go("#/review");
   } else rb.style.display = "none";
 }

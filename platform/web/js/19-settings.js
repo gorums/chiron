@@ -1,105 +1,125 @@
-/* ---- settings: connect the page to Claude ---- */
+/* ---- settings: how the tutor is connected, and how the page reads ---- */
 function viewSettings() {
   const b = conn();
   const local = isLocalFile();
   const on = connMode() !== "none";
   const state = bridgeChecking ? "busy" : on ? "on" : "";
-  let h = `<div class="wrap"><h2 class="big">Connect Claude</h2>
-  <p class="sub" style="margin-bottom:22px">${connMode() === "studio" ? "This page is served by Course Studio, so questions go through it. Paste a key only if you would rather pay per question." : "Paste a key once. Nothing to install, nothing to keep running."}</p>
+  // Served by Studio the tutor is already wired up, so none of the key-and-bridge material
+  // belongs on the page: it would be telling the reader to solve a problem they do not have.
+  const viaStudio = connMode() === "studio";
+  const status = bridgeChecking
+    ? "Checking…"
+    : on
+      ? b.echo
+        ? "Connected — test mode"
+        : "Connected"
+      : "Not connected";
+  const how = on
+    ? connMode() === "direct"
+      ? "This page talks to Anthropic directly with the key you saved. Ask about anything you are reading."
+      : viaStudio
+        ? "Answers come through Course Studio, using the Claude Code it is signed in to. Nothing to set up here, and no API charges."
+        : "Answers come through the local bridge" +
+          (b.mode === "cli" ? ", using Claude Code." : ".")
+    : "The tutor cannot answer yet. Connect it below.";
 
-  <div class="card" style="margin-bottom:20px;border-color:${on ? "var(--ok)" : "var(--line)"};text-align:center;padding:26px 20px">
-    <span class="dotstat ${state}" style="width:14px;height:14px;display:inline-block;margin-bottom:12px"></span>
-    <div style="font-family:var(--serif);font-size:23px;font-weight:600;margin-bottom:6px">
-      ${bridgeChecking ? "Checking…" : on ? (b.echo ? "Connected — test mode" : "Connected") : "Not connected"}</div>
-    <p class="sub" style="max-width:460px;margin:0 auto 16px">${
-      on
-        ? connMode() === "direct"
-          ? "This page talks to Anthropic directly. Ask about anything you are reading."
-          : connMode() === "studio"
-            ? "Connected through Course Studio, using the Claude Code it is signed in to. Nothing to set up, no API charges."
-            : "Connected through the local bridge" +
-              (b.mode === "cli" ? " using Claude Code." : ".")
-        : "Paste your Anthropic API key below and press Connect."
-    }</p>
+  let h = `<div class="wrap"><h2 class="big">Settings</h2>
+  <p class="lede">How the tutor is connected, how the page reads, and what happens to your progress.</p>
+
+  <div class="card centered connectcard ${on ? "ok" : ""}">
+    <span class="dotstat big ${state}"></span>
+    <div class="h-serif">${status}</div>
+    <p class="sub narrow gap-bottom">${how}</p>
     ${
       on
-        ? ""
-        : `<div style="max-width:520px;margin:0 auto">
-      <button class="btn primary" id="connectbtn" style="font-size:15px;padding:11px 22px" onclick="useBridge()">Connect with Claude Code</button>
-      <p class="sub" style="font-size:12.5px;margin:10px 0 0">Included in your Pro/Max plan — no API charges. Start <code>tools\\bridge\\start-bridge.bat</code> first.</p>
-      <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px"><span style="flex:1;height:1px;background:var(--line)"></span><span style="font-size:11.5px;color:var(--muted)">or pay per question</span><span style="flex:1;height:1px;background:var(--line)"></span></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <input type="password" id="mainkey" placeholder="sk-ant-… (billed separately)" style="flex:1;min-width:230px" value="${esc(b.key || "")}">
-        <button class="btn" onclick="connectClaude()">Use API key</button></div></div>`
+        ? viaStudio
+          ? `<div class="rowline center wrapped"><button class="btn" id="connectbtn" onclick="connectClaude()">Re-check</button></div>`
+          : `<div class="rowline center wrapped"><button class="btn" id="connectbtn" onclick="connectClaude()">Re-check</button>
+             <button class="btn danger" onclick="askDisconnect()">Disconnect</button></div>`
+        : `<div class="narrow">
+      <button class="btn primary" id="connectbtn" onclick="useBridge()">Connect with Claude Code</button>
+      <p class="sub gap-top">Included in a Pro or Max plan — no API charges. Start <span class="mono">tools\\bridge\\start-bridge.bat</span> first.</p>
+      <div class="orline"><span></span><span class="sub">or pay per question</span><span></span></div>
+      <div class="rowline wrapped">
+        <label class="visually-hidden" for="mainkey">Anthropic API key</label>
+        <input type="password" id="mainkey" class="grow" placeholder="sk-ant-… (billed separately)" value="${esc(b.key || "")}">
+        <button class="btn" onclick="connectClaude()">Use an API key</button></div></div>`
     }
-    ${
-      on
-        ? `<button class="btn" id="connectbtn" onclick="connectClaude()">Re-check</button>
-      <button class="btn ghost" onclick="disconnect()">Disconnect</button>`
-        : ""
-    }
-    <div id="connectlog" style="margin-top:16px;text-align:left"></div>
+    <div id="connectlog" class="gap-top lefted"></div>
   </div>`;
 
-  if (!local) {
-    h += `<div class="card" style="margin-bottom:20px;border-color:var(--warm)">
-      <p class="eyebrow" style="color:var(--warm)">You are on the published web version</p>
-      <p style="color:var(--text-2);margin:0">A page served from claude.ai is not permitted to call other services — that restriction is what keeps published pages safe. Reading, quizzes and flashcards all work here; <b>asking questions needs the local copy</b>. Open <code>${esc(CFG.localFile)}</code> from your <b>${esc(CFG.folderLabel)}</b> folder. Use <b>Backup / restore</b> in the sidebar to carry progress across.</p></div>`;
+  if (!local && !viaStudio) {
+    h += `<div class="card warmcard gap-bottom">
+      <h3 class="eyebrow warnnote">You are on the published web version</h3>
+      <p class="lede">A page served from the web is not permitted to call other services — that restriction is what keeps published pages safe. Reading, quizzes and flashcards all work here; <b>asking questions needs the local copy</b>. Open <span class="mono">${esc(CFG.localFile)}</span> from your <b>${esc(CFG.folderLabel)}</b> folder. Use <b>Backup &amp; restore</b> below to carry progress across.</p></div>`;
   }
 
-  h += `<div class="card" style="margin-bottom:20px;border-color:var(--warm)">
-    <p class="eyebrow" style="color:var(--warm)">On a Pro or Max subscription?</p>
-    <p style="color:var(--text-2);margin:0 0 10px">API usage is <b>billed separately</b> from a Claude subscription — a Max plan does not include API credits, so every question asked through a key here costs money on top of what you already pay.</p>
-    <p style="color:var(--text-2);margin:0">Claude Code, on the other hand, <b>is</b> included in Pro and Max. If you have it installed, use the bridge route in the collapsed section below: questions then count against your subscription's usage instead of costing extra. Leave the key field empty if you go that way.</p>
+  // The whole cost-and-keys story is only useful to someone who has to solve it themselves.
+  if (!viaStudio) {
+    h += `<div class="card warmcard gap-bottom">
+    <h3 class="eyebrow warnnote">On a Pro or Max subscription?</h3>
+    <p class="lede">API usage is <b>billed separately</b> from a Claude subscription — a Max plan does not include API credits, so every question asked through a key here costs money on top of what you already pay.</p>
+    <p class="lede">Claude Code, on the other hand, <b>is</b> included in Pro and Max. If you have it installed, use the bridge: questions then count against your subscription's usage instead of costing extra. Leave the key field empty if you go that way.</p>
   </div>
 
-  <div class="card" style="margin-bottom:20px">
-    <p class="eyebrow">Where to get a key</p>
+  <div class="card gap-bottom">
+    <h3 class="eyebrow">Where to get a key</h3>
     <div class="stepbox"><span class="n">1</span><div class="c">Go to <b>console.anthropic.com</b> → <b>API keys</b> → <b>Create key</b>.</div></div>
-    <div class="stepbox"><span class="n">2</span><div class="c">Copy it (it starts with <code>sk-ant-</code>) and paste it above.</div></div>
-    <div class="stepbox" style="border-bottom:0"><span class="n">3</span><div class="c">Press <b>Connect</b>. It sends one tiny test request, then remembers the key in this browser. Questions cost a fraction of a cent each — billed per use, separately from a Claude subscription.</div></div>
-  </div>
+    <div class="stepbox"><span class="n">2</span><div class="c">Copy it (it starts with <span class="mono">sk-ant-</span>) and paste it above.</div></div>
+    <div class="stepbox last"><span class="n">3</span><div class="c">Press <b>Connect</b>. It sends one tiny test request, then remembers the key in this browser. Questions cost a fraction of a cent each — billed per use, separately from a Claude subscription.</div></div>
+  </div>`;
+  }
 
-  <div class="card" style="margin-bottom:20px">
-    <p class="eyebrow">Settings</p>
-    <div class="setrow"><span class="lab">Model<small>Which Claude answers your questions. The list comes from the platform's settings.</small></span>
-      <select id="setmodel" onchange="saveSettings()" style="padding:10px 12px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px">
+  h += `<div class="card gap-bottom">
+    <h3 class="eyebrow">The tutor</h3>
+    <div class="setrow"><span class="lab">Model<small>Which Claude answers your questions. The same picker sits under the chat box.</small></span>
+      <select id="setmodel" data-model-pick aria-label="Which Claude answers" onchange="setTutorModel(this.value)">
         ${PLATFORM.models.map(m => `<option value="${esc(m.id)}" ${modelFor(b) === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("")}
       </select></div>
-    <div class="setrow" style="border-bottom:0"><span class="lab">Your key<small>Kept in this browser only, sent only to Anthropic.</small></span>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <span style="font-family:var(--mono);font-size:12.5px">${b.key ? esc(b.key.slice(0, 14) + "…" + b.key.slice(-4)) : "none stored"}</span>
+    ${
+      viaStudio
+        ? `<div class="setrow last"><span class="lab">Connection<small>Studio is serving this page, so questions go through it and cost nothing extra.</small></span>
+             <span class="sub">through Course Studio</span></div>`
+        : `<div class="setrow last"><span class="lab">Your key<small>Kept in this browser only, sent only to Anthropic.</small></span>
+      <div class="rowline wrapped">
+        <span class="mono">${b.key ? esc(b.key.slice(0, 14) + "…" + b.key.slice(-4)) : "none stored"}</span>
         ${
           b.key
             ? `<button class="btn sm" onclick="testDirect()">Test it</button>
-                   <button class="btn sm ghost" onclick="disconnect()">Forget it</button>`
+                   <button class="btn sm danger" onclick="askDisconnect()">Forget it</button>`
             : ""
         }
-      </div></div>
-    <div id="diagbox" style="margin-top:12px"></div>
+      </div></div>`
+    }
+    <div id="diagbox" class="gap-top"></div>
   </div>
 
-  <details class="card" style="margin-bottom:20px"><summary style="cursor:pointer;font-size:13px;color:var(--muted)">Alternative — use the local bridge instead (no API key, uses Claude Code)</summary>
-    <div style="margin-top:14px">
-      <p style="color:var(--text-2);margin:0 0 12px">If you have <b>Claude Code</b> installed and would rather not use an API key at all, the folder <code>tools\\bridge\\</code> holds a small Python program that routes questions through it. Start <code>start-bridge.bat</code> there, then press the button below. Everything works the same afterwards; the difference is only where the answers come from.</p>
-      <div class="setrow"><span class="lab">Bridge address</span><input type="text" id="seturl" value="${esc(b.url)}"></div>
-      <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
+  ${
+    viaStudio
+      ? ""
+      : `<details class="card gap-bottom"><summary>Alternative — use the local bridge instead (no API key, uses Claude Code)</summary>
+    <div class="gap-top">
+      <p class="lede">If you have <b>Claude Code</b> installed and would rather not use an API key at all, the folder <span class="mono">tools\\bridge\\</span> holds a small Python program that routes questions through it. Start <span class="mono">start-bridge.bat</span> there, then press the button below. Everything works the same afterwards; the difference is only where the answers come from.</p>
+      <div class="setrow"><span class="lab"><label for="seturl">Bridge address</label></span><input type="text" id="seturl" value="${esc(b.url)}"></div>
+      <div class="rowline wrapped gap-top">
         <button class="btn" onclick="useBridge()">Use the bridge</button>
-        ${b.route === "bridge" ? `<button class="btn ghost" onclick="useDirect()">Back to direct</button>` : ""}
+        ${b.route === "bridge" ? `<button class="btn" onclick="useDirect()">Back to direct</button>` : ""}
       </div>
     </div>
-  </details>
+  </details>`
+  }
 
-  <div class="card" style="margin-bottom:20px">
-    <p class="eyebrow">${esc((CFG.anchor || {}).label || "Your own case")}</p>
-    <p class="sub" style="margin-bottom:10px">${esc((CFG.anchor || {}).prompt || "")}</p>
+  <div class="card gap-bottom">
+    <h3 class="eyebrow">${esc((CFG.anchor || {}).label || "Your own case")}</h3>
+    <p class="sub gap-bottom" title="${esc(help("anchor"))}">${esc((CFG.anchor || {}).prompt || "")}</p>
+    <label class="visually-hidden" for="bizin">${esc((CFG.anchor || {}).label || "Your own case")}</label>
     <input type="text" id="bizin" value="${esc(STATE.biz || "")}" placeholder="${esc((CFG.anchor || {}).placeholder || "")}" onchange="STATE.biz=this.value.trim();save();toast('Saved')">
   </div>
 
-  <div class="card" style="margin-bottom:20px">
-    <p class="eyebrow">Reading</p>
-    <p class="sub" style="margin-bottom:6px">Kept in this browser only.</p>
-    <div class="setrow"><span class="lab">Text size</span><div class="chips" style="margin:0">${[
+  <div class="card gap-bottom">
+    <h3 class="eyebrow">Reading</h3>
+    <p class="sub gap-bottom">Kept in this browser only.</p>
+    <div class="setrow"><span class="lab">Text size</span><div class="chips">${[
       ["s", "Smaller"],
       ["m", "Normal"],
       ["l", "Larger"],
@@ -107,53 +127,57 @@ function viewSettings() {
     ]
       .map(
         ([v, l]) =>
-          `<button class="chip ${(uiPrefs().size || "m") === v ? "on" : ""}" onclick="setReading('size','${v}')">${l}</button>`
+          `<button class="chip ${(uiPrefs().size || "m") === v ? "on" : ""}" aria-pressed="${(uiPrefs().size || "m") === v}" onclick="setReading('size','${v}')">${l}</button>`
       )
       .join("")}</div></div>
-    <div class="setrow"><span class="lab">Line width<small>Narrow is easier to read; wide fits more.</small></span><div class="chips" style="margin:0">${[
+    <div class="setrow"><span class="lab">Line width<small>Narrow is easier to read; wide fits more.</small></span><div class="chips">${[
       ["narrow", "Narrow"],
       ["normal", "Normal"],
       ["wide", "Wide"],
     ]
       .map(
         ([v, l]) =>
-          `<button class="chip ${(uiPrefs().width || "normal") === v ? "on" : ""}" onclick="setReading('width','${v}')">${l}</button>`
+          `<button class="chip ${(uiPrefs().width || "normal") === v ? "on" : ""}" aria-pressed="${(uiPrefs().width || "normal") === v}" onclick="setReading('width','${v}')">${l}</button>`
       )
       .join("")}</div></div>
-    <div class="setrow"><span class="lab">Font<small>A serif body suits long reading for some eyes.</small></span><div class="chips" style="margin:0">${[
+    <div class="setrow"><span class="lab">Font<small>A serif body suits long reading for some eyes.</small></span><div class="chips">${[
       ["sans", "Sans"],
       ["serif", "Serif"],
     ]
       .map(
         ([v, l]) =>
-          `<button class="chip ${(uiPrefs().font || "sans") === v ? "on" : ""}" onclick="setReading('font','${v}')">${l}</button>`
+          `<button class="chip ${(uiPrefs().font || "sans") === v ? "on" : ""}" aria-pressed="${(uiPrefs().font || "sans") === v}" onclick="setReading('font','${v}')">${l}</button>`
       )
       .join("")}</div></div>
-    <div class="setrow" style="border-bottom:0"><span class="lab">Motion</span><label style="display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer"><input type="checkbox" ${uiPrefs().nomotion ? "checked" : ""} onchange="setReading('nomotion',this.checked)"> Reduce animation</label></div>
+    <div class="setrow last"><span class="lab">Motion</span><label class="radio"><input type="checkbox" ${uiPrefs().nomotion ? "checked" : ""} onchange="setReading('nomotion',this.checked)"> Reduce animation</label></div>
   </div>
 
   ${audioSettingsCard()}
 
-  <div class="card" style="margin-bottom:20px">
-    <p class="eyebrow">Chat panel</p>
-    <p class="sub" style="margin-bottom:6px">Where the tutor sits while you read. Kept in this browser only. You can also drag the panel's edge to resize it, and double-click the edge to reset.</p>
-    <div class="setrow"><span class="lab">Position</span><div class="chips" style="margin:0">${DOCKS.map(([p, _g, tip]) => `<button class="chip ${railPos() === p ? "on" : ""}" onclick="setRailPos('${p}')">${tip.replace("Dock ", "").replace("along the ", "")}</button>`).join("")}</div></div>
-    <div class="setrow" style="border-bottom:0"><span class="lab">Size<small>Width when docked at a side, height when docked at the bottom.</small></span>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="sub">${railPos() === "bottom" ? railHeight() + "px tall" : railWidth() + "px wide"}</span>
-      <button class="btn sm" onclick="if(!STATE.ui)STATE.ui={};STATE.ui.railW=LAYOUT.railDefault;STATE.ui.railH=LAYOUT.railHeightDefault;save();applyRail();viewSettings()">Reset</button></div></div>
+  <div class="card gap-bottom">
+    <h3 class="eyebrow">Chat panel</h3>
+    <p class="sub gap-bottom">Where the tutor sits while you read. Kept in this browser only. You can also drag the panel's edge to resize it, and double-click the edge to reset.</p>
+    <div class="setrow"><span class="lab">Position</span><div class="chips">${DOCKS.map(([p, _g, tip]) => `<button class="chip ${railPos() === p ? "on" : ""}" aria-pressed="${railPos() === p}" onclick="setRailPos('${p}')">${tip.replace("Dock ", "").replace("along the ", "")}</button>`).join("")}</div></div>
+    <div class="setrow last"><span class="lab">Size<small>Width when docked at a side, height when docked at the bottom.</small></span>
+      <div class="rowline wrapped"><span class="sub">${railPos() === "bottom" ? railHeight() + "px tall" : railWidth() + "px wide"}</span>
+      <button class="btn sm" onclick="resetRailSize()">Reset</button></div></div>
   </div>
 
-  <div class="card" style="margin-bottom:20px">
-    <p class="eyebrow">Backup &amp; restore</p>
-    <p class="sub" style="margin-bottom:12px">${STUDIO ? "Progress is also kept on the platform while this page is served by Studio. A backup is still the way to move it to a page opened off disk." : "Progress lives in this browser only. Keep a copy, or move it to another machine."}</p>
+  <div class="card gap-bottom">
+    <h3 class="eyebrow">Backup &amp; restore</h3>
+    <p class="sub gap-bottom">${STUDIO ? "Progress is also kept on the platform while this page is served by Studio. A backup is still the way to move it to a page opened off disk." : "Progress lives in this browser only. Keep a copy, or move it to another machine."}</p>
     <button class="btn" onclick="openData()">Open backup &amp; restore</button>
   </div>
 
-  <div class="card">
-    <p class="eyebrow">Why the key sits in the browser</p>
-    <p style="color:var(--text-2);margin:0 0 10px">Anthropic allows a page to call the API directly, as long as it says it means to. That is what this does — so there is no proxy, no Python and no window to leave open. The cost is that your key lives in this browser's storage for this file.</p>
-    <p style="color:var(--text-2);margin:0">That is fine here because this page is a file on your own computer that only you open. It would <b>not</b> be fine in a page you put on the internet — anyone visiting could read the key. So do not host this file publicly with a key saved in it, and press <b>Forget it</b> on a shared machine.</p>
-  </div></div>`;
+  ${
+    viaStudio
+      ? ""
+      : `<div class="card">
+    <h3 class="eyebrow">Why the key sits in the browser</h3>
+    <p class="lede">Anthropic allows a page to call the API directly, as long as it says it means to. That is what this does — so there is no proxy, no Python and no window to leave open. The cost is that your key lives in this browser's storage for this file.</p>
+    <p class="lede">That is fine here because this page is a file on your own computer that only you open. It would <b>not</b> be fine in a page you put on the internet — anyone visiting could read the key. So do not host this file publicly with a key saved in it, and press <b>Forget it</b> on a shared machine.</p>
+  </div>`
+  }</div>`;
   $("#view").innerHTML = h;
 }
 
@@ -181,8 +205,8 @@ async function connectClaude() {
     }
     show(
       ok
-        ? `<div class="hint" style="background:var(--ok-soft);color:var(--ok)"><span class="i">✓</span>Connected through the local bridge.</div>`
-        : `<div class="hint" style="background:var(--warm-soft);color:var(--warm)"><span class="i">!</span>Paste an API key above, or start the bridge if you would rather use Claude Code.</div>`
+        ? `<div class="hint good"><span class="i">✓</span>Connected through the local bridge.</div>`
+        : `<div class="hint warn"><span class="i">!</span>Paste an API key above, or start the bridge if you would rather use Claude Code.</div>`
     );
     return;
   }
@@ -203,15 +227,15 @@ async function connectClaude() {
     bridgeOk = true;
     renderSidebar();
     viewSettings();
-    show(`<div class="hint" style="background:var(--ok-soft);color:var(--ok)"><span class="i">✓</span>
+    show(`<div class="hint good"><span class="i">✓</span>
       <div><b>Connected.</b> The key is saved in this browser — you will not be asked again. Go and read; select any sentence to ask about it.</div></div>`);
-    toast("Connected to Claude");
+    toast("The tutor is connected");
   } else {
     if (btn) {
       btn.disabled = false;
       btn.textContent = "Connect";
     }
-    show(`<div class="hint" style="background:var(--bad-soft);color:var(--bad)"><span class="i">✕</span>
+    show(`<div class="hint bad"><span class="i">✕</span>
       <div><b>Did not work.</b> ${esc(res.why || "")}</div></div>`);
   }
 }
@@ -221,8 +245,26 @@ async function testDirect() {
   const res = await verifyKey(conn().key);
   if (box)
     box.innerHTML = res.ok
-      ? `<div class="hint" style="background:var(--ok-soft);color:var(--ok)"><span class="i">✓</span>The key works.</div>`
-      : `<div class="hint" style="background:var(--bad-soft);color:var(--bad)"><span class="i">✕</span>${esc(res.why || "")}</div>`;
+      ? `<div class="hint good"><span class="i">✓</span>The key works.</div>`
+      : `<div class="hint bad"><span class="i">✕</span>${esc(res.why || "")}</div>`;
+}
+/* Forgetting the key means pasting it again from the console. It asks. */
+function askDisconnect() {
+  confirmModal(
+    "Disconnect the tutor?",
+    "The API key stored in this browser is erased. Reading, quizzes and flashcards keep working; nothing else is touched.",
+    "Disconnect",
+    disconnect,
+    true
+  );
+}
+function resetRailSize() {
+  if (!STATE.ui) STATE.ui = {};
+  STATE.ui.railW = LAYOUT.railDefault;
+  STATE.ui.railH = LAYOUT.railHeightDefault;
+  save();
+  applyRail();
+  viewSettings();
 }
 function disconnect() {
   conn().key = "";
@@ -255,7 +297,7 @@ async function useBridge() {
     viewSettings();
     const l = log();
     if (l)
-      l.innerHTML = `<div class="hint" style="background:var(--bad-soft);color:var(--bad)"><span class="i">✕</span>
+      l.innerHTML = `<div class="hint bad"><span class="i">✕</span>
       <div>The bridge is not running. Double-click <b>start-bridge.bat</b> in <b>tools\\bridge</b>, leave that window open, then press this again.</div></div>`;
     return;
   }
@@ -265,9 +307,9 @@ async function useBridge() {
     const l = log();
     if (l)
       l.innerHTML = j.ok
-        ? `<div class="hint" style="background:var(--ok-soft);color:var(--ok)"><span class="i">✓</span>
+        ? `<div class="hint good"><span class="i">✓</span>
          <div><b>Connected — ${esc(j.source || "")}.</b> ${esc(j.note || "")}</div></div>`
-        : `<div class="hint" style="background:var(--warm-soft);color:var(--warm)"><span class="i">!</span>
+        : `<div class="hint warn"><span class="i">!</span>
          <div><b>The bridge is running, but Claude Code did not answer.</b> ${
            j.cli
              ? "It is installed — run <code>claude</code> once in a terminal to sign in, then press this again."
@@ -277,7 +319,7 @@ async function useBridge() {
   } catch (e) {
     const l = log();
     if (l)
-      l.innerHTML = `<div class="hint" style="background:var(--bad-soft);color:var(--bad)"><span class="i">✕</span>${esc(e.message || "Could not reach the bridge")}</div>`;
+      l.innerHTML = `<div class="hint bad"><span class="i">✕</span>${esc(e.message || "Could not reach the bridge")}</div>`;
   }
   renderSidebar();
 }

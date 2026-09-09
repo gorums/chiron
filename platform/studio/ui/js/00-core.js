@@ -14,12 +14,8 @@
    mid-generation reattaches instead of losing the run — the stream replays from the last
    event index the client saw. */
 
-const $ = s => document.querySelector(s);
-const esc = s =>
-  String(s == null ? "" : s).replace(
-    /[&<>"]/g,
-    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]
-  );
+/* $, $$, esc, toast, ico, clock, ago, fmtH, fmtDur and help() come from the shared
+   /ui/shared/00-dom.js, the same file the course page inlines. */
 
 let STATE = { courses: [], claude: { available: false }, jobs: [] };
 let route = { name: "library", id: null, query: {} };
@@ -46,63 +42,25 @@ async function api(path, body, method) {
   return data;
 }
 
-function toast(message) {
-  const el = $("#toast");
-  el.textContent = message;
-  el.classList.add("show");
-  clearTimeout(toast.t);
-  toast.t = setTimeout(() => el.classList.remove("show"), 2600);
-}
-
-function clock(ts) {
-  const d = new Date((ts || 0) * 1000);
-  return (
-    String(d.getHours()).padStart(2, "0") +
-    ":" +
-    String(d.getMinutes()).padStart(2, "0") +
-    ":" +
-    String(d.getSeconds()).padStart(2, "0")
-  );
-}
-
-function ago(ts) {
-  const mins = Math.round((Date.now() / 1000 - (ts || 0)) / 60);
-  if (mins < 1) return "just now";
-  if (mins < 60) return mins + " min ago";
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return hours + "h ago";
-  return Math.round(hours / 24) + "d ago";
-}
-
-function fmtH(mins) {
-  const h = mins / 60;
-  return (h % 1 === 0 ? h : h.toFixed(1)) + "h";
-}
-
-/* "42s", "1m 05s", "1h 12m" — for how long something has been running. */
-function fmtDur(seconds) {
-  const s = Math.max(0, Math.round(seconds || 0));
-  if (s < 60) return s + "s";
-  const m = Math.floor(s / 60);
-  if (m < 60) return m + "m " + String(s % 60).padStart(2, "0") + "s";
-  return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
-}
-
 /* A spinner with a ticking clock, for the synchronous operations (Check, Build, an
    import) that used to show a static "Building…". Returns a stop() that also reports how
-   long it took; `lock` names a container whose buttons are disabled meanwhile. */
+   long it took; `lock` names a container whose buttons are disabled meanwhile — or a
+   single element, so one button can lock itself. */
 function busy(out, label, lock) {
   const start = Date.now();
-  const buttons = lock
-    ? Array.from(document.querySelectorAll(lock + " button, " + lock + " .btn"))
-    : [];
+  const buttons = !lock
+    ? []
+    : typeof lock === "string"
+      ? Array.from(document.querySelectorAll(lock + " button, " + lock + " .btn"))
+      : [lock];
   buttons.forEach(b => {
     b.disabled = true;
     b.classList.add("disabled");
+    b.setAttribute("aria-disabled", "true");
   });
   const paint = () => {
     if (out)
-      out.innerHTML = `<p class="sub busy" style="margin:12px 0 0"><span class="spin"></span><span>${esc(label)}</span><span class="mono">${fmtDur((Date.now() - start) / 1000)}</span></p>`;
+      out.innerHTML = `<p class="sub busy result"><span class="spin"></span><span>${esc(label)}</span><span class="mono">${fmtDur((Date.now() - start) / 1000)}</span></p>`;
   };
   paint();
   const timer = setInterval(paint, 1000);
@@ -111,6 +69,7 @@ function busy(out, label, lock) {
     buttons.forEach(b => {
       b.disabled = false;
       b.classList.remove("disabled");
+      b.removeAttribute("aria-disabled");
     });
   };
   stop.took = () => {
@@ -120,13 +79,56 @@ function busy(out, label, lock) {
   return stop;
 }
 
+/* What a job of each kind is called, so no screen ever prints a raw kind. */
+const KIND_LABELS = {
+  generate: "writing the course",
+  extend: "adding a module",
+  rewrite: "rewriting a module",
+  review: "reviewing a module",
+  figures: "drawing figures",
+  notebooks: "writing notebooks",
+  resume: "finishing an unfinished run",
+};
+function kindLabel(kind) {
+  return KIND_LABELS[kind] || kind || "working";
+}
 /* One line for a job in the listing: what it is doing right now, not just its kind. */
 function jobLabel(j) {
   if (!j) return "";
   const p = j.progress || {};
   const where = p.total ? ` ${p.done}/${p.total}` : "";
   if (j.status === "waiting") return "waiting for your approval";
-  return (p.label || (j.kind === "generate" ? "designing the curriculum" : j.kind)) + where;
+  const base = p.label || (j.kind === "generate" ? "designing the curriculum" : kindLabel(j.kind));
+  return base + where;
+}
+/* The most recent finished run, for the "Last run" line on the library hero. */
+function lastFinishedJob() {
+  const done = (STATE.jobs || []).filter(j => FINISHED.includes(j.status));
+  done.sort((a, b) => (b.finished || b.started || 0) - (a.finished || a.started || 0));
+  return done[0] || null;
+}
+function liveJobs() {
+  return (STATE.jobs || []).filter(j => !FINISHED.includes(j.status));
+}
+/* A run is going somewhere else: say so and offer the way there, rather than hijacking
+   the screen the person asked for. */
+function liveJobBanner() {
+  const live = liveJobs();
+  if (!live.length) return "";
+  const j = live[0];
+  const who = (j.meta || {}).course || (j.meta || {}).theme || "";
+  const more = live.length > 1 ? ` (+${live.length - 1} more)` : "";
+  return `<div class="banner"><span class="pulse"></span><span class="grow">${esc(who ? who + " · " : "")}${esc(jobLabel(j))}${more}</span>
+    <a class="btn sm" href="#/job/${esc(j.id)}">Watch it</a></div>`;
+}
+/* Every screen that needs Claude says once, in words, why its buttons are off. */
+function claudeReady() {
+  return !!(STATE.claude && STATE.claude.available);
+}
+function claudeGate() {
+  if (claudeReady()) return "";
+  return `<div class="note gap-top">Claude Code is not answering, so everything that writes or reviews is off.
+    Install it and run <span class="mono">claude login</span>, then <a href="#/settings">check the status</a>.</div>`;
 }
 
 function courseUrl(c, hash) {
@@ -139,6 +141,9 @@ async function refresh() {
   const pill = $("#claudestate");
   pill.textContent = STATE.claude.available ? "Claude Code connected" : "Claude Code not found";
   pill.className = "pill " + (STATE.claude.available ? "on" : "off");
+  pill.title = STATE.claude.available
+    ? "The installed Claude Code CLI is answering. Open Settings & logs."
+    : "Studio cannot reach the Claude Code CLI. Open Settings & logs to see what to do.";
   paintLiveJobs();
   return STATE;
 }
@@ -158,6 +163,7 @@ function paintLiveJobs() {
       pill.textContent = jobLabel(j) + (live.length > 1 ? ` (+${live.length - 1} more)` : "");
       pill.title = (who ? who + " · " : "") + jobLabel(j) + " — click to watch";
       pill.href = "#/job/" + j.id;
+      pill.classList.toggle("waiting", j.status === "waiting");
       pill.classList.remove("hidden");
     } else {
       pill.classList.add("hidden");
@@ -194,18 +200,12 @@ function paintProfilePicker() {
   if (!sel) return;
   const names = STATE.profiles || ["default"],
     active = STATE.profile || "default";
-  sel.innerHTML =
-    names
-      .map(n => `<option value="${esc(n)}" ${n === active ? "selected" : ""}>${esc(n)}</option>`)
-      .join("") + `<option value="__manage">Manage profiles…</option>`;
-  sel.onchange = async () => {
-    if (sel.value === "__manage") {
-      sel.value = active;
-      location.hash = "#/settings";
-      return;
-    }
-    await switchProfile(sel.value);
-  };
+  // The picker only picks. Adding and removing readers lives on the settings page, behind
+  // the link beside it — a <select> option that navigates is a trap.
+  sel.innerHTML = names
+    .map(n => `<option value="${esc(n)}" ${n === active ? "selected" : ""}>${esc(n)}</option>`)
+    .join("");
+  sel.onchange = () => switchProfile(sel.value);
 }
 
 async function switchProfile(name) {
@@ -239,6 +239,17 @@ async function addProfile() {
   }
 }
 
+/* Removing a profile trashes a reader's progress, so it asks first — inline, on the row,
+   the way removing a module does. */
+function askRemoveProfile(name) {
+  const slot = document.getElementById("prm-" + name);
+  if (!slot) return removeProfile(name);
+  slot.innerHTML =
+    `<span class="sub">Move this reader's progress to the trash?</span>` +
+    `<button class="btn sm danger" onclick="removeProfile('${esc(name)}')">Remove ${esc(name)}</button>` +
+    `<button class="btn sm" onclick="viewSettingsPage()">Keep it</button>`;
+}
+
 async function removeProfile(name) {
   try {
     await api("/api/profiles", { action: "remove", name });
@@ -251,22 +262,70 @@ async function removeProfile(name) {
   }
 }
 
-/* ---------- theme ---------- */
-
+/* ---------- theme ----------
+   One key for the whole platform: a course page served by Studio reads the same value, so
+   a dark Studio never opens a light course page. */
+const THEME_KEY = "platform_theme";
+const THEME_NAMES = { dark: "dark", light: "light", "": "your system's setting" };
 function cycleTheme() {
   const now = document.documentElement.getAttribute("data-theme");
   const next = now === "dark" ? "light" : now === "light" ? "" : "dark";
   if (next) document.documentElement.setAttribute("data-theme", next);
   else document.documentElement.removeAttribute("data-theme");
   try {
-    localStorage.setItem("studio_theme", next);
+    localStorage.setItem(THEME_KEY, next);
   } catch (e) {
     /* private mode */
   }
+  paintThemeButton();
+}
+function paintThemeButton() {
+  const b = $("#themebtn");
+  if (!b) return;
+  const now = document.documentElement.getAttribute("data-theme") || "";
+  b.innerHTML = ico("theme", 17);
+  b.title = "Theme: " + THEME_NAMES[now] + ". Click for the next one.";
+  b.setAttribute("aria-label", b.title);
 }
 try {
-  const saved = localStorage.getItem("studio_theme");
+  const saved = localStorage.getItem(THEME_KEY) || localStorage.getItem("studio_theme");
   if (saved) document.documentElement.setAttribute("data-theme", saved);
 } catch (e) {
   /* private mode */
 }
+
+/* ---------- the narrow-screen menu ----------
+   Under 720px the nav row does not fit, so it collapses into this. Without it, New course
+   and Settings were simply unreachable on a phone. */
+function toggleNavMenu() {
+  const menu = $("#navmenu"),
+    btn = $("#navmenubtn");
+  const opening = menu.classList.contains("hidden");
+  menu.classList.toggle("hidden", !opening);
+  btn.setAttribute("aria-expanded", String(opening));
+  if (opening) menu.querySelector("[role=menuitem]").focus();
+}
+function closeNavMenu() {
+  const menu = $("#navmenu");
+  if (!menu || menu.classList.contains("hidden")) return;
+  menu.classList.add("hidden");
+  $("#navmenubtn").setAttribute("aria-expanded", "false");
+}
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeNavMenu();
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest("#navmenu") && !e.target.closest("#navmenubtn")) closeNavMenu();
+});
+
+/* The header's icons come from the shared set, drawn once the scripts are up. */
+function paintChrome() {
+  const menu = $("#navmenubtn");
+  if (menu) menu.innerHTML = ico("menu", 18);
+  const jump = document.querySelector(".searchjump");
+  if (jump) jump.innerHTML = ico("search", 17);
+  const profiles = $("#profilelink");
+  if (profiles) profiles.innerHTML = ico("learner", 17);
+  paintThemeButton();
+}
+paintChrome();

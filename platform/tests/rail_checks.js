@@ -157,4 +157,29 @@ assert(PLATFORM.models.length === 1, "an empty report changes nothing");
 PLATFORM.models.splice(0, 1, ...builtIn);
 PLATFORM.defaultModel = builtInDefault;
 
+/* ---- a section ticks itself once the reader has scrolled past it ----
+   The stub DOM reports every rect as zero, so the rects are supplied here: a section whose
+   bottom edge is above the reading line has been read, one still below it has not, and a
+   tick the reader took back by hand is not put straight back. */
+const readMod = MODS[0];
+route = { view: "m", id: readMod.id, step: 1 };
+progressOf(readMod.id).secs = {};
+untickedByHand.clear();
+const line = window.innerHeight * LAYOUT.readLine;
+const fakeSection = bottom => ({
+  getBoundingClientRect: () => ({ bottom }),
+  querySelector: () => null,
+  classList: { add() {}, remove() {}, toggle() {} },
+});
+const scrolled = [fakeSection(line - 400), fakeSection(line - 10), fakeSection(line + 600)];
+tickScrolledPast(scrolled);
+assert(progressOf(readMod.id).secs[0] === true, "a section fully above the line is read");
+assert(progressOf(readMod.id).secs[1] === true, "so is one that has just left it");
+assert(!progressOf(readMod.id).secs[2], "one still in view is not");
+
+tickSec(readMod.id, 0);
+assert(!progressOf(readMod.id).secs[0], "unticking by hand takes it back");
+tickScrolledPast(scrolled);
+assert(!progressOf(readMod.id).secs[0], "and scrolling does not put it straight back");
+
 console.log("rail checks passed");

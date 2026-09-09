@@ -49,6 +49,18 @@ def module_ids(cfg) -> List[str]:
 # --------------------------------------------------------------------------- one course
 
 
+def newest_source(root: str) -> float:
+    """When the course was last touched. A file newer than the build is what makes a course
+    *dirty*, which is the only honest way to tell someone the page they are reading is old."""
+    newest = 0.0
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        for name in names:
+            if name.endswith(EDITABLE):
+                newest = max(newest, os.path.getmtime(os.path.join(folder, name)))
+    return newest
+
+
 def course_summary(course_id: str) -> Dict[str, Any]:
     """The library card: title, counts, progress, whether it is built, the job on it."""
     root = course_root(course_id)
@@ -64,7 +76,8 @@ def course_summary(course_id: str) -> Dict[str, Any]:
                     progress=store().summary(course_id, ids))
         built = os.path.join(DIST_DIR, cfg.id, cfg.local_file)
         if os.path.isfile(built):
-            info.update(built=True, builtAt=os.path.getmtime(built))
+            stamp = os.path.getmtime(built)
+            info.update(built=True, builtAt=stamp, dirty=newest_source(root) > stamp + 1)
         info["resumable"] = can_resume(course_id)
     except Exception as exc:  # noqa: BLE001 - a broken course is listed with its error
         info["error"] = str(exc)

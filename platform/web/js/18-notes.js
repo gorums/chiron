@@ -4,16 +4,16 @@ function openNote(mid, id) {
   if (!m) return;
   const mod = byId(mid),
     sec = mod.sections[m.sec];
-  showModal(`<h3 style="font-family:var(--serif);font-size:20px;margin:0 0 4px;font-weight:600">Note</h3>
-    <p class="eyebrow" style="margin-bottom:10px">${mod.id} · ${esc(sec ? sec.h : "")}</p>
-    <div class="quote" style="margin-bottom:14px">${esc(m.text)}</div>
+  showModal(`<h3 class="h-serif">Note</h3>
+    <p class="eyebrow gap-bottom-sm">${mod.id} · ${esc(sec ? sec.h : "")}</p>
+    <div class="quote gap-bottom">${esc(m.text)}</div>
     <textarea id="notein" rows="4" placeholder="What do you want to remember about this — or what do you still not get?">${esc(m.note || "")}</textarea>
-    <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13.5px;cursor:pointer"><input type="checkbox" id="noteopen" ${m.status === "open" ? "checked" : ""}> This is a question I still need answered</label>
-    ${m.status === "answered" ? `<p class="sub" style="margin-top:6px;font-size:12.5px">Answered — tick the box to reopen it.</p>` : ""}
-    <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
+    <label class="radio gap-top"><input type="checkbox" id="noteopen" ${m.status === "open" ? "checked" : ""}> This is a question I still need answered</label>
+    ${m.status === "answered" ? `<p class="sub gap-top-sm tiny">Answered — tick the box to reopen it.</p>` : ""}
+    <div class="rowline wrapped gap-top">
       <button class="btn primary" onclick="saveNote2('${mid}','${id}')">Save</button>
-      <button class="btn" onclick="saveNote2('${mid}','${id}',true)">Ask Claude about it</button>
-      <button class="btn ghost" style="margin-left:auto;color:var(--bad)" onclick="delMark('${mid}','${id}')">Delete</button>
+      <button class="btn" onclick="saveNote2('${mid}','${id}',true)">Ask the tutor about it</button>
+      <button class="btn ghost pushright" style="color:var(--bad)" onclick="delMark('${mid}','${id}')">Delete</button>
     </div>`);
   setTimeout(() => {
     const t = document.getElementById("notein");
@@ -48,10 +48,10 @@ function viewMarks() {
     .filter(b => byId(b.mid))
     .sort((a, b) => b.ts - a.ts);
   const f = markFilter;
-  let h = `<div class="wrap-wide"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1"><h2 class="big">Marks &amp; questions</h2>
-  <p class="sub" style="margin-bottom:18px">Everything you highlighted, noted, bookmarked, or asked about — in one place.</p></div>
+  let h = `<div class="wrap-wide"><div class="rowline wrapped markshead"><div class="grow"><h2 class="big">Marks &amp; questions</h2>
+  <p class="lede">Everything you highlighted, noted, bookmarked, or asked about — in one place.</p></div>
   <button class="btn sm" onclick="exportNotes()">Export notes as markdown</button></div>
-  <div class="chips" style="margin-bottom:18px">
+  <div class="chips gap-bottom-lg">
     ${[
       ["all", "All"],
       ["open", "Open questions " + all.filter(m => m.status === "open").length],
@@ -62,15 +62,15 @@ function viewMarks() {
     ]
       .map(
         ([k, l]) =>
-          `<button class="chip ${f === k ? "on" : ""}" onclick="markFilter='${k}';viewMarks()">${l}</button>`
+          `<button class="chip ${f === k ? "on" : ""}" aria-pressed="${f === k}" onclick="markFilter='${k}';viewMarks()">${l}</button>`
       )
       .join("")}
   </div>`;
 
   if (!all.length && !chats.length && !books.length) {
-    h += `<div class="empty"><div class="big">Nothing marked yet</div>
-      <p style="max-width:540px;margin:0 auto">Open any module. The chat sits on the right and follows you down the page, suggesting questions for whatever section you are reading. Select a sentence to ask about that exact passage, highlight it to keep, or flag it as a question you still need answered.</p>
-      <button class="btn primary" style="margin-top:14px" onclick="go('#/m/${MODS[0].id}/1')">Open Module 01</button></div></div>`;
+    h += `<div class="empty"><h2 class="big">Nothing marked yet</h2>
+      <p class="narrow">Open any module. The tutor sits on the right and follows you down the page, suggesting questions for whatever section you are reading. Select a sentence to ask about that exact passage, highlight it to keep, or flag it as a question you still need answered.</p>
+      <a class="btn primary gap-top" href="${stepHash(MODS[0].id, 1)}">Open ${MODS[0].id}</a></div></div>`;
     return void ($("#view").innerHTML = h);
   }
 
@@ -81,9 +81,9 @@ function viewMarks() {
     books.forEach(b => {
       const mod = byId(b.mid),
         sec = mod.sections[b.sec];
-      h += `<div class="markrow book"><div class="meta"><span class="tag acc">${mod.id}</span><span>${esc(mod.short)}</span><span class="tag">bookmark</span><span style="margin-left:auto">${new Date(b.ts).toLocaleDateString()}</span></div>
-        <div style="font-size:15px;font-weight:600;margin-bottom:8px">⚑ ${esc(sec ? sec.h : "")}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm primary" onclick="jumpToPassage('${mod.id}',${b.sec},null)">Go to section</button><button class="btn sm ghost" onclick="toggleBookmark('${mod.id}',${b.sec});viewMarks()">Remove</button></div></div>`;
+      h += `<div class="markrow book"><div class="meta"><span class="tag acc">${mod.id}</span><span>${esc(mod.short)}</span><span class="tag">bookmark</span><span class="pushright">${new Date(b.ts).toLocaleDateString()}</span></div>
+        <div class="markttl">${ico("flag", 14)} ${esc(sec ? sec.h : "")}</div>
+        <div class="rowline wrapped"><button class="btn sm primary" onclick="jumpToPassage('${mod.id}',${b.sec},null)">Go to section</button><button class="btn sm" onclick="toggleBookmark('${mod.id}',${b.sec});viewMarks()">Remove</button></div></div>`;
     });
   }
   if (f === "all" || f === "chats") {
@@ -94,22 +94,22 @@ function viewMarks() {
         <div class="meta"><span class="tag acc">${mod.id}</span><span>${esc(mod.short)}</span>
           <span class="tag">${c.kind === "rp" ? "role-play · " : ""}${asked} turn${asked === 1 ? "" : "s"}</span>
           ${c.parent ? `<span class="tag warn">carried over</span>` : ""}
-          <span style="margin-left:auto">${new Date(c.updated).toLocaleDateString()}</span></div>
-        <div style="font-size:15px;font-weight:600;margin-bottom:8px">${esc(convoTitle(c))}</div>
+          <span class="pushright">${new Date(c.updated).toLocaleDateString()}</span></div>
+        <div class="markttl">${esc(convoTitle(c))}</div>
         ${c.summary ? `<div class="qbox"><b>Carried over</b>${esc(c.summary.slice(0, 320))}${c.summary.length > 320 ? "…" : ""}</div>` : ""}
         ${c.msgs
           .slice(-2)
           .map(
             x =>
-              `<div class="qbox"><b>${x.r === "u" ? (c.kind === "rp" ? "I said" : "I asked") : x.r === "e" ? "Error" : c.kind === "rp" ? "Other side" : "Claude"}</b>${esc(x.t.length > 360 ? x.t.slice(0, 360) + "…" : x.t)}</div>`
+              `<div class="qbox"><b>${x.r === "u" ? (c.kind === "rp" ? "I said" : "I asked") : x.r === "e" ? "Error" : c.kind === "rp" ? "Other side" : "The tutor"}</b>${esc(x.t.length > 360 ? x.t.slice(0, 360) + "…" : x.t)}</div>`
           )
           .join("")}
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+        <div class="rowline wrapped markacts">
           <button class="btn sm primary" onclick="continueConvo('${c.id}')">Continue this chat</button>
-          ${c.msgs.length && c.kind !== "rp" ? `<button class="btn sm" onclick="compactFromList('${c.id}')">⤳ Compact into a new chat</button>` : ""}
-          <button class="btn sm ghost" onclick="exportChat('${c.id}')">Copy transcript</button>
-          <button class="btn sm ghost" onclick="renameConvo('${c.id}')">Rename</button>
-          <button class="btn sm ghost" style="color:var(--bad)" onclick="deleteConvo('${c.id}')">Delete</button>
+          ${c.msgs.length && c.kind !== "rp" ? `<button class="btn sm" title="${esc(help("compact"))}" onclick="compactFromList('${c.id}')">Compact into a new chat</button>` : ""}
+          <button class="btn sm" onclick="exportChat('${c.id}')">Copy transcript</button>
+          <button class="btn sm" onclick="renameConvo('${c.id}')">Rename</button>
+          <button class="btn sm danger" onclick="deleteConvo('${c.id}')">Delete</button>
         </div></div>`;
     });
   }
@@ -136,14 +136,14 @@ function markRow(m) {
   return `<div class="markrow ${m.status === "open" ? "qq" : m.note || m.status === "answered" ? "done" : ""}">
     <div class="meta"><span class="tag acc">${mod.id}</span><span>${esc(sec ? sec.h : "")}</span>
       <span class="tag ${m.status === "open" ? "warn" : m.status === "answered" || m.note ? "ok" : ""}">${kind}</span>
-      <span style="margin-left:auto">${new Date(m.ts).toLocaleDateString()}</span></div>
+      <span class="pushright">${new Date(m.ts).toLocaleDateString()}</span></div>
     <div class="txt">${esc(m.text.length > 400 ? m.text.slice(0, 400) + "…" : m.text)}</div>
     ${m.note ? `<div class="qbox"><b>${m.status === "open" ? "My question" : "My note"}</b>${esc(m.note)}</div>` : ""}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+    <div class="rowline wrapped markacts">
       <button class="btn sm" onclick="openNote('${m.mid}','${m.id}')">${m.note ? "Edit note" : "Add a note"}</button>
       <button class="btn sm primary" onclick="openPanel('${m.mid}','${m.id}')">Ask about it</button>
-      ${m.status === "open" ? `<button class="btn sm" onclick="setMarkStatus('${m.mid}','${m.id}','answered');viewMarks()">✓ Answered</button>` : ""}
-      <button class="btn sm ghost" onclick="go('#/m/${m.mid}/1')">Go to passage</button>
+      ${m.status === "open" ? `<button class="btn sm" onclick="setMarkStatus('${m.mid}','${m.id}','answered');viewMarks()">Mark answered</button>` : ""}
+      <button class="btn sm" onclick="jumpToPassage('${m.mid}',${m.sec},'${m.id}')">Go to passage</button>
     </div></div>`;
 }
 function continueConvo(id) {
@@ -163,7 +163,7 @@ function exportChat(id) {
   const head = CFG.title + " — " + mod.id + " " + mod.title + "\n" + convoTitle(c) + "\n";
   const carried = c.summary ? "\nCARRIED OVER FROM AN EARLIER CHAT:\n" + c.summary + "\n" : "";
   const txt = c.msgs
-    .map(x => (x.r === "u" ? "ME: " : x.r === "e" ? "ERROR: " : "CLAUDE: ") + x.t)
+    .map(x => (x.r === "u" ? "ME: " : x.r === "e" ? "ERROR: " : "TUTOR: ") + x.t)
     .join("\n\n");
   toast(clip(head + carried + "\n" + txt) ? "Transcript copied" : "Could not copy");
 }

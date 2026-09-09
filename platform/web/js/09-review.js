@@ -4,9 +4,9 @@ function viewReview() {
   const v = $("#view");
   const mode = route.id === "mistakes" ? "mistakes" : "due";
   if (!cardCount()) {
-    v.innerHTML = `<div class="wrap"><div class="empty"><div class="big">Your review deck is empty</div>
+    v.innerHTML = `<div class="wrap"><div class="empty"><h2 class="big">Your practice deck is empty</h2>
       <p>Complete a module and its flashcards drop into this deck automatically. They then come back on a schedule tuned to the moment just before you would forget them. Questions you miss in a quiz join the deck too.</p>
-      <button class="btn primary" style="margin-top:12px" onclick="go('#/home')">Back to dashboard</button></div></div>`;
+      <button class="btn primary gap-top" onclick="go('#/home')">Back to dashboard</button></div></div>`;
     return;
   }
   if (session && session.mode !== mode) session = null;
@@ -14,9 +14,9 @@ function viewReview() {
     if (mode === "mistakes") {
       const all = allCards().filter(c => c.mistake);
       if (!all.length) {
-        v.innerHTML = `<div class="wrap"><div class="empty"><div class="big">No mistakes waiting</div>
+        v.innerHTML = `<div class="wrap"><div class="empty"><h2 class="big">No mistakes waiting</h2>
           <p>Every question you get wrong, or only get with a hint, becomes a card here. Four clean recalls and it retires.</p>
-          <button class="btn primary" style="margin-top:12px" onclick="go('#/review')">Regular review</button></div></div>`;
+          <button class="btn primary gap-top" onclick="go('#/review')">Practice the deck</button></div></div>`;
         return;
       }
       startSession(all, "mistakes");
@@ -24,12 +24,12 @@ function viewReview() {
       const due = dueCards();
       if (!due.length) {
         const upcoming = forecast();
-        v.innerHTML = `<div class="wrap"><div class="empty"><div class="big">Nothing due today</div>
+        v.innerHTML = `<div class="wrap"><div class="empty"><h2 class="big">Nothing due today</h2>
           <p>${cardCount()} cards in the deck. Next batch: ${upcoming.next ? upcoming.next + " card(s) in " + upcoming.days + " day(s)" : "none scheduled"}.</p>
-          <p style="max-width:460px;margin:12px auto">Reviewing early feels productive and is mostly wasted effort — the schedule is doing the work. Spend the time on a new module instead.</p>
-          <button class="btn primary" style="margin-top:6px" onclick="go('#/home')">Dashboard</button>
-          ${mistakeCount() ? `<button class="btn" style="margin-top:6px" onclick="go('#/review/mistakes')">Fix mistakes (${mistakeCount()})</button>` : ""}
-          <button class="btn" style="margin-top:6px" onclick="cramAll()">Review everything anyway</button></div></div>`;
+          <p class="narrow gap-top">Practising early feels productive and is mostly wasted effort — the schedule is doing the work. Spend the time on a new module instead.</p>
+          <button class="btn primary gap-top-sm" onclick="go('#/home')">Dashboard</button>
+          ${mistakeCount() ? `<button class="btn gap-top-sm" onclick="go('#/review/mistakes')">Fix mistakes (${mistakeCount()})</button>` : ""}
+          <button class="btn gap-top-sm" onclick="cramAll()">Practise everything anyway</button></div></div>`;
         return;
       }
       startSession(due, "due");
@@ -57,9 +57,15 @@ function drawCard() {
     const n = session ? session.done : 0,
       r = session ? session.retired : 0;
     session = null;
-    v.innerHTML = `<div class="wrap"><div class="empty"><div class="big">Session complete</div>
-      <p>${n} card${n === 1 ? "" : "s"} reviewed. Each one is now scheduled further out.${r ? ` ${r} mistake${r === 1 ? "" : "s"} retired for good.` : ""}</p>
-      <button class="btn primary" style="margin-top:12px" onclick="go('#/home')">Dashboard</button></div></div>`;
+    const nextMod = nextUnfinished();
+    const mDue = mistakesDue();
+    v.innerHTML = `<div class="wrap"><div class="empty"><h2 class="big">Session complete</h2>
+      <p>${n} card${n === 1 ? "" : "s"} practised. Each one is now scheduled further out.${r ? ` ${r} mistake${r === 1 ? "" : "s"} retired for good.` : ""}</p>
+      <div class="rowline center gap-top wrapped">
+        ${nextMod ? `<button class="btn primary" onclick="go('#/m/${nextMod.id}')">Next module · ${nextMod.id} ${esc(nextMod.short)}</button>` : ""}
+        ${mDue ? `<button class="btn" onclick="go('#/review/mistakes')">Fix mistakes (${mDue})</button>` : ""}
+        <button class="btn${nextMod ? "" : " primary"}" onclick="go('#/home')">Dashboard</button>
+      </div></div></div>`;
     renderSidebar();
     return;
   }
@@ -68,13 +74,13 @@ function drawCard() {
   const pct = Math.round((session.done / session.total) * 100);
   const wins = cur.st.wins || 0;
   v.innerHTML = `<div class="wrap">
-    <div class="qmeta" style="margin-bottom:18px"><span>${session.mode === "mistakes" ? "Fixing mistakes" : "Review · interleaved"}</span><span class="bar"><i style="width:${pct}%"></i></span>
-      <span style="margin-left:auto">${session.queue.length} left</span></div>
-    <div class="flash ${cur.mistake ? "mistake" : ""}" onclick="flip()">
-      <span class="tag ${cur.mistake ? "warn" : "acc"}" style="margin-bottom:16px">${cur.mistake ? "mistake · " + wins + "/4 clean · " : ""}${cur.mid} · ${esc(cur.mtitle)}</span>
+    <div class="qmeta gap-bottom-lg"><span>${session.mode === "mistakes" ? "Fixing mistakes" : "Practice · interleaved"}</span><span class="bar"><i style="width:${pct}%"></i></span>
+      <span class="pushright">${session.queue.length} left</span></div>
+    <button class="flash ${cur.mistake ? "mistake" : ""}" onclick="flip()" aria-label="${session.flipped ? "Card answer shown" : "Show the answer"}">
+      <span class="tag ${cur.mistake ? "warn" : "acc"}" style="margin-bottom:16px" title="${cur.mistake ? help("mistake card") : ""}">${cur.mistake ? "mistake · " + wins + "/4 clean · " : ""}${cur.mid} · ${esc(cur.mtitle)}</span>
       <div class="front">${esc(cur.c.front)}</div>
-      ${session.flipped ? `<div class="back">${esc(cur.c.back)}</div>` : `<div class="back" style="border:0;color:var(--muted);font-size:13.5px">Answer out loud, then click or press <kbd>space</kbd></div>`}
-    </div>
+      ${session.flipped ? `<div class="back">${esc(cur.c.back)}</div>` : `<div class="back empty-back">Answer out loud, then click or press <kbd>space</kbd></div>`}
+    </button>
     ${
       session.flipped
         ? `<div class="gradebar">
@@ -89,8 +95,8 @@ function drawCard() {
             `<button onclick="rate(${g})">${l}<small>${predictIvl(cur.k, g)}</small></button>`
         )
         .join("")}
-    </div><p class="sub" style="text-align:center;margin-top:12px;font-size:12px">Be honest. Marking "Good" on a card you fumbled is how a review deck becomes decoration. Keys <kbd>1</kbd>–<kbd>4</kbd>.</p>`
-        : `<div style="text-align:center;margin-top:16px"><button class="btn primary" onclick="flip()">Show answer <kbd>space</kbd></button></div>`
+    </div><p class="sub centered gap-top tiny">Be honest. Marking "Good" on a card you fumbled is how a review deck becomes decoration. Keys <kbd>1</kbd>–<kbd>4</kbd>.</p>`
+        : `<div class="centered gap-top"><button class="btn primary" onclick="flip()">Show answer <kbd>space</kbd></button></div>`
     }
   </div>`;
 }

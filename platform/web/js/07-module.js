@@ -9,7 +9,8 @@ const STEPS = [
 ];
 let timer = null,
   tickCount = 0,
-  lastActive = Date.now();
+  lastActive = Date.now(),
+  lastModuleSeen = ""; // which module the "unticked by hand" set belongs to
 /* The clock only runs while the tab is visible and the reader has done something lately.
    A page left open over lunch should not log lunch. */
 ["pointerdown", "pointermove", "keydown", "scroll", "touchstart"].forEach(ev =>
@@ -45,11 +46,18 @@ function stopTimer() {
 
 function viewModule() {
   const m = byId(route.id);
-  if (!m) return go("#/home");
+  if (!m) {
+    toast("There is no module " + route.id + " in this course", { kind: "bad" });
+    return go("#/home");
+  }
   const p = progressOf(m.id),
     step = Math.max(0, Math.min(STEPS.length - 1, route.step || 0));
   markDay();
   startTimer(m.id);
+  if (lastModuleSeen !== m.id) {
+    untickedByHand.clear();
+    lastModuleSeen = m.id;
+  }
   const idx = moduleIndex(m.id);
   const prev = MODS[idx - 1],
     next = MODS[idx + 1];
@@ -59,26 +67,28 @@ function viewModule() {
     pre = prereqs(m);
 
   let h = `<div class="wrap"><div class="readhead">
-    <div class="crumb">${esc(partName(m.part))} · Module ${m.num} of ${MODS.length} · <span id="clock">${fmtClock(p.time || 0)}</span> spent of ${m.minutes}m planned · <span class="mlvl l${ms.lvl}" title="Mastery">${ms.name}${ms.dropped ? " (slipped)" : ""}</span></div>
+    <div class="crumb">${esc(partName(m.part))} · Module ${m.num} of ${MODS.length} · <span id="clock">${fmtClock(p.time || 0)}</span> spent of ${m.minutes}m planned · <span class="mlvl l${ms.lvl}" title="${esc(help(ms.name))}">${ms.name}${ms.dropped ? " (slipped)" : ""}</span></div>
     <h2>${esc(m.title)}</h2>
     <p class="sub">${esc(m.meta)}</p>
-    ${pre.length ? `<div class="prereqs">Builds on ${pre.map(x => `<button class="chip ${x.ms.lvl < 2 ? "weak" : ""}" onclick="go('#/m/${x.m.id}')" title="${x.ms.name}">${x.m.id} · ${esc(x.m.short)}${x.ms.lvl < 2 ? " · " + x.ms.name.toLowerCase() : ""}</button>`).join("")}${weakPrereqs(m).length ? `<span class="sub" style="font-size:12px;color:var(--warm)">— a weak prerequisite is the usual reason a module feels harder than it is.</span>` : ""}</div>` : ""}
+    ${pre.length ? `<div class="prereqs">Builds on ${pre.map(x => `<button class="chip ${x.ms.lvl < 2 ? "weak" : ""}" onclick="go('#/m/${x.m.id}')" title="${x.ms.name} — ${esc(help(x.ms.name))}">${x.m.id} · ${esc(x.m.short)}${x.ms.lvl < 2 ? " · " + x.ms.name.toLowerCase() : ""}</button>`).join("")}${weakPrereqs(m).length ? `<span class="sub warnnote">— a weak prerequisite is the usual reason a module feels harder than it is.</span>` : ""}</div>` : ""}
     <div class="steps">`;
   STEPS.forEach((s, i) => {
     const did = stepDone(m, i);
-    h += `<button class="step ${i === step ? "on" : ""} ${did ? "did" : ""}" onclick="go('#/m/${m.id}/${i}')"><span class="num">${did && i !== step ? "✓" : i + 1}</span>${s.n}</button>`;
+    h += `<a class="step ${i === step ? "on" : ""} ${did ? "did" : ""}" href="${stepHash(m.id, i)}" ${i === step ? 'aria-current="step"' : ""} title="${esc(s.d)}${did ? " — done" : ""}"><span class="num">${did && i !== step ? "✓" : i + 1}</span>${s.n}</a>`;
   });
   h += `</div></div><div id="stepbody"></div>`;
 
+  // One primary per region: "Mark module complete" only lights up once every step is done.
+  const allSteps = STEPS.every((_, i) => stepDone(m, i));
   h += `<div class="footnav">
-    ${prev ? `<button class="btn" onclick="go('#/m/${prev.id}')">← ${prev.id}</button>` : `<button class="btn" onclick="go('#/home')">← Dashboard</button>`}
-    <button class="btn ${isDone(m) ? "" : "primary"}" onclick="toggleDone('${m.id}')">${isDone(m) ? "✓ Completed — undo" : "Mark module complete"}</button>
-    ${next ? `<button class="btn" onclick="go('#/m/${next.id}')">${next.id} →</button>` : `<button class="btn" onclick="go('#/record')">Course record</button>`}
+    ${prev ? `<a class="btn" href="#/m/${prev.id}" title="${esc(prev.title)}">← ${prev.id} · ${esc(prev.short)}</a>` : `<a class="btn" href="#/home">← Dashboard</a>`}
+    <button class="btn ${isDone(m) || !allSteps ? "" : "primary"}" onclick="toggleDone('${m.id}')">${isDone(m) ? "Completed — undo" : "Mark module complete"}</button>
+    ${next ? `<a class="btn" href="#/m/${next.id}" title="${esc(next.title)}">${next.id} · ${esc(next.short)} →</a>` : `<a class="btn" href="#/record">Course record</a>`}
   </div>`;
   // Served by Studio: the course can grow from right here. A missing topic becomes a new
   // module; a section that stops short becomes a rewrite with direction.
   if (STUDIO)
-    h += `<p class="sub" style="text-align:center;margin-top:16px;font-size:13px">Something missing here?
+    h += `<p class="sub centered gap-top">Something missing here?
     <a href="#" onclick="return studioGo('add','${m.id}')">Ask Studio to add a module</a> ·
     <a href="#" onclick="return studioGo('rewrite','${m.id}')">have this one rewritten</a></p>`;
   h += `</div>`;
@@ -130,44 +140,47 @@ function renderStep(m, step) {
   if (step === 5) return renderGapStep(m);
   if (step === 0) {
     b.innerHTML = `<div class="card">
-      <p class="eyebrow">Step 1 · Predict</p>
-      <p class="hint" style="margin-bottom:16px"><span class="i">Why</span> Guessing before you read makes the reading stick harder — even when the guess is wrong. This costs 60 seconds and measurably improves retention. Do not look ahead.</p>
-      <h3 style="font-family:var(--serif);font-size:21px;font-weight:600;margin:0 0 12px">${esc(m.assess.predict)}</h3>
+      <h3 class="eyebrow">Step 1 · Predict</h3>
+      <p class="hint gap-bottom"><span class="i">Why</span> Guessing before you read makes the reading stick harder — even when the guess is wrong. This costs 60 seconds and measurably improves retention. Do not look ahead.</p>
+      <label class="h-serif" for="predin">${esc(m.assess.predict)}</label>
       <textarea id="predin" rows="3" placeholder="One sentence. A guess is fine — that is the point.">${esc(p.predict)}</textarea>
-      <div style="display:flex;gap:9px;margin-top:12px">
+      <div class="rowline gap-top">
         <button class="btn primary" onclick="savePredict('${m.id}')">Save and read</button>
       </div>
     </div>`;
   } else if (step === 1) {
+    const allRead = secDone(m) === secTotal(m);
     let s = `<div class="readgrid"><div>`;
-    s += `<div class="card tight" style="margin-bottom:18px;display:flex;align-items:center;gap:14px">
-      <div style="flex:1"><div style="font-size:12.5px;color:var(--muted);margin-bottom:5px" id="readcount">${readCountText(m)}</div>
-      <div class="bar"><i id="readbar" style="width:${readPercent(m)}%"></i></div></div>
-      <button class="btn sm" onclick="allSecs('${m.id}',${secDone(m) === secTotal(m) ? "false" : "true"})">${secDone(m) === secTotal(m) ? "Uncheck all" : "Check all"}</button></div>
+    s += `<div class="card tight readtop">
+      <div class="grow"><div class="sub" id="readcount">${readCountText(m)}</div>
+      <div class="bar"><i id="readpct" style="width:${readPercent(m)}%"></i></div></div>
+      <button class="btn sm" onclick="allSecs('${m.id}',${allRead ? "false" : "true"})">${allRead ? "Uncheck all" : "Check all"}</button></div>
     <div class="audiobar" id="audiobar">${audioBarHtml(m)}</div>
-    <div class="hint" style="margin-bottom:18px"><span class="i">Tip</span><span><b>Select any sentence</b> to highlight it, attach a note, or ask Claude about that exact passage. Everything you mark collects under <em>Marks &amp; questions</em>.</span></div>`;
+    <div class="hint gap-bottom"><span class="i">Tip</span><span>A section ticks itself once you have scrolled past it. <b>Select any sentence</b> to highlight it, attach a note, or ask the tutor about that exact passage. Everything you mark collects under <em>Marks &amp; questions</em>.</span></div>`;
     m.sections.forEach((sec, i) => {
       const on = !!p.secs[i],
         bk = !!STATE.bookmarks[m.id + ":" + i];
+      const asked = marksOf(m.id).some(k => k.sec === i);
       s += `<div class="sec ${on ? "done" : ""}" id="sec${i}">
         <div class="sechead">
-          <button class="check ${on ? "on" : ""}" onclick="tickSec('${m.id}',${i})" title="Mark section read">
-            <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 6.2 4.4 9 10.5 2.8"/></svg></button>
+          <button class="check ${on ? "on" : ""}" aria-pressed="${on}" onclick="tickSec('${m.id}',${i})" title="${on ? "Read — click to untick" : "Mark this section read"}" aria-label="${on ? "Mark this section unread" : "Mark this section read"}">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 6.2 4.4 9 10.5 2.8"/></svg></button>
           <h3>${esc(sec.h)}</h3>
-          <button class="askbtn ${bk ? "has on" : ""}" title="${bk ? "Remove bookmark" : "Bookmark this section"}" aria-label="Bookmark this section" onclick="toggleBookmark('${m.id}',${i})">${ico("flag", 13)}</button>
-          <button class="askbtn ${marksOf(m.id).some(k => k.sec === i) ? "has" : ""}" title="Ask Claude about this section" aria-label="Ask Claude about this section" onclick="askSection('${m.id}',${i})">${ico("ask", 14)}</button>
+          <button class="askbtn ${bk ? "has on" : ""}" aria-pressed="${bk}" title="${bk ? "Remove the bookmark" : "Bookmark this section"}" aria-label="${bk ? "Remove the bookmark on this section" : "Bookmark this section"}" onclick="toggleBookmark('${m.id}',${i})">${ico("flag", 13)}</button>
+          <button class="askbtn ${asked ? "has" : ""}" title="Ask the tutor about this section" aria-label="Ask the tutor about this section" onclick="askSection('${m.id}',${i})">${ico("ask", 14)}</button>
           ${sectionSpeakButton(m.id, i)}
         </div>
         <div class="prose">${sec.html}</div>
       </div>`;
     });
-    s += `<div class="card" style="margin-top:22px;border-color:var(--accent)">
-      <p class="eyebrow">Before you move on</p>
-      <p style="margin:0 0 12px;color:var(--text-2)">Close this and write, from memory, the three things you want to keep from this module. Retrieval beats re-reading by roughly two to one per minute spent.</p>
+    s += `<div class="card accented gap-top-lg">
+      <h3 class="eyebrow">Before you move on</h3>
+      <p class="lede">Close this and write, from memory, the three things you want to keep from this module. Retrieval beats re-reading by roughly two to one per minute spent.</p>
+      <label class="visually-hidden" for="noteIn">Three things to keep from this module</label>
       <textarea id="noteIn" rows="4" placeholder="From memory…">${esc(STATE.notes[m.id] || "")}</textarea>
-      <div style="display:flex;gap:9px;margin-top:12px"><button class="btn primary" onclick="saveNote('${m.id}')">Save notes and test yourself</button></div>
+      <div class="rowline gap-top"><button class="btn primary" onclick="saveNote('${m.id}')">Save notes and test yourself</button></div>
     </div>`;
-    s += `</div><div><div class="toc" id="toc">${m.sections.map((sec, i) => `<a href="#sec${i}" onclick="jump(event,${i})">${esc(sec.h)}</a>`).join("")}</div></div></div>`;
+    s += `</div><div><nav class="toc" id="toc" aria-label="Sections">${m.sections.map((sec, i) => `<a href="#sec${i}" onclick="jump(event,${i})">${esc(sec.h)}</a>`).join("")}</nav></div></div>`;
     b.innerHTML = s;
     setupToc();
     setupFigures();
@@ -178,39 +191,40 @@ function renderStep(m, step) {
   } else if (step === 2) {
     renderQuiz(m);
   } else if (step === 3) {
-    let s = `<div class="card"><p class="eyebrow">Step 4 · Elaborate</p>
-      <p class="hint" style="margin-bottom:18px"><span class="i">Why</span> Explaining an idea in your own words, connected to something you already know, is what converts a fact you recognise into a tool you can use. Write badly and quickly — then let Claude tell you what you left out.</p>`;
+    let s = `<div class="card"><h3 class="eyebrow">Step 4 · Elaborate</h3>
+      <p class="hint gap-bottom-lg"><span class="i">Why</span> Explaining an idea in your own words, connected to something you already know, is what converts a fact you recognise into a tool you can use. Write badly and quickly — then let the tutor tell you what you left out.</p>`;
     m.assess.elaborate.forEach((q, i) => {
       const fb = p.elabFb[i];
-      s += `<div style="margin-bottom:22px"><h3 style="font-size:16px;font-weight:650;margin:0 0 9px">${esc(q)}</h3>
-      <textarea data-el="${i}" rows="3" placeholder="${esc(STATE.biz || (CFG.anchor || {}).label || "")}…">${esc(p.elab[i] || "")}</textarea>
-      <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
-        ${connMode() !== "none" ? `<button class="btn sm" id="elabck${i}" onclick="checkElab('${m.id}',${i})">Check my answer</button>` : `<span class="sub" style="font-size:12px">Connect Claude in Settings to have this checked.</span>`}
-        ${fb ? `<span class="sub" style="font-size:12px">Checked ${new Date(fb.at).toLocaleDateString()}</span>` : ""}
+      s += `<div class="elabq"><label class="qlabel" for="elabin${i}">${esc(q)}</label>
+      <textarea id="elabin${i}" data-el="${i}" rows="3" placeholder="${esc(STATE.biz || (CFG.anchor || {}).label || "")}…">${esc(p.elab[i] || "")}</textarea>
+      <div class="rowline wrapped gap-top">
+        ${connMode() !== "none" ? `<button class="btn sm" id="elabck${i}" onclick="checkElab('${m.id}',${i})">Check my answer</button>` : `<span class="sub">Connect the tutor in Settings to have this checked.</span>`}
+        ${fb ? `<span class="sub">Checked ${new Date(fb.at).toLocaleDateString()}</span>` : ""}
       </div>
-      <div id="elabfb${i}">${fb ? `<div class="fb ${fb.verdict || ""}"><b>What Claude saw</b>${mdLite(fb.text)}</div>` : ""}</div></div>`;
+      <div id="elabfb${i}">${fb ? `<div class="fb ${fb.verdict || ""}"><b>What the tutor saw</b>${mdLite(fb.text)}</div>` : ""}</div></div>`;
     });
-    s += `<div style="display:flex;gap:9px"><button class="btn primary" onclick="saveElab('${m.id}')">Save and continue</button></div></div>`;
+    s += `<div class="rowline"><button class="btn primary" onclick="saveElab('${m.id}')">Save and continue</button></div></div>`;
     b.innerHTML = s;
   } else {
     const t = m.assess.transfer,
       st = p.transfer || {},
       rp = m.assess.roleplay;
     const sheets = DATA.library.templates.filter(x => (x.uses || []).includes(m.id));
-    let s = `<div class="card"><p class="eyebrow">Step 5 · Apply</p>
-      <p class="hint" style="margin-bottom:16px"><span class="i">Why</span> The gap between knowing and doing closes only under transfer: a new situation you have not seen, with the framework not named for you. Write your answer before you open the model answer, or the exercise is worthless.</p>
-      <div style="background:var(--surface-2);border-radius:11px;padding:16px;margin-bottom:16px;font-size:15.5px;line-height:1.65">${esc(t.scenario)}</div>
-      <h3 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:0 0 12px">${esc(t.prompt)}</h3>
+    const drafted = !!(st.answer || "").trim();
+    let s = `<div class="card"><h3 class="eyebrow">Step 5 · Apply</h3>
+      <p class="hint gap-bottom"><span class="i">Why</span> The gap between knowing and doing closes only under transfer: a new situation you have not seen, with the framework not named for you. Write your answer before you open the model answer, or the exercise is worthless.</p>
+      <div class="scenario">${esc(t.scenario)}</div>
+      <label class="h-serif" for="trin">${esc(t.prompt)}</label>
       <textarea id="trin" rows="6" placeholder="Your answer. Reason it through — the reasoning is what is being trained.">${esc(st.answer || "")}</textarea>
-      <div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
-        <button class="btn" onclick="saveTransfer('${m.id}',null)">Save draft</button>
-        ${connMode() !== "none" ? `<button class="btn" id="trck" onclick="checkTransfer('${m.id}')">Have Claude grade it</button>` : ""}
-        <button class="btn primary" onclick="revealModel('${m.id}')">Compare with model answer</button>
+      <div class="rowline wrapped gap-top">
+        <button class="btn ${drafted ? "" : "primary"}" onclick="saveTransfer('${m.id}',null)">Save draft</button>
+        ${connMode() !== "none" ? `<button class="btn" id="trck" onclick="checkTransfer('${m.id}')">Have the tutor grade it</button>` : ""}
+        <button class="btn ${drafted ? "primary" : ""}" onclick="revealModel('${m.id}')">Compare with model answer</button>
       </div>
-      <div id="trfb">${st.fb ? `<div class="fb ${st.fb.verdict || ""}"><b>Claude's read${st.fb.verdict ? " · " + st.fb.verdict : ""}</b>${mdLite(st.fb.text)}</div>` : ""}</div>
+      <div id="trfb">${st.fb ? `<div class="fb ${st.fb.verdict || ""}"><b>The tutor's read${st.fb.verdict ? " · " + st.fb.verdict : ""}</b>${mdLite(st.fb.text)}</div>` : ""}</div>
       <div id="modelbox" class="${st.revealed ? "" : "hidden"}">
-        <div class="why" style="margin-top:18px"><b style="color:var(--text);display:block;margin-bottom:6px">Model answer</b>${esc(t.model)}</div>
-        <div class="conf"><span style="font-size:13px;color:var(--muted)">How did yours compare?</span>
+        <div class="why gap-top-lg"><b class="whyttl">Model answer</b>${esc(t.model)}</div>
+        <div class="conf"><span class="sub">How did yours compare?</span>
           ${[
             ["Missed it", 1],
             ["Partly there", 2],
@@ -222,29 +236,29 @@ function renderStep(m, step) {
             )
             .join("")}
         </div>
-        ${st.score ? `<p class="sub" style="margin-top:14px">Scored. ${st.score === 3 ? `Now try to explain it to someone who is not a ${esc(CFG.practitioner)} — that is the real test.` : "Re-read the sections this draws on, then come back in a few days and retry from memory."}</p>` : ""}
+        ${st.score ? `<p class="sub gap-top">Scored. ${st.score === 3 ? `Now try to explain it to someone who is not a ${esc(CFG.practitioner)} — that is the real test.` : "Re-read the sections this draws on, then come back in a few days and retry from memory."}</p>` : ""}
       </div></div>`;
     if (rp) {
       const done = st.rp;
-      s += `<div class="card" style="margin-top:16px;border-color:var(--accent)"><p class="eyebrow" style="color:var(--accent-ink)">Practise it live</p>
-        <p style="margin:0 0 10px;color:var(--text-2);font-size:15px">${esc(rp.situation)}</p>
-        <p style="margin:0 0 12px"><b>Your goal:</b> ${esc(rp.goal)}</p>
-        <p class="sub" style="margin-bottom:12px">Claude plays the other side and stays in character. When you are done, ask for feedback: you are judged on ${rp.rubric.map(r => "<i>" + esc(r) + "</i>").join(", ")}.</p>
-        <div style="display:flex;gap:9px;flex-wrap:wrap">
-          ${connMode() !== "none" ? `<button class="btn primary" onclick="startRoleplay('${m.id}')">${done ? "Play it again" : "Start the conversation"}</button>` : `<button class="btn" onclick="go('#/settings')">Connect Claude to practise live</button>`}
+      s += `<div class="card accented gap-top"><h3 class="eyebrow accent-ink">Practise it live</h3>
+        <p class="lede">${esc(rp.situation)}</p>
+        <p><b>Your goal:</b> ${esc(rp.goal)}</p>
+        <p class="sub gap-bottom">The tutor plays the other side and stays in character. When you are done, ask for feedback: you are judged on ${rp.rubric.map(r => "<i>" + esc(r) + "</i>").join(", ")}.</p>
+        <div class="rowline wrapped">
+          ${connMode() !== "none" ? `<button class="btn" onclick="startRoleplay('${m.id}')">${done ? "Play it again" : "Start the conversation"}</button>` : `<button class="btn" onclick="go('#/settings')">Connect the tutor to practise live</button>`}
         </div>
-        ${done ? `<div class="fb ${done.verdict || ""}" style="margin-top:14px"><b>Feedback from your last run · ${new Date(done.at).toLocaleDateString()}</b>${mdLite(done.text)}</div>` : ""}</div>`;
+        ${done ? `<div class="fb ${done.verdict || ""} gap-top"><b>Feedback from your last run · ${new Date(done.at).toLocaleDateString()}</b>${mdLite(done.text)}</div>` : ""}</div>`;
     }
     if (sheets.length) {
-      s += `<div class="card" style="margin-top:16px"><p class="eyebrow">Worksheets for this module</p>
-        <p class="sub" style="margin-bottom:10px">The exercise produces something. Fill it in here; it stays with your progress.</p>
-        ${sheets.map(x => `<button class="btn sm" style="margin:0 8px 8px 0" onclick="go('#/library/t-${x.slug}')">${esc(x.title)}${sheetFilled(x.slug) ? ` · ${sheetFilled(x.slug)}/${x.fields}` : ""}</button>`).join("")}</div>`;
+      s += `<div class="card gap-top"><h3 class="eyebrow">Worksheets for this module</h3>
+        <p class="sub gap-bottom">The exercise produces something. Fill it in here; it stays with your progress.</p>
+        <div class="rowline wrapped">${sheets.map(x => `<button class="btn sm" onclick="go('#/library/t-${x.slug}')">${esc(x.title)}${sheetFilled(x.slug) ? ` · ${sheetFilled(x.slug)}/${x.fields}` : ""}</button>`).join("")}</div></div>`;
     }
     const openGaps = openGapItems(m.id).length;
     const gapLine = openGaps
       ? `One step left: ${openGaps} gap${openGaps > 1 ? "s" : ""} from this module's quiz, exercises and questions to close.`
       : "One step left: check whether anything in this module is still a gap.";
-    s += `<div class="card" style="margin-top:16px;text-align:center"><p class="sub" style="margin-bottom:12px">${gapLine}</p><button class="btn primary" onclick="go('#/m/${m.id}/5')">Close the gaps →</button></div>`;
+    s += `<div class="card gap-top centered"><p class="sub gap-bottom">${gapLine}</p><button class="btn primary" onclick="go(stepHash('${m.id}',5))">Close the gaps</button></div>`;
     b.innerHTML = s;
   }
 }
@@ -264,7 +278,7 @@ function jumpToPassage(mid, sec, markId) {
     return;
   }
   jumpTarget = { sec, markId };
-  go(`#/m/${mid}/1`);
+  go(stepHash(mid, 1));
 }
 function jump(e, i) {
   e.preventDefault();
@@ -324,6 +338,7 @@ function setupToc() {
       if (route.view !== "m" || (route.step || 0) !== 1) return;
       const i = sectionInView(secs, rail.section);
       highlight(i);
+      tickScrolledPast(secs);
       if (i === rail.section) return;
       rail.section = i;
       STATE.pos[route.id] = i; // picked up on the next save
@@ -333,6 +348,36 @@ function setupToc() {
   window.addEventListener("scroll", sectionScrollHandler, { passive: true });
   highlight(rail.section);
 }
+/* A section the reader has scrolled all the way past is read, and ticks itself. The test
+   is the whole section being above the reading line, so a glance at the first paragraph
+   never counts; the tick is drawn in place, because redrawing the step mid-scroll would
+   throw the reader back to the top. A section unticked by hand stays unticked until the
+   reader leaves the module, so the tick can be argued with. */
+function tickScrolledPast(secs) {
+  const mid = route.id,
+    p = progressOf(mid);
+  const line = window.innerHeight * LAYOUT.readLine;
+  let changed = false;
+  secs.forEach((el, i) => {
+    if (p.secs[i] || untickedByHand.has(mid + ":" + i)) return;
+    if (el.getBoundingClientRect().bottom > line) return;
+    p.secs[i] = true;
+    changed = true;
+    const btn = el.querySelector(".check");
+    if (btn) {
+      btn.classList.add("on");
+      btn.setAttribute("aria-pressed", "true");
+    }
+    el.classList.add("done");
+  });
+  if (!changed) return;
+  save();
+  markDay();
+  refreshReadProgress(byId(mid));
+  renderSidebar();
+}
+const untickedByHand = new Set(); // "M03:2" — a tick the reader took back on this visit
+
 function sectionInView(secs, current) {
   const bar = document.querySelector(".topbar");
   const bandTop = bar ? bar.getBoundingClientRect().bottom : 0;
@@ -361,20 +406,20 @@ function toggleBookmark(mid, i) {
 function savePredict(id) {
   progressOf(id).predict = $("#predin").value;
   save();
-  go("#/m/" + id + "/1");
+  go(stepHash(id, 1));
 }
 function saveNote(id) {
   STATE.notes[id] = $("#noteIn").value;
   save();
   toast("Notes saved");
-  go("#/m/" + id + "/2");
+  go(stepHash(id, 2));
 }
 function saveElab(id) {
   const p = progressOf(id);
   document.querySelectorAll("[data-el]").forEach(t => (p.elab[t.dataset.el] = t.value));
   save();
   toast("Saved");
-  go("#/m/" + id + "/4");
+  go(stepHash(id, 4));
 }
 function saveTransfer(id, score) {
   const p = progressOf(id);
@@ -398,7 +443,7 @@ function revealModel(id) {
   p.transfer = Object.assign({}, p.transfer, { answer: ta.value, revealed: true });
   save();
   $("#modelbox").classList.remove("hidden");
-  $("#modelbox").scrollIntoView({ behavior: "smooth", block: "center" });
+  $("#modelbox").scrollIntoView({ behavior: scrollBehavior(), block: "center" });
 }
 /* The reading-progress line at the top of the Read step, redrawn without the step when a
    section is ticked by the audio reader. */
@@ -411,21 +456,40 @@ function readPercent(m) {
 function refreshReadProgress(m) {
   const count = document.getElementById("readcount");
   if (count) count.textContent = readCountText(m);
-  const bar = document.getElementById("readbar");
+  const bar = document.getElementById("readpct");
   if (bar) bar.style.width = readPercent(m) + "%";
 }
 function tickSec(id, i) {
   const p = progressOf(id);
   p.secs[i] = !p.secs[i];
+  if (p.secs[i]) untickedByHand.delete(id + ":" + i);
+  else untickedByHand.add(id + ":" + i);
   save();
   markDay();
   renderStep(byId(id), 1);
   renderSidebar();
 }
 function allSecs(id, on) {
+  if (!on) {
+    confirmModal(
+      "Untick every section?",
+      "This module goes back to Not started, and the reading progress for it is lost. Nothing else you have written is touched.",
+      "Untick them all",
+      () => setAllSecs(id, false),
+      true
+    );
+    return;
+  }
+  setAllSecs(id, true);
+}
+function setAllSecs(id, on) {
   const m = byId(id),
     p = progressOf(id);
-  m.sections.forEach((_, i) => (p.secs[i] = on));
+  m.sections.forEach((_, i) => {
+    p.secs[i] = on;
+    if (on) untickedByHand.delete(id + ":" + i);
+    else untickedByHand.add(id + ":" + i);
+  });
   save();
   renderStep(m, 1);
   renderSidebar();

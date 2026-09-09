@@ -19,6 +19,7 @@ function viewJob() {
     stepAt: 0,
     stepTimes: [],
     call: null,
+    told: false, // has the browser been notified that this run wants approval?
   };
   const known = (STATE.jobs || []).find(j => j.id === jobId);
   if (known) {
@@ -32,6 +33,32 @@ function viewJob() {
 }
 
 let jobTimer = null;
+
+/* ---------- every recent run ----------
+   Without this a finished run is reachable only through the back button, and a failed one
+   is invisible the moment the header pill clears. */
+function viewJobs() {
+  const jobs = (STATE.jobs || []).slice(0, 12);
+  const rows = jobs
+    .map(j => {
+      const m = j.meta || {};
+      const who = m.course || m.theme || "";
+      const cls = j.status === "done" ? "ok" : FINISHED.includes(j.status) ? "bad" : "acc";
+      const took = j.finished && j.started ? fmtDur(j.finished - j.started) : "";
+      return `<div class="jobrow">
+        <span class="tag ${cls}">${esc(j.status)}</span>
+        <span class="what"><a href="#/job/${esc(j.id)}">${esc(kindLabel(j.kind))}${who ? " · " + esc(who) : ""}</a></span>
+        <span class="sub">${esc(took)}</span>
+        <span class="sub">${esc(ago(j.finished || j.started))}</span>
+      </div>`;
+    })
+    .join("");
+  $("#view").innerHTML = `<p class="crumb"><a href="#/">Courses</a> › Recent runs</p>
+    <h2 class="big">Recent runs</h2>
+    <p class="lede">Every job Studio has run in this session and the ones it kept from before. Open one to read its activity log.</p>
+    ${liveJobBanner()}
+    <div class="card">${rows || `<p class="sub">Nothing has run yet.</p>`}</div>`;
+}
 
 function connect(jobId, from) {
   if (stream) stream.close();
@@ -76,6 +103,8 @@ function absorb(event) {
   if (event.kind === "await") {
     job.awaiting = event;
     job.status = "waiting";
+    announceWaiting();
+    refresh(); // the header pill has to say "waiting", not "designing the curriculum"
   }
   if (event.kind === "resumed") {
     job.awaiting = null;
@@ -89,6 +118,20 @@ function absorb(event) {
       if (known) job.meta = known.meta || {};
       if (route.name === "job") paintJob();
     });
+  }
+}
+
+/* A run that stops for approval can sit unnoticed for an hour in a background tab. Say so
+   in the tab title, and — only if the browser has already been given permission — outside it. */
+function announceWaiting() {
+  if (job.told) return;
+  job.told = true;
+  document.title = "Waiting for your approval — Course Studio";
+  try {
+    if (window.Notification && Notification.permission === "granted")
+      new Notification("Course Studio", { body: "The curriculum is ready for your approval." });
+  } catch (e) {
+    /* notifications unavailable */
   }
 }
 
@@ -171,19 +214,26 @@ function jobTitle() {
   return m.theme ? `Writing ${m.theme}` : "Working";
 }
 
+function jobCrumb() {
+  const id = (job.meta || {}).course || (job.result || {}).course || "";
+  const middle = id
+    ? `<a href="#/course/${encodeURIComponent(id)}">${esc(id)}</a> › `
+    : `<a href="#/jobs">Recent runs</a> › `;
+  return `<p class="crumb"><a href="#/">Courses</a> › ${middle}${esc(jobTitle())}</p>`;
+}
+
 function paintJob(full) {
   if (route.name !== "job" || !job) return;
   if (full || !$("#jobwrap")) {
-    $("#view").innerHTML =
-      `<p class="crumb"><a href="#/">Courses</a> › ${esc(jobTitle())}</p><div id="jobwrap"></div>`;
+    $("#view").innerHTML = jobCrumb() + `<div id="jobwrap"></div>`;
   }
   const p = job.progress;
   const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
   const finished = FINISHED.includes(job.status);
   const courseId = (job.meta || {}).course || (job.result || {}).course || "";
   const back = courseId
-    ? `<a class="btn ghost" href="#/course/${encodeURIComponent(courseId)}">Back to the course</a>`
-    : `<a class="btn ghost" href="#/">Back to courses</a>`;
+    ? `<a class="btn" href="#/course/${encodeURIComponent(courseId)}">Back to the course</a>`
+    : `<a class="btn" href="#/">Back to courses</a>`;
 
   // Keep each line paired with its own event: stepLine() drops some events, so the
   // filtered index no longer lines up with job.events.
@@ -204,42 +254,52 @@ function paintJob(full) {
   let head;
   if (job.status === "waiting" && job.awaiting) head = reviewPlanHTML();
   else if (job.status === "done") head = doneHTML(back);
-  else if (finished)
-    head = `<div class="card"><h3>${job.status === "cancelled" ? "Stopped" : "It did not finish"}</h3>
-      <p class="sub" style="margin:6px 0 0">${esc(
-        lines
-          .filter(l => l.cls === "bad")
-          .map(l => l.text)
-          .join(" ") || ""
-      )}</p>
-      <p class="sub" style="margin:10px 0 0">Anything written before this point is still on disk under <span class="mono">courses/</span>.${job.kind === "generate" && courseId ? " The curriculum is saved, so the run can be resumed: it keeps what is written and does only the rest." : ""} The <a href="#/settings">log</a> has the CLI's own error.</p>
-      ${
-        job.kind === "generate" && courseId
-          ? mediaChoices(
-              "rsj",
-              (STATE.courses || []).find(c => c.id === courseId),
-              "for modules without any"
-            ) + modelChoice("rsj", "the modules still missing")
-          : ""
-      }
-      <div class="actions">${job.kind === "generate" && courseId ? `<button class="btn" style="background:var(--warm)" onclick="resumeCourse('${esc(courseId)}','rsj')">Resume the run</button>` : ""}${back}</div></div>`;
+  else if (finished) head = failedHTML(back, courseId, lines);
   else
     head = `<div class="card">
-      <p class="eyebrow">${esc(job.status)} · ${esc(jobTitle())}</p>
+      <h3 class="eyebrow">${esc(job.status)} · ${esc(jobTitle())}</h3>
       <h3>${esc(p.label || (job.kind === "generate" ? "Designing the curriculum" : "Working…"))}</h3>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
       <div class="jobfacts" id="jobfacts"></div>
       <p class="now" id="jobnow"></p>
-      <div class="actions" style="margin-top:12px"><button class="btn danger sm" onclick="cancelJob()">Stop</button>
-        <a class="btn ghost sm" href="#/settings">Full log</a></div>
+      <div class="actions gap-top" id="stopbar">
+        <button class="btn danger sm" id="stopbtn" onclick="askStop()">Stop</button>
+        <a class="btn sm" href="#/settings">Full log</a>
+      </div>
     </div>`;
 
+  // Keep the log where the reader put it: only follow when they had not scrolled up.
+  const old = $("#steps");
+  const wasAtBottom = !old || old.scrollHeight - old.scrollTop - old.clientHeight < 40;
   $("#jobwrap").innerHTML =
     head +
-    `<div class="card"><p class="eyebrow">Activity</p><div class="steps" id="steps">${log}</div></div>`;
+    `<div class="card"><h3 class="eyebrow">Activity</h3><div class="steps" id="steps" role="log" aria-live="polite" aria-label="What this run is doing">${log}</div></div>`;
   const box = $("#steps");
-  if (box) box.scrollTop = box.scrollHeight;
+  if (box && wasAtBottom) box.scrollTop = box.scrollHeight;
   tickJob();
+}
+
+function failedHTML(back, courseId, lines) {
+  const why =
+    lines
+      .filter(l => l.cls === "bad")
+      .map(l => l.text)
+      .join(" ") || "";
+  const canResume = job.kind === "generate" && courseId;
+  return `<div class="card">
+    <h3>${job.status === "cancelled" ? "Stopped" : "It did not finish"}</h3>
+    <p class="sub">${esc(why)}</p>
+    <p class="sub result">Anything written before this point is still on disk under <span class="mono">courses/</span>.${canResume ? " The curriculum is saved, so the run can be resumed: it keeps what is written and does only the rest." : ""} The <a href="#/settings">log</a> has the CLI's own error.</p>
+    ${
+      canResume
+        ? mediaChoices(
+            "rsj",
+            (STATE.courses || []).find(c => c.id === courseId),
+            "for modules without any"
+          ) + modelChoice("rsj", "the modules still missing")
+        : ""
+    }
+    <div class="actions gap-top">${canResume ? `<button class="btn warm" onclick="resumeCourse('${esc(courseId)}','rsj')">Resume the run</button>` : ""}${back}</div></div>`;
 }
 
 /* The clocks on the job screen, once a second. Only the small elements are rewritten, so
@@ -255,7 +315,9 @@ function tickJob() {
   }
   const now = Date.now() / 1000;
   document.title =
-    (p.total ? `${p.done}/${p.total} · ` : "") + (p.label || jobTitle()) + " — Course Studio";
+    job.status === "waiting"
+      ? "Waiting for your approval — Course Studio"
+      : (p.total ? `${p.done}/${p.total} · ` : "") + (p.label || jobTitle()) + " — Course Studio";
 
   const facts = $("#jobfacts");
   if (facts) {
@@ -272,9 +334,7 @@ function tickJob() {
 
   const nowEl = $("#jobnow");
   if (nowEl) {
-    if (job.status === "waiting") {
-      nowEl.innerHTML = `<span class="pulse"></span>Waiting for you — nothing runs until the curriculum is approved.`;
-    } else if (job.call) {
+    if (job.call) {
       const secs = now - job.call.at;
       const cap = job.call.timeout ? ` · up to ${fmtDur(job.call.timeout)} allowed` : "";
       nowEl.innerHTML = `<span class="pulse"></span>Claude is writing ${esc(job.call.what || "a reply")}<span class="mono">${fmtDur(secs)}${cap}</span>`;
@@ -307,21 +367,26 @@ function doneHTML(back) {
   const c = (STATE.courses || []).find(x => x.id === id);
   if (job.kind === "review") {
     const n = (r.gaps || []).length + (r.errors || []).length + (r.quiz || []).length;
+    const cls = r.verdict === "solid" ? "ok" : r.verdict === "rewrite" ? "bad" : "warn";
+    const findings = id
+      ? `#/course/${encodeURIComponent(id)}?tab=modules&review=${encodeURIComponent(r.module || "")}`
+      : "#/";
     return `<div class="card">
-      <p class="eyebrow" style="color:${r.verdict === "solid" ? "var(--ok)" : r.verdict === "rewrite" ? "var(--bad)" : "var(--warm)"}">Verdict: ${esc(r.verdict || "")}</p>
+      <h3 class="eyebrow">Verdict <span class="tag ${cls}" title="${esc(help(r.verdict || ""))}">${esc(r.verdict || "")}</span></h3>
       <h3>${esc(r.module || "")} · ${esc(r.title || "")}</h3>
-      <p style="margin:6px 0 0;color:var(--text-2)">${esc(r.summary || "")}</p>
-      <p class="sub" style="margin:8px 0 0;font-size:13px">${n} finding${n === 1 ? "" : "s"}. The full list is on the course page, under the module.</p>
-      <div class="actions" style="margin-top:14px">
+      <p class="summary">${esc(r.summary || "")}</p>
+      <p class="sub result">${n} finding${n === 1 ? "" : "s"}.</p>
+      <div class="actions gap-top">
+        <a class="btn primary" href="${findings}">Read the findings</a>
         ${r.rewriteBrief && r.verdict !== "solid" ? `<a class="btn" href="#/course/${encodeURIComponent(id)}?tab=modules&rewrite=${encodeURIComponent(r.module || "")}&q=${encodeURIComponent(r.rewriteBrief)}">Patch with these notes</a>` : ""}
-        ${r.module ? `<button class="btn ghost" onclick="acceptModule('${esc(id)}','${esc(r.module)}',true).then(()=>{location.hash='#/course/${encodeURIComponent(id)}'})" title="Your verdict outranks the review until the module changes">This is good</button>` : ""}
+        ${r.module ? `<button class="btn" onclick="acceptModule('${esc(id)}','${esc(r.module)}',true).then(()=>{location.hash='#/course/${encodeURIComponent(id)}'})" title="Your verdict outranks the review until the module changes">Mark as good</button>` : ""}
         ${back}</div>
-      ${r.verdict !== "solid" ? `<p class="sub" style="margin:12px 0 0;font-size:13px">A patch changes only what the findings name and keeps every other sentence. If you have read the module and disagree with the findings, mark it good instead: your verdict is what the course page shows.</p>` : ""}</div>`;
+      ${r.verdict !== "solid" ? `<p class="sub result">${esc(help("patch"))} If you have read the module and disagree with the findings, mark it good instead: your verdict is what the course page shows.</p>` : ""}</div>`;
   }
   const target = r.module ? "#/m/" + r.module : "#/home";
   const open =
     c && c.built
-      ? `<a class="btn" href="${courseUrl(c, target)}">${r.module ? "Read " + esc(r.module) : "Open the course"}</a>`
+      ? `<a class="btn primary" href="${courseUrl(c, target)}">${r.module ? "Read " + esc(r.module) : "Open the course"}</a>`
       : "";
   const drawn = r.drawn || [];
   const written = r.written || [];
@@ -336,30 +401,38 @@ function doneHTML(back) {
             ? `Notebooks written for ${written.length ? esc(written.join(", ")) : "no module"}`
             : `${esc(id)} is built`;
   return `<div class="card">
-    <p class="eyebrow" style="color:var(--ok)">Finished</p>
+    <h3 class="eyebrow ok-text">Finished</h3>
     <h3>${what}</h3>
-    <p class="sub" style="margin:4px 0 0">${r.modules} modules · ${r.sections} sections${r.figures ? ` · ${r.figures} figures` : ""}${r.notebooks ? ` · ${r.notebooks} notebooks` : ""} · ${r.quiz} quiz items · ${r.cards} flashcards · ${r.glossary} glossary terms · ${r.kb} KB</p>
-    <div class="actions" style="margin-top:14px">${open}${(job.kind === "rewrite" || job.kind === "extend") && r.module && STATE.claude.available ? `<button class="btn ghost" onclick="reviewModule('${esc(id)}','${esc(r.module)}')">Review ${esc(r.module)} now</button>` : ""}${back}</div>
-    ${job.kind === "rewrite" ? `<p class="sub" style="margin:10px 0 0;font-size:13px">An earlier review of ${esc(r.module || "this module")} judged the old text, so the course page now shows it as "before edit". A new review reads what was just written.</p>` : ""}
-    <p class="sub" style="margin:14px 0 0;font-size:13px">Opened from here, the course keeps its progress on the platform and asks its questions through Studio — no key, no bridge, no disk copy needed.</p>
+    <p class="sub">${r.modules} modules · ${r.sections} sections${r.figures ? ` · ${r.figures} figures` : ""}${r.notebooks ? ` · ${r.notebooks} notebooks` : ""} · ${r.quiz} quiz items · ${r.cards} flashcards · ${r.glossary} glossary terms · ${r.kb} KB</p>
+    <div class="actions gap-top">${open}${(job.kind === "rewrite" || job.kind === "extend") && r.module && claudeReady() ? `<button class="btn" onclick="reviewModule('${esc(id)}','${esc(r.module)}')">Review ${esc(r.module)} now</button>` : ""}${back}</div>
+    ${job.kind === "rewrite" ? `<p class="sub result">An earlier review of ${esc(r.module || "this module")} judged the old text, so the course page now shows it as "before edit". A new review reads what was just written.</p>` : ""}
+    <p class="sub result">Opened from here, the course keeps its progress on the platform and asks its questions through Studio — no key, no bridge, no disk copy needed.</p>
   </div>`;
 }
 
 /* ---------- the approval gate ---------- */
 
+function planBudget(plan) {
+  const kept = (plan.modules || []).filter(m => !m.dropped);
+  const minutes = kept.reduce((n, m) => n + (Number(m.minutes) || 0), 0);
+  const asked = Number(plan.hours || (job.meta || {}).hours || 0) * 60;
+  return { kept, minutes, asked, over: asked && minutes > asked * 1.15 };
+}
+
 function reviewPlanHTML() {
   const plan = job.plan || {};
+  const budget = planBudget(plan);
   const parts = (plan.parts || [])
     .map(part => {
       const mods = (plan.modules || [])
         .filter(m => m.part === part.id)
         .map(
           m => `
-      <div class="mod" data-id="${esc(m.id)}">
+      <div class="mod ${m.dropped ? "dropped" : ""}" data-id="${esc(m.id)}">
         <span class="mid">${esc(m.id)}</span>
-        <input class="mtitle" type="text" value="${esc(m.title)}" aria-label="Module title">
-        <input class="mmin" type="number" value="${m.minutes}" min="15" step="15" aria-label="Minutes">
-        <button class="drop" title="Remove this module" onclick="dropModule('${esc(m.id)}')">×</button>
+        <input class="mtitle" type="text" value="${esc(m.title)}" aria-label="Module title" ${m.dropped ? "disabled" : ""}>
+        <input class="mmin" type="number" value="${m.minutes}" min="15" step="15" aria-label="Minutes" ${m.dropped ? "disabled" : ""}>
+        <button class="btn sm ${m.dropped ? "" : "rm"}" title="${m.dropped ? "Put it back in the course" : "Leave this module out"}" aria-label="${m.dropped ? "Restore" : "Skip"} ${esc(m.id)}" onclick="toggleModuleSkip('${esc(m.id)}')">${m.dropped ? "Put back" : ico("close", 13)}</button>
       </div>`
         )
         .join("");
@@ -368,27 +441,61 @@ function reviewPlanHTML() {
         <input class="pname" type="text" value="${esc(part.name)}" aria-label="Part name">
         <input class="phours" type="number" value="${part.hours}" min="0" step="1" aria-label="Hours">
         <span class="tag">hours</span>
-      </div>${mods}</div>`;
+      </div>${mods}
+      <div class="mod"><button class="btn sm" onclick="addPlanModule('${esc(part.id)}')">${ico("plus", 13)} Add a module here</button></div></div>`;
     })
     .join("");
 
-  const total = (plan.modules || []).length;
+  const total = budget.kept.length;
   return `<div class="card">
-    <p class="eyebrow">Review before it writes anything</p>
-    <h3 style="font-size:24px">${esc(plan.title || "")}</h3>
-    <p class="sub" style="margin:2px 0 16px">${esc(plan.tagline || "")}</p>
-    <div class="note">Edit titles, minutes and part names in place, or drop modules you do not want. Writing ${total} modules takes a while, so it is worth a minute here.</div>
-    <div style="margin-top:16px">${parts}</div>
-    <div class="actions" style="margin-top:16px">
-      <button class="btn" onclick="approvePlan()">Write all ${total} modules</button>
-      <button class="btn danger" onclick="cancelJob()">Stop</button>
+    <h3 class="eyebrow"><span class="pulse"></span>Waiting for your approval</h3>
+    <h3 class="planttl">${esc(plan.title || "")}</h3>
+    <p class="sub">${esc(plan.tagline || "")}</p>
+    <div class="note gap-top">Nothing is written until you press the button below. Edit titles, minutes and part names in place, skip modules you do not want, or add one. Writing ${total} modules takes a while, so it is worth a minute here. Reloading this page does not lose the run — it reattaches to it.</div>
+    <p class="budget ${budget.over ? "over" : ""}" id="planbudget">${budgetLine(budget)}</p>
+    <div class="gap-top">${parts}</div>
+    <div class="actions gap-top">
+      <button class="btn primary" onclick="approvePlan()">Write all ${total} modules</button>
+      <button class="btn danger" onclick="askStop()">Stop</button>
     </div>
   </div>`;
 }
 
-function dropModule(id) {
-  job.plan.modules = job.plan.modules.filter(m => m.id !== id);
+function budgetLine(b) {
+  const asked = b.asked ? ` against the ${fmtH(b.asked)} you asked for` : "";
+  return `<b>${b.kept.length} modules · ${fmtH(b.minutes)}</b> of teaching${asked}.${b.over ? " That is well over budget — skip a few, or shorten them." : ""}`;
+}
+
+function refreshBudget() {
+  const el = $("#planbudget");
+  if (!el || !job.plan) return;
+  const b = planBudget(harvestPlan());
+  el.className = "budget " + (b.over ? "over" : "");
+  el.innerHTML = budgetLine(b);
+}
+
+/* Skipping is a toggle, not a deletion: a module left out by mistake can be put back
+   without starting the whole design again. */
+function toggleModuleSkip(id) {
+  const plan = harvestPlan();
+  plan.modules.forEach(m => {
+    if (m.id === id) m.dropped = !m.dropped;
+  });
+  job.plan = plan;
   paintJob(true);
+}
+
+function addPlanModule(partId) {
+  const plan = harvestPlan();
+  const nums = plan.modules.map(m => Number(String(m.id).replace(/\D/g, "")) || 0);
+  const next = "M" + String(Math.max(0, ...nums) + 1).padStart(2, "0");
+  const after = plan.modules.map(m => m.part).lastIndexOf(partId);
+  const fresh = { id: next, part: partId, title: "", minutes: 60 };
+  plan.modules.splice(after < 0 ? plan.modules.length : after + 1, 0, fresh);
+  job.plan = plan;
+  paintJob(true);
+  const el = document.querySelector(`.mod[data-id="${next}"] .mtitle`);
+  if (el) el.focus();
 }
 
 function harvestPlan() {
@@ -399,7 +506,7 @@ function harvestPlan() {
     part.name = el.querySelector(".pname").value.trim() || part.name;
     part.hours = Number(el.querySelector(".phours").value) || part.hours;
   });
-  document.querySelectorAll(".mod").forEach(el => {
+  document.querySelectorAll(".mod[data-id]").forEach(el => {
     const mod = plan.modules.find(m => m.id === el.dataset.id);
     if (!mod) return;
     mod.title = el.querySelector(".mtitle").value.trim() || mod.title;
@@ -410,25 +517,42 @@ function harvestPlan() {
 
 async function approvePlan() {
   const plan = harvestPlan();
+  plan.modules = plan.modules.filter(m => !m.dropped && String(m.title || "").trim());
   if (!plan.modules.length) {
-    toast("There are no modules left to write");
+    toast("There are no modules left to write", { kind: "bad" });
     return;
   }
   try {
     await api(`/api/jobs/${encodeURIComponent(job.id)}/answer`, { plan });
     job.awaiting = null;
     job.status = "running";
+    job.told = false;
     paintJob(true);
   } catch (err) {
-    toast(err.message);
+    toast(err.message, { kind: "bad" });
   }
 }
 
+/* Stopping loses the calls in flight, so it asks — in place, with what happens next. */
+function askStop() {
+  const bar = $("#stopbar") || document.querySelector(".actions");
+  if (!bar) return cancelJob();
+  const hint =
+    job.kind === "generate"
+      ? " Everything already written stays on disk, and the run can be resumed from the course page."
+      : " Anything already written stays on disk.";
+  bar.innerHTML = `<span class="sub">Stop this run?${hint}</span>
+    <button class="btn sm danger" onclick="cancelJob()">Stop it</button>
+    <button class="btn sm" onclick="paintJob(true)">Keep going</button>`;
+}
+
 async function cancelJob() {
+  const btn = $("#stopbtn");
+  if (btn) btn.disabled = true;
   try {
     await api(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, {});
     toast("Stopping…");
   } catch (err) {
-    toast(err.message);
+    toast(err.message, { kind: "bad" });
   }
 }
