@@ -6,7 +6,6 @@
    the DOM — no STATE, no CFG, no api(). */
 
 const $ = s => document.querySelector(s);
-const $$ = s => Array.from(document.querySelectorAll(s));
 const esc = s =>
   String(s == null ? "" : s).replace(
     /[&<>"]/g,
@@ -143,7 +142,6 @@ const HELP = {
     "Your flashcards, scheduled so each one comes back just before you would forget it.",
   "mistake card":
     "A question you missed, or only got with a hint, turned into a card. Four clean recalls and it retires.",
-  "fix mistakes": "Only the cards made from questions you got wrong.",
   "streak freeze":
     "One earned day off. A freeze is spent automatically to keep a streak alive when you miss a day.",
   checkpoint:
@@ -171,7 +169,6 @@ const HELP = {
   profile: "Whose progress Studio is showing. Each reader has their own copy.",
   practitioner: "The noun for someone who does this subject — what a reader is training to be.",
   curriculum: "The whole outline of a course: its parts, its modules and their minutes.",
-  "module design": "One module's outline — what it teaches and how — before it is written.",
   "needs fixing": "This course fails its own validation, so it cannot be built.",
   dirty: "A file changed since the last build. Rebuild to put it in the page.",
 };

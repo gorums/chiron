@@ -15,8 +15,8 @@
 
    There is no stored "active" conversation. The rail shows the newest conversation at
    the place the reader is looking at (`convoAt`), and a conversation the reader picked
-   by hand (`rail.showing`) only until they move somewhere else. STATE.active is a key
-   older saves carry; nothing reads it any more. */
+   by hand (`rail.showing`) only until they move somewhere else. An `active` map that old
+   saves still carry is ignored and no longer maintained. */
 function convos() {
   if (!STATE.convos) STATE.convos = {};
   return STATE.convos;

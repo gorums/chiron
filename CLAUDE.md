@@ -283,7 +283,7 @@ to mean *filled* in Studio and *outlined* in the page.
 |---|---|
 | `web/css/00-tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-base` |
 | `web/css/01-base.css` | the primitives: reset, one `:focus-visible` ring, the `.btn` family, the form block, `.card`, `.tag`, `.pill`, `.badge`, `.bar`, `.chip`, `.note`, `.problems`, `.toast`, `.menu`, `.empty`, `.scrim`, `.spin`/`.pulse`, `.topbar`, and the spacing utilities (`.gap-top`, `.rowline`, `.grow`, …) that keep `style=` out of the markup |
-| `web/js/00-dom.js` | `$`, `$$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, and `HELP` / `help(term)` |
+| `web/js/00-dom.js` | `$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, and `HELP` / `help(term)` |
 
 `web/css/01b-shell.css` holds the reader's own frame (the three-column grid, the sidebar) and
 Studio's `studio.css` holds Studio's; neither surface loads the other's.
@@ -420,7 +420,7 @@ section under the reading line. It is read off the page whenever it is needed
 - **One conversation per place, found, not tracked.** A conversation carries its place
   (`step`, `sec`); `convoAt(place)` returns the newest one there, or null, and nothing is
   created until the first message is sent (`17-convos.js`). There is no stored "active"
-  conversation: `STATE.active` is a key old saves carry that nothing reads. A chat on the
+  conversation; an `active` map old saves still carry is ignored. A chat on the
   Elaborate step is about the Elaborate step; scrolling from section 2 to section 3 shows
   section 3's chat. Role-plays and chats from before places existed have no place and
   belong to the module as a whole.

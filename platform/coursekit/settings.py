@@ -33,7 +33,7 @@ import copy
 import json
 import os
 import tempfile
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 PLATFORM_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(PLATFORM_DIR)

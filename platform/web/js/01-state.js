@@ -33,7 +33,6 @@ const blank = () => ({
   notes: {},
   marks: {},
   convos: {},
-  active: {}, // no longer read: the rail finds its conversation by place (see 17-convos.js)
   biz: "",
   chk: {},
   cp: null,
@@ -63,20 +62,11 @@ function load() {
 /* Older saves predate some fields; fill them in rather than guarding every read. */
 function upgrade(s) {
   const b = blank();
-  [
-    "mcards",
-    "chk",
-    "cpHist",
-    "bookmarks",
-    "pos",
-    "sheets",
-    "gone",
-    "convos",
-    "active",
-    "marks",
-  ].forEach(k => {
-    if (!s[k] || typeof s[k] !== "object") s[k] = b[k];
-  });
+  ["mcards", "chk", "cpHist", "bookmarks", "pos", "sheets", "gone", "convos", "marks"].forEach(
+    k => {
+      if (!s[k] || typeof s[k] !== "object") s[k] = b[k];
+    }
+  );
   s.plan = Object.assign({}, b.plan, s.plan || {});
   s.learner = Object.assign(learnerBlank(), s.learner || {});
   s.streak = Object.assign({}, b.streak, s.streak || {});
@@ -108,7 +98,6 @@ const MERGED_MAPS = [
   "notes",
   "marks",
   "convos",
-  "active",
   "chk",
   "bookmarks",
   "pos",
@@ -129,10 +118,6 @@ function mergeStates(a, b) {
     if (gone[id]) delete out.convos[id];
     else if (x && y) out.convos[id] = (x.updated || 0) > (y.updated || 0) ? x : y;
   });
-  Object.keys(out.active).forEach(mid => {
-    if (!out.convos[out.active[mid]]) delete out.active[mid];
-  });
-
   out.marks = {};
   const mids = new Set([...Object.keys(older.marks || {}), ...Object.keys(newer.marks || {})]);
   mids.forEach(mid => {

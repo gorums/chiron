@@ -106,10 +106,15 @@ def _unsafe(rel: str) -> bool:
 # --------------------------------------------------------------------------- import: git
 
 
+def is_git_url(text: Optional[str]) -> bool:
+    """The one definition of a repository URL this will clone."""
+    return bool(GIT_URL.match((text or "").strip()))
+
+
 def import_git(courses_dir: str, url: str, timeout: int = 180) -> Dict[str, Any]:
     """Clone a course repository into the library."""
     url = (url or "").strip()
-    if not GIT_URL.match(url):
+    if not is_git_url(url):
         raise CourseError("Give an https:// or git@ repository URL.")
     git = shutil.which("git")
     if not git:
@@ -167,7 +172,3 @@ def _count_modules(cfg) -> int:
         if os.path.isdir(directory):
             n += sum(1 for f in os.listdir(directory) if f.endswith(".md"))
     return n
-
-
-def is_git_url(text: Optional[str]) -> bool:
-    return bool(GIT_URL.match((text or "").strip()))

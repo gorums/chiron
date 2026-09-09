@@ -41,7 +41,6 @@ trust both. The table at the bottom of the class lists every route in one place.
     POST /api/courses/<id>/build
     GET  /api/courses/<id>/settings         the editable subset of course.json
     GET  /api/courses/<id>/export           the course folder as a zip (without .git)
-    GET  /api/courses/<id>/reviews          every stored "review this module" result
     POST /api/courses/<id>/settings         change it (id is locked)
     POST /api/courses/<id>/delete           move the course and its build to state/trash/
     POST /api/courses/<id>/resume           finish a generation run that died  {figures, notebooks, model} -> {job}
@@ -498,10 +497,6 @@ class Handler(BaseHTTPRequestHandler):
         if not self._idle(course_id, "That course has a job running; wait for it to finish."):
             return
         self._json({"ok": True, "settings": manage.update_settings(catalog.course_root(course_id), self._body())})
-
-    @route("GET", COURSE + r"/reviews")
-    def reviews_get(self, course_id: str):
-        self._json({"reviews": reviews.load_reviews(STATE_ROOT, course_id)})
 
     @route("POST", COURSE + r"/(?P<action>check|build)")
     def check_or_build(self, course_id: str, action: str):

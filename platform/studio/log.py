@@ -20,8 +20,7 @@ import logging
 import logging.handlers
 import os
 import threading
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from coursekit.settings import SETTINGS
 
@@ -104,19 +103,3 @@ def recent(limit: int = 0, level: str = "", contains: str = "") -> List[Dict[str
 def clear() -> None:
     with _LOCK:
         _RING.clear()
-
-
-class Timer:
-    """`with Timer() as t: ...; t.ms` - for logging how long a call took."""
-
-    def __enter__(self):
-        self.start = time.time()
-        return self
-
-    def __exit__(self, *exc):
-        self.ms = int((time.time() - self.start) * 1000)
-        return False
-
-    @property
-    def elapsed(self) -> str:
-        return "%.1fs" % (time.time() - self.start)

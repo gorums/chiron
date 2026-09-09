@@ -472,14 +472,6 @@ function budgetLine(b) {
   return `<b>${b.kept.length} modules · ${fmtH(b.minutes)}</b> of teaching${asked}.${b.over ? " That is well over budget — skip a few, or shorten them." : ""}`;
 }
 
-function refreshBudget() {
-  const el = $("#planbudget");
-  if (!el || !job.plan) return;
-  const b = planBudget(harvestPlan());
-  el.className = "budget " + (b.over ? "over" : "");
-  el.innerHTML = budgetLine(b);
-}
-
 /* Skipping is a toggle, not a deletion: a module left out by mistake can be put back
    without starting the whole design again. */
 function toggleModuleSkip(id) {

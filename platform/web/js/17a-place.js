@@ -35,12 +35,6 @@ function placeLabel(place) {
   }
   return place.step ? stepNamed(place.step) : m.short || m.title;
 }
-/* the section number and heading, for menus and message labels */
-function placeShort(place) {
-  if (place.step === "read") return `§${place.sec + 1} ${placeLabel(place)}`;
-  return placeLabel(place);
-}
-
 /* ---- what the tutor is shown for a place ----
    On the Read step, the passage; on every other step, what that step asks and what the
    reader has written so far, so "is this right?" needs no pasting. The model answers the

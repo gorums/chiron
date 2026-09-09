@@ -331,15 +331,6 @@ async function bridgePost(path, payload) {
   });
   return r.json();
 }
-function saveSettings() {
-  const m = document.getElementById("setmodel");
-  if (m) conn().model = m.value;
-  const u = document.getElementById("seturl");
-  if (u) conn().url = u.value.trim().replace(/\/$/, "");
-  save();
-  toast("Saved");
-}
-
 /* ---- reading preferences: device-local, applied as classes on <body> ---- */
 function uiPrefs() {
   if (!STATE.ui) STATE.ui = {};

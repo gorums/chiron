@@ -14,7 +14,7 @@
    mid-generation reattaches instead of losing the run — the stream replays from the last
    event index the client saw. */
 
-/* $, $$, esc, toast, ico, clock, ago, fmtH, fmtDur and help() come from the shared
+/* $, esc, toast, ico, clock, ago, fmtH, fmtDur and help() come from the shared
    /ui/shared/00-dom.js, the same file the course page inlines. */
 
 let STATE = { courses: [], claude: { available: false }, jobs: [] };

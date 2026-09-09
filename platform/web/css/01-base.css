@@ -642,9 +642,9 @@ textarea {
     scroll-behavior: auto !important;
   }
 }
-body.no-motion .spin,
-body.no-motion .pulse,
-body.no-motion .pill.live::before {
+body.nomotion .spin,
+body.nomotion .pulse,
+body.nomotion .pill.live::before {
   animation: none;
 }
 
@@ -779,9 +779,6 @@ a.plain {
 }
 .wide-input {
   min-width: 200px;
-}
-.filterrow {
-  margin: var(--s4) 0 18px;
 }
 .rowline.baseline {
   align-items: baseline;
