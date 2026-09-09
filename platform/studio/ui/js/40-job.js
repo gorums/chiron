@@ -286,10 +286,16 @@ function failedHTML(back, courseId, lines) {
       .map(l => l.text)
       .join(" ") || "";
   const canResume = job.kind === "generate" && courseId;
+  // When Claude was the problem rather than the course, the sentence above already says so
+  // and says it better than the log does - pointing at the log there sends the reader off
+  // to read the same thing in CLI spelling.
+  const account = job.why === "quota" || job.why === "auth";
+  const logHint = account ? "" : ' The <a href="#/settings">log</a> has the CLI\'s own error.';
+  const later = account && canResume ? " Resume it once Claude answers again." : "";
   return `<div class="card">
     <h3>${job.status === "cancelled" ? "Stopped" : "It did not finish"}</h3>
     <p class="sub">${esc(why)}</p>
-    <p class="sub result">Anything written before this point is still on disk under <span class="mono">courses/</span>.${canResume ? " The curriculum is saved, so the run can be resumed: it keeps what is written and does only the rest." : ""} The <a href="#/settings">log</a> has the CLI's own error.</p>
+    <p class="sub result">Anything written before this point is still on disk under <span class="mono">courses/</span>.${canResume ? " The curriculum is saved, so the run can be resumed: it keeps what is written and does only the rest." : ""}${later}${logHint}</p>
     ${
       canResume
         ? mediaChoices(

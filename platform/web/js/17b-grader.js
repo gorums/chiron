@@ -73,12 +73,15 @@ function graderFailed(btn, box, err, retry) {
     btn.disabled = false;
     btn.textContent = btn.dataset.label || btn.textContent;
   }
+  // An account that is out until three has nothing to fix in Settings, so it is not offered.
+  const settings = worthCheckingSettings(troubleOf(err))
+    ? `<a class="btn sm ghost" href="#/settings">Check the connection</a>`
+    : "";
   if (box)
     box.innerHTML = `<div class="fb wrong"><b>Nothing came back</b>
       <p>${esc(message)}</p>
       <div class="rowline wrapped gap-top">
-        <button class="btn sm" onclick="${retry}">Try again</button>
-        <a class="btn sm" href="#/settings">Check the connection</a>
+        <button class="btn sm" onclick="${retry}">Try again</button>${settings}
       </div></div>`;
   else toast(message, { kind: "bad" });
 }

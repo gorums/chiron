@@ -482,9 +482,10 @@ function renderRailBody() {
   h += `<div class="thread" id="railthread">`;
   if (rail.compacting) h += `<div class="msg a typing"><i></i><i></i><i></i></div>`;
   (c ? c.msgs : []).forEach((x, i) => {
+    const last = i === c.msgs.length - 1;
     h += `<div class="msg ${x.r === "u" ? "u" : x.r === "e" ? "a err" : "a"}">
       ${x.r === "u" && messageLabel(m, x) ? `<button class="msgctx" onclick="jumpToMessage('${c.id}',${i})" title="Go to this part of the module">${esc(messageLabel(m, x))}${x.quote ? " · selection" : ""} ↗</button>` : ""}
-      ${x.r === "u" ? esc(x.t) : mdLite(x.t)}</div>`;
+      ${x.r === "u" ? esc(x.t) : mdLite(x.t)}${x.r === "e" && last ? errorActions(x) : ""}</div>`;
   });
   h += `<div id="railpending"></div></div>`;
   h += `<div class="suggest"><div id="raillead2"></div><div id="railsuggest"></div></div>`;
@@ -552,6 +553,19 @@ function askThis(el) {
   inp.value = el.dataset.q;
   railSend();
 }
+/* What to offer under a failed answer. Only the last message gets these - an older error is
+   history, and its question has been asked again since. Settings is the answer to a rejected
+   key, a refused model and a puzzle; it is not the answer to an account that is out until
+   three, so that one only gets Try again. */
+function errorActions(msg) {
+  const why = msg.why || "unknown";
+  const settings = worthCheckingSettings(why)
+    ? `<button class="btn sm ghost" onclick="go('#/settings')">Check the connection</button>`
+    : "";
+  return `<div class="rowline wrapped gap-top">
+      <button class="btn sm" onclick="railRetry()">Try again</button>${settings}</div>`;
+}
+
 /* Send what is in the box. The conversation is the one on show, or a new one at this
    place; the tutor's instructions are built for this place at this moment. */
 async function railSend() {
@@ -594,6 +608,13 @@ async function railSend() {
   renderSidebar();
   btn.disabled = true;
   inp.disabled = true;
+  await railAsk(m, c, place, markId);
+}
+
+/* Ask what the thread already holds and file the answer - or the failure, which is a message
+   of its own so the reader can see what went wrong where it went wrong. Kept apart from
+   railSend because a retry has nothing to type: it runs this again on the same thread. */
+async function railAsk(m, c, place, markId) {
   rail.sending = true;
   const pend = document.getElementById("railpending");
   if (pend) pend.innerHTML = `<div class="msg a typing"><i></i><i></i><i></i></div>`;
@@ -611,7 +632,13 @@ async function railSend() {
       if (mk && mk.status === "open") setMarkStatus(m.id, markId, "answered");
     }
   } catch (e) {
-    c.msgs.push({ r: "e", t: (e && e.message) || "Something went wrong.", ts: Date.now() });
+    c.msgs.push({
+      r: "e",
+      t: (e && e.message) || "Something went wrong.",
+      why: troubleOf(e),
+      mark: markId || null,
+      ts: Date.now(),
+    });
   }
   c.updated = Date.now();
   save();
@@ -621,4 +648,20 @@ async function railSend() {
   if (convoShown() !== c) toast("Claude replied in “" + convoTitle(c) + "”");
   const i2 = document.getElementById("railin");
   if (i2) i2.focus();
+}
+
+/* Ask the same question again. The failed attempts go, the question stays where it is:
+   nothing is retyped, and a flaky minute does not leave a thread full of apologies. */
+async function railRetry() {
+  const m = route.view === "m" ? byId(route.id) : null;
+  const c = convoShown();
+  if (!m || !c || rail.sending) return;
+  let markId = null;
+  while (c.msgs.length && c.msgs[c.msgs.length - 1].r === "e") {
+    markId = c.msgs.pop().mark || markId;
+  }
+  if (!c.msgs.some(x => x.r === "u")) return;
+  save();
+  renderRailBody();
+  await railAsk(m, c, placeNow() || { mid: m.id, step: c.step, sec: c.sec }, markId);
 }

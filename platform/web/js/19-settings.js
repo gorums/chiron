@@ -236,7 +236,7 @@ async function connectClaude() {
       btn.textContent = "Connect";
     }
     show(`<div class="hint bad"><span class="i">✕</span>
-      <div><b>Did not work.</b> ${esc(res.why || "")}</div></div>`);
+      <div><b>Did not work.</b> ${esc(res.problem || "")}</div></div>`);
   }
 }
 async function testDirect() {
@@ -246,7 +246,7 @@ async function testDirect() {
   if (box)
     box.innerHTML = res.ok
       ? `<div class="hint good"><span class="i">✓</span>The key works.</div>`
-      : `<div class="hint bad"><span class="i">✕</span>${esc(res.why || "")}</div>`;
+      : `<div class="hint bad"><span class="i">✕</span>${esc(res.problem || "")}</div>`;
 }
 /* Forgetting the key means pasting it again from the console. It asks. */
 function askDisconnect() {

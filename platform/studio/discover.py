@@ -22,7 +22,9 @@ removal; a dated snapshot (`...-20251001`) and its bare id count as the same mod
 `removals()` decides the candidates: gone from Anthropic's list means gone; unknown only to
 the binary's table is not enough - an older Claude Code passes an id it has never heard of
 straight to the API and it works - so such a candidate is kept unless one real call with it
-(`claude_cli.probe`) is refused. The list is never emptied. `run()` applies the result
+(`claude_cli.probe`) is refused *for being that model*: an account out of quota refuses every
+id there is, and a check that ran at three in the morning must not empty the list because of
+it. The list is never emptied. `run()` applies the result
 through `models.replace`, so it is validated like a hand edit and live everywhere at once,
 and writes a report to `state/models-discovery.json` for the settings page. `schedule()`
 runs it shortly after Studio starts and every `discovery.hours` after that;
@@ -40,6 +42,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
+from coursekit.failures import MODEL
 from coursekit.settings import SETTINGS
 
 from . import claude_cli, models
@@ -254,18 +257,21 @@ def plan(current: List[Dict[str, Any]], cli: Dict[str, Any], api: Dict[str, Any]
 def removals(candidates: List[Dict[str, Any]], api_answered: bool, probe,
              keep_one: bool) -> Tuple[List[Dict[str, Any]], Dict[str, bool]]:
     """Which candidates go: all of them when Anthropic's list answered without them; else
-    only those one real call refuses. `probe(id)` -> {ok, ...}. Returns (removed, checked)
-    where checked records each probe. `keep_one` says the list has nothing but candidates,
-    in which case the last one stays."""
+    only those one real call refuses for being that model. `probe(id)` -> {ok, why, ...};
+    a failure whose `why` is anything but "model" - an exhausted account, a signed-out CLI,
+    a dropped connection - would refuse every id on the list, so it removes nothing. Returns
+    (removed, checked) where checked records each probe. `keep_one` says the list has nothing
+    but candidates, in which case the last one stays."""
     removed: List[Dict[str, Any]] = []
     checked: Dict[str, bool] = {}
     for m in candidates:
         if api_answered:
             removed.append(m)
             continue
-        ok = bool(probe(m["id"]).get("ok"))
+        answer = probe(m["id"])
+        ok = bool(answer.get("ok"))
         checked[m["id"]] = ok
-        if not ok:
+        if not ok and answer.get("why", MODEL) == MODEL:
             removed.append(m)
     if keep_one and len(removed) == len(candidates) and removed:
         removed = removed[:-1]

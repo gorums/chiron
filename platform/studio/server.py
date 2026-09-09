@@ -208,8 +208,10 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                    "application/json; charset=utf-8")
 
-    def _fail(self, message: str, code: int = 400) -> None:
-        self._json({"error": message}, code)
+    def _fail(self, message: str, code: int = 400, **extra) -> None:
+        """`extra` is for what the browser has to branch on rather than print - `why`, the
+        kind of Claude failure, which decides whether the page offers Try again."""
+        self._json(dict(extra, error=message), code)
 
     def _raw_body(self) -> bytes:
         """The request body, read exactly once.
@@ -827,8 +829,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             text = claude_cli.ask(prompt, model=self._model(body), timeout=ASK_TIMEOUT)
         except claude_cli.ClaudeFailed as exc:
-            log.warning("ask: %s", exc)
-            return self._fail(str(exc), 502)
+            log.warning("ask: %s (%s) %s", exc, exc.kind, exc.detail)
+            return self._fail(str(exc), 502, why=exc.kind, resetsAt=exc.resets_at)
         self._json({"text": text, "mode": "studio"})
 
 

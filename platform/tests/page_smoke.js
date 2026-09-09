@@ -165,12 +165,25 @@ setImmediate(() => {
     process.exit(1);
   }
   if (checksFile) {
+    // A checks file may await — the rail's failure path is asynchronous — so it runs as the
+    // body of an async function and the run is only called a success once that settles. A
+    // rejection here would otherwise be collected too late to fail anything.
+    const body = "(async () => {" + fs.readFileSync(checksFile, "utf8") + "})()";
+    let settled;
     try {
-      vm.runInContext(fs.readFileSync(checksFile, "utf8"), context, { filename: checksFile });
+      settled = vm.runInContext(body, context, { filename: checksFile });
     } catch (err) {
       console.error((err && err.stack) || err);
       process.exit(1);
     }
+    Promise.resolve(settled).then(
+      () => console.log("booted"),
+      err => {
+        console.error((err && err.stack) || err);
+        process.exit(1);
+      }
+    );
+    return;
   }
   console.log("booted");
 });

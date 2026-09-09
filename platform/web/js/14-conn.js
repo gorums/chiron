@@ -76,6 +76,36 @@ async function checkStudio() {
   return studioOk;
 }
 
+/* ---- what went wrong ----
+   All three routes report trouble the same way: an Error carrying `why`, one of "quota",
+   "auth", "model", "transient", "timeout" or "unknown". Studio and the bridge send it in the
+   error body (coursekit/failures.py names it); the direct route reads it off the HTTP status
+   here. The page needs it for one decision - whether trying the same thing again is worth
+   offering, or whether the reader has to go and fix something first. */
+const TROUBLE_BY_STATUS = {
+  401: "auth",
+  403: "auth",
+  404: "model",
+  429: "quota",
+  500: "transient",
+  502: "transient",
+  503: "transient",
+  504: "transient",
+  529: "transient",
+};
+function troubleFromStatus(status) {
+  return TROUBLE_BY_STATUS[status] || "unknown";
+}
+function troubleOf(err) {
+  return (err && err.why) || "unknown";
+}
+/* Settings is where a key, a model and the bridge address live, so it is the answer to a
+   rejected key, a refused model and a puzzle - not to an account that is simply out until
+   three o'clock, which needs nothing but the clock. */
+function worthCheckingSettings(why) {
+  return why === "auth" || why === "model" || why === "unknown";
+}
+
 async function callAnthropic(key, system, messages, model, maxTokens) {
   const body = {
     model: model || PLATFORM.defaultModel,
@@ -109,6 +139,7 @@ async function callAnthropic(key, system, messages, model, maxTokens) {
       }[r.status] || "Anthropic error " + r.status + ": " + msg;
     const err = new Error(friendly);
     err.status = r.status;
+    err.why = troubleFromStatus(r.status);
     throw err;
   }
   return (
@@ -127,7 +158,7 @@ async function verifyKey(key) {
     const net = /failed|network|load/i.test(e.message || "") && !e.status;
     return {
       ok: false,
-      why: net
+      problem: net
         ? isLocalFile()
           ? "The request could not leave the browser. Check your internet connection."
           : "A published page is not allowed to call Anthropic. Open " +
@@ -200,6 +231,15 @@ function redrawForConnection() {
   if (route.view === "m" && railOpen()) renderRail();
 }
 
+/* An error body from Studio or the bridge, turned into the Error the page throws. `why` is
+   theirs when they sent one, and the HTTP status when they did not. */
+function tutorError(body, status, fallback) {
+  const err = new Error((body && body.error) || fallback);
+  err.status = status;
+  err.why = (body && body.why) || troubleFromStatus(status);
+  return err;
+}
+
 async function askBridge(system, messages) {
   const b = conn();
   if (connMode() === "direct") {
@@ -212,7 +252,7 @@ async function askBridge(system, messages) {
       body: JSON.stringify({ model: modelFor(b), system, messages }),
     });
     const j = await r.json().catch(() => ({ error: "Studio sent something unreadable." }));
-    if (!r.ok || j.error) throw new Error(j.error || "Studio error " + r.status);
+    if (!r.ok || j.error) throw tutorError(j, r.status, "Studio error " + r.status);
     return j.text || "(empty reply)";
   }
   const r = await fetch(b.url.replace(/\/$/, "") + "/ask", {
@@ -227,7 +267,7 @@ async function askBridge(system, messages) {
     }),
   });
   const j = await r.json().catch(() => ({ error: "The bridge sent something unreadable." }));
-  if (!r.ok || j.error) throw new Error(j.error || "Bridge error " + r.status);
+  if (!r.ok || j.error) throw tutorError(j, r.status, "Bridge error " + r.status);
   if (j.notice) {
     toast(j.notice);
     save();

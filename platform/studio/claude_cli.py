@@ -9,6 +9,13 @@ Why stdin and not `-p <prompt>`: a Windows command line caps at 8191 characters,
 `tools/bridge/claude-bridge.py` has to trim prompts to ~5500 to stay clear of it. Course writing
 needs prompts an order of magnitude larger than that — the module contract plus the whole
 curriculum for context. Passing the prompt on stdin removes the ceiling entirely.
+
+Why failures are classified: the CLI reports an exhausted account, an overloaded server and
+a model it does not recognise the same way — a non-zero exit and a line of stderr — and the
+right answer to each is different. `coursekit.failures` names the kind, and `ask` acts on
+it: wait out weather, swap a model that was refused, and stop at once when the account
+itself is the problem, because every model on the chain draws on the same one. The classifier
+sits in `coursekit` because the bridge needs it too.
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ import subprocess
 import time
 from typing import Any, Dict, Optional
 
+from coursekit.failures import AUTH, QUOTA, TIMEOUT, TRANSIENT, UNKNOWN, describe
 from coursekit.settings import SETTINGS
 
 from . import jobs
@@ -30,6 +38,13 @@ from .log import log
 DEFAULT_TIMEOUT = int(SETTINGS.get("claude.timeout"))
 JSON_ATTEMPTS = int(SETTINGS.get("claude.jsonAttempts"))
 CHAT_HISTORY = int(SETTINGS.get("claude.chatHistory"))
+
+# How many second chances a call gets when the failure looks like weather, and how long to
+# wait between them. A run that dies at module 8 of 9 on a five-second outage costs far more
+# than the waiting does.
+RETRIES = int(SETTINGS.get("claude.retries"))
+BACKOFF = float(SETTINGS.get("claude.backoffSeconds"))
+BACKOFF_MAX = float(SETTINGS.get("claude.backoffMaxSeconds"))
 
 # One probe call has to answer well inside a job's timeout, or the settings page hangs.
 PROBE_TIMEOUT = int(SETTINGS.get("claude.probeTimeout"))
@@ -73,7 +88,30 @@ class ClaudeUnavailable(RuntimeError):
 
 
 class ClaudeFailed(RuntimeError):
-    """The CLI ran but did not produce usable output."""
+    """The CLI ran but did not produce usable output.
+
+    The message is the sentence a reader should see; `detail` is what the CLI actually said,
+    which belongs in the log. `kind` is what the layers above branch on, and `resets_at` is
+    the clock time a usage limit named, when it named one.
+    """
+
+    def __init__(self, message: str, kind: str = UNKNOWN, detail: str = "",
+                 resets_at: str = ""):
+        super().__init__(message)
+        self.kind = kind
+        self.detail = detail
+        self.resets_at = resets_at
+
+
+# Failures no other model on the chain would survive: the account, the login, and a call that
+# has already spent its whole timeout.
+_FINAL = (QUOTA, AUTH, TIMEOUT)
+
+
+def _failure(detail: str, kind: str = "") -> ClaudeFailed:
+    """Everything the CLI reports becomes one of these, classified once."""
+    message, kind, when = describe(detail, kind)
+    return ClaudeFailed(message, kind=kind, detail=detail, resets_at=when)
 
 
 def _tell(kind: str, **fields) -> None:
@@ -114,6 +152,11 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT, what: s
     `what` names the thing being asked for ("the text of M03") so the job's event log, and
     the screen watching it, can say what Claude is doing while a call runs for minutes.
     Every attempt emits a `call` event at its start and its end.
+
+    Two kinds of second chance, and they are not the same thing: a transient failure is tried
+    again on the same model after a growing wait, and a model that was refused moves to the
+    next one in the chain. An exhausted account, a signed-out CLI or a spent timeout ends it
+    immediately - the next model would fail the same way, a minute later.
     """
     cli = find_cli()
     if not cli:
@@ -125,47 +168,86 @@ def ask(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT, what: s
     attempts = [_HEADLESS + ["--model", alias] for alias in model_chain(model)]
     attempts.append(list(_HEADLESS))            # last resort: whatever the CLI defaults to
 
-    last = ""
+    last = _failure("no output")
     for n, args in enumerate(attempts):
         label = args[args.index("--model") + 1] if "--model" in args else "(cli default)"
-        started = time.time()
-        _tell("call", phase="start", what=what, model=label, chars=len(prompt), timeout=timeout)
         try:
-            proc = _run(cli, args, prompt, timeout)
-        except subprocess.TimeoutExpired:
-            log.error("claude %s: no answer within %ds (prompt %d chars)", label, timeout, len(prompt))
-            _tell("call", phase="end", what=what, model=label, ok=False,
-                  seconds=round(time.time() - started, 1), error="no answer within %ds" % timeout)
-            raise ClaudeFailed("Claude Code did not answer within %ds." % timeout)
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user as a job failure
-            last = str(exc)[:300]
-            log.error("claude %s: could not start: %s", label, last)
-            _tell("call", phase="end", what=what, model=label, ok=False,
-                  seconds=round(time.time() - started, 1), error=last)
-            continue
+            return _ask_model(cli, args, label, prompt, timeout, what)
+        except ClaudeFailed as exc:
+            last = exc
+            if exc.kind in _FINAL:
+                _say(str(exc))
+                break
+            if n + 1 < len(attempts):
+                nxt = attempts[n + 1]
+                _say("Claude Code refused %s; trying %s instead." % (
+                    label,
+                    nxt[nxt.index("--model") + 1] if "--model" in nxt
+                    else "the CLI default model"))
 
-        out = (proc.stdout or "").strip()
-        err = (proc.stderr or "").strip()
-        took = time.time() - started
-        if proc.returncode == 0 and out:
-            log.info("claude %s: ok in %.1fs, prompt %d chars, reply %d chars%s",
-                     label, took, len(prompt), len(out),
-                     (" (stderr: %s)" % err[:160]) if err else "")
-            _tell("call", phase="end", what=what, model=label, ok=True,
-                  seconds=round(took, 1), reply=len(out))
-            return out
-        last = err[:300] or "exit code %s with no output" % proc.returncode
-        log.warning("claude %s: failed in %.1fs, exit %s, prompt %d chars: %s",
-                    label, took, proc.returncode, len(prompt), err[:600] or "no output")
-        _tell("call", phase="end", what=what, model=label, ok=False,
-              seconds=round(took, 1), error=last)
-        if n + 1 < len(attempts):
-            nxt = attempts[n + 1]
-            _say("Claude Code refused %s; trying %s instead." % (
-                label, nxt[nxt.index("--model") + 1] if "--model" in nxt else "the CLI default model"))
+    log.error("claude: giving up (%s): %s", last.kind, last.detail or "no output")
+    raise last
 
-    log.error("claude: every attempt failed: %s", last or "no output")
-    raise ClaudeFailed("Claude Code failed: " + (last or "no output"))
+
+def _ask_model(cli: str, args: list, label: str, prompt: str, timeout: int, what: str) -> str:
+    """One model, tried again while the failure looks like weather. The wait doubles from
+    `claude.backoffSeconds` up to `claude.backoffMaxSeconds`, because a run that dies at
+    module 8 of 9 on a five-second outage costs far more than the waiting does."""
+    for attempt in range(RETRIES + 1):
+        last_chance = attempt >= RETRIES
+        try:
+            return _one_call(cli, args, label, prompt, timeout, what)
+        except ClaudeFailed as exc:
+            if last_chance or exc.kind != TRANSIENT:
+                raise
+            wait = min(BACKOFF * (2 ** attempt), BACKOFF_MAX)
+            log.warning("claude %s: transient failure, trying again in %ds: %s",
+                        label, round(wait), exc.detail[:160])
+            _say("Claude could not be reached; waiting %ds and trying again, attempt %d of %d."
+                 % (round(wait), attempt + 2, RETRIES + 1))
+            time.sleep(wait)
+    raise _failure("claude.retries is below zero", UNKNOWN)   # a nonsense setting, not a path
+
+
+def _one_call(cli: str, args: list, label: str, prompt: str, timeout: int, what: str) -> str:
+    """One CLI call, bracketed by its two `call` events. Every way out that is not a reply is
+    a ClaudeFailed carrying its kind, so no caller has to read stderr a second time."""
+    started = time.time()
+    _tell("call", phase="start", what=what, model=label, chars=len(prompt), timeout=timeout)
+    try:
+        proc = _run(cli, args, prompt, timeout)
+    except subprocess.TimeoutExpired as exc:
+        detail = "no answer within %ds" % timeout
+        log.error("claude %s: %s (prompt %d chars)", label, detail, len(prompt))
+        _tell("call", phase="end", what=what, model=label, ok=False, why=TIMEOUT,
+              seconds=round(time.time() - started, 1), error=detail)
+        raise _failure("Claude Code did not answer within %ds." % timeout, TIMEOUT) from exc
+    except Exception as exc:  # noqa: BLE001 - the CLI could not start; the reason is the failure
+        detail = str(exc)[:300]
+        log.error("claude %s: could not start: %s", label, detail)
+        failure = _failure(detail)
+        _tell("call", phase="end", what=what, model=label, ok=False, why=failure.kind,
+              seconds=round(time.time() - started, 1), error=detail)
+        raise failure from exc
+
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    took = time.time() - started
+    if proc.returncode == 0 and out:
+        log.info("claude %s: ok in %.1fs, prompt %d chars, reply %d chars%s",
+                 label, took, len(prompt), len(out),
+                 (" (stderr: %s)" % err[:160]) if err else "")
+        _tell("call", phase="end", what=what, model=label, ok=True,
+              seconds=round(took, 1), reply=len(out))
+        return out
+
+    detail = err[:300] or out[:300] or "exit code %s with no output" % proc.returncode
+    failure = _failure(detail)
+    log.warning("claude %s: failed in %.1fs, exit %s, %s, prompt %d chars: %s",
+                label, took, proc.returncode, failure.kind, len(prompt), err[:600] or "no output")
+    _tell("call", phase="end", what=what, model=label, ok=False, why=failure.kind,
+          seconds=round(took, 1), error=detail)
+    raise failure
 
 
 def model_chain(model: str = "") -> list:
@@ -179,22 +261,33 @@ def model_chain(model: str = "") -> list:
     return chain
 
 
+def _refused(detail: str, kind: str, started: float) -> Dict[str, Any]:
+    """One failed probe as the settings page wants it: the CLI's own words in `error`, the
+    kind in `why`, and the sentence to show in `advice`."""
+    message, kind, _when = describe(detail, kind)
+    return {"ok": False, "seconds": round(time.time() - started, 1),
+            "why": kind, "error": detail, "advice": message}
+
+
 def probe(model: str, timeout: int = PROBE_TIMEOUT) -> Dict[str, Any]:
     """Does the CLI accept this model? One short call, this model only, no fallback - the
     settings page asks before a model just added is trusted with a forty-minute run.
-    Returns {ok, seconds, reply | error}; never raises for a refused model."""
+    Returns {ok, seconds, reply | error}; never raises for a refused model. A failure also
+    carries `why` - the kind - so the page can say "the account is out of quota" instead of
+    blaming a model that was never tried."""
     cli = find_cli()
     if not cli:
-        return {"ok": False, "seconds": 0, "error": "Claude Code is not on this PATH."}
+        return {"ok": False, "seconds": 0, "why": UNKNOWN,
+                "error": "Claude Code is not on this PATH.",
+                "advice": "Claude Code is not on this PATH."}
     os.makedirs(_SCRATCH, exist_ok=True)
     started = time.time()
     try:
         proc = _run(cli, _HEADLESS + ["--model", model], PROBE_PROMPT, timeout)
     except subprocess.TimeoutExpired:
-        return {"ok": False, "seconds": round(time.time() - started, 1),
-                "error": "no answer within %ds" % timeout}
+        return _refused("no answer within %ds" % timeout, TIMEOUT, started)
     except Exception as exc:  # noqa: BLE001 - the CLI could not start; the reason is the result
-        return {"ok": False, "seconds": round(time.time() - started, 1), "error": str(exc)[:300]}
+        return _refused(str(exc)[:300], "", started)
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()
     took = round(time.time() - started, 1)
@@ -203,7 +296,7 @@ def probe(model: str, timeout: int = PROBE_TIMEOUT) -> Dict[str, Any]:
         return {"ok": True, "seconds": took, "reply": out[:80]}
     reason = err[:300] or out[:300] or "exit code %s with no output" % proc.returncode
     log.warning("claude probe %s: refused in %.1fs: %s", model, took, reason)
-    return {"ok": False, "seconds": took, "error": reason}
+    return _refused(reason, "", started)
 
 
 # The headless invocation every call is built on: one prompt on stdin, plain text back.

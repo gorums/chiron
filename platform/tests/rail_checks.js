@@ -182,4 +182,47 @@ assert(!progressOf(readMod.id).secs[0], "unticking by hand takes it back");
 tickScrolledPast(scrolled);
 assert(!progressOf(readMod.id).secs[0], "and scrolling does not put it straight back");
 
+/* ---- a failed answer, and the way back from it ----
+   askBridge is replaced with one that throws the way Studio's /api/ask does, so the failure
+   lands in the thread as a message of its own; then a retry that succeeds has to leave the
+   thread with the question asked once and answered once. */
+route = { view: "m", id: m.id, step: 3 };
+rail.pinned = null;
+rail.showing = null;
+const failed = newConvo(placeNow());
+rail.showing = failed.id;
+failed.msgs.push({ r: "u", t: "why is this so?", ts: Date.now(), step: "elab", sec: null });
+
+const realAsk = askBridge;
+let asked = 0;
+askBridge = async () => {
+  asked += 1;
+  const err = new Error("This Claude account has reached its usage limit.");
+  err.why = "quota";
+  throw err;
+};
+await railAsk(m, failed, placeNow(), null);
+let last = failed.msgs[failed.msgs.length - 1];
+assert(last.r === "e", "a failure is a message of its own");
+assert(last.why === "quota", "carrying the kind: " + last.why);
+assert(errorActions(last).indexOf("railRetry") > 0, "the error offers Try again");
+assert(
+  errorActions(last).indexOf("#/settings") === -1,
+  "an exhausted account has nothing to fix in Settings"
+);
+const puzzling = { r: "e", t: "?", why: "unknown", ts: Date.now() };
+assert(errorActions(puzzling).indexOf("#/settings") > 0, "a puzzle does send you to Settings");
+
+askBridge = async () => "here is why";
+await railRetry();
+assert(asked === 1, "the retry did not re-run the failing stub");
+assert(
+  failed.msgs.filter(x => x.r === "u").length === 1,
+  "the question is asked once, not retyped"
+);
+assert(!failed.msgs.some(x => x.r === "e"), "the failures are gone once one succeeds");
+last = failed.msgs[failed.msgs.length - 1];
+assert(last.r === "a" && last.t === "here is why", "and the answer is the last word");
+askBridge = realAsk;
+
 console.log("rail checks passed");

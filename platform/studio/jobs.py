@@ -76,6 +76,7 @@ class Job:
         self.meta: Dict[str, Any] = dict(meta or {})
         self.status = PENDING
         self.error = ""
+        self.why = ""        # for a failure Claude caused: its kind, from claude_cli.classify
         self.result: Any = None
         self.events: List[Dict[str, Any]] = []
         self.created = time.time()
@@ -168,7 +169,11 @@ class Job:
             except Exception as exc:  # noqa: BLE001 - the point is to report, not crash
                 self.status = FAILED
                 self.error = str(exc)
-                self.emit("failed", error=str(exc), trace=traceback.format_exc()[-1500:])
+                # A ClaudeFailed carries the kind of trouble; the screen needs it to say
+                # whether waiting, signing in or resuming is the thing to do.
+                self.why = str(getattr(exc, "kind", "") or "")
+                self.emit("failed", error=str(exc), why=self.why,
+                          trace=traceback.format_exc()[-1500:])
             finally:
                 self.call = None
                 self.emit("end", status=self.status)
@@ -193,6 +198,7 @@ class Job:
             "kind": self.kind,
             "status": self.status,
             "error": self.error,
+            "why": self.why,
             "meta": self.meta,
             "events": len(self.events),
             "created": self.created,
@@ -218,6 +224,7 @@ class StoredJob:
         self.kind = record.get("kind", "")
         self.status = record.get("status", DONE)
         self.error = record.get("error", "")
+        self.why = record.get("why", "")
         self.meta = record.get("meta") or {}
         self.result = record.get("result")
         self.events = record.get("events") or []
@@ -235,6 +242,7 @@ class StoredJob:
     def summary(self) -> Dict[str, Any]:
         started = next((e["at"] for e in self.events if e.get("kind") == "started"), None)
         return {"id": self.id, "kind": self.kind, "status": self.status, "error": self.error,
+                "why": self.why,
                 "meta": self.meta, "events": len(self.events), "created": self.created,
                 "started": started,
                 "ended": self.events[-1]["at"] if self.events else None,

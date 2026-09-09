@@ -246,6 +246,7 @@ too), nothing else.
 | Module | Job |
 |---|---|
 | `errors` | `CourseError` and its three subclasses |
+| `failures` | why a Claude call failed, in one word — stdlib-only, so the bridge can import it too (see "When Claude says no") |
 | `config` | `course.json` → `CourseConfig`; builds the `CFG` the page receives |
 | `markdown_render` | markdown → HTML; HTML → plain text for search and chat context |
 | `figures` | SVG figures: sanitise, check, inline into a section's HTML, count the build-up steps |
@@ -652,7 +653,7 @@ reading validation errors next to the course they belong to.
 
 | Module | Job |
 |---|---|
-| `claude_cli` | talks to Claude through the `claude` CLI; `timeout_for(step)` reads `generation.timeouts` |
+| `claude_cli` | talks to Claude through the `claude` CLI; `timeout_for(step)` reads `generation.timeouts`; classifies every failure through `coursekit.failures` |
 | `jobs` | background work with a replayable event log |
 | `prompts` | every prompt Studio sends |
 | `curriculum` | the plan a course is written from: `make_plan`, `normalise_plan`, `plan_from_course`, `load_plan` / `reconstruct_plan` for a resume |
@@ -746,6 +747,33 @@ through `syncModelPickers`, and all of them write `STATE.bridge.model`, which ev
 `askBridge` call sends. The default is
 Opus 5: the best writing for the price, with Fable 5.1 on the list for the course that has
 to be right and Sonnet or Haiku for a cheap patch.
+
+**When Claude says no, the reason decides what happens next.** Claude Code reports an
+exhausted account, an overloaded server and a model it does not recognise the same way — a
+non-zero exit and a line of stderr — so `coursekit/failures.py` names the kind once
+(`quota`, `auth`, `model`, `transient`, `timeout`, `unknown`) and everything above it acts
+on the name rather than reading stderr again. It sits in `coursekit`, stdlib-only, because
+`tools/bridge/claude-bridge.py` imports it from outside the package the way it imports
+`settings`.
+
+- **`transient` is waited out**, on the same model: `claude.retries` further attempts with
+  the wait doubling from `claude.backoffSeconds` to `claude.backoffMaxSeconds`. A
+  forty-minute run used to die at module 8 of 9 on a five-second outage.
+- **`model` moves down the chain**, which is what the chain was for.
+- **`quota`, `auth` and `timeout` end it at once.** Every model on the chain draws on the
+  same account, so trying the next one wastes a minute and then tells the reader the wrong
+  story — "Claude Code refused Opus" when the truth is "this account is out until 3pm". A
+  usage-limit message that names its reset time has it repeated back.
+- **The message is a sentence, not stderr.** `explain()` writes what to do; the CLI's own
+  words go to `detail` and the log. A `ClaudeFailed` carries `kind`, `detail` and
+  `resets_at`; `Job.why` carries the kind to the job screen, `/api/ask` sends it as `why`,
+  and the bridge sends the same field — so all three routes reach the page alike. There,
+  `troubleOf(err)` reads it and the failed answer offers **Try again** (`railRetry` re-asks
+  the same question, no retyping) plus **Check the connection** only when Settings is
+  actually the answer.
+- **Only a model's own refusal removes it from the list.** `discover.removals` used to drop
+  any candidate a probe would not answer for, so a nightly check run while the account was
+  out of quota would quietly shrink the model list.
 
 **A run can be resumed.** `generate()` saves the approved curriculum to `plan/plan.json`;
 `brief["resume"]` reloads it through `curriculum.load_plan` (or `reconstruct_plan()` rebuilds

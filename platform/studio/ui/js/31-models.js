@@ -131,17 +131,22 @@ function modelRow(row, i) {
   ${modelTestError(row.id)}`;
 }
 
+/* "refused" only when the model is what was refused. An account that is out of quota, or a
+   CLI nobody has signed in to, would fail this test for every id on the list, and calling
+   that a bad model sends the reader off editing something that was never wrong. */
 function modelTestResult(id) {
   const r = modelEditor.results[id];
   if (!r) return "";
-  return `<span class="pill ${r.ok ? "on" : "off"}">${r.ok ? `answers in ${r.seconds}s` : "refused"}</span>`;
+  const blame = r.why === "quota" || r.why === "auth" ? "not this model" : "refused";
+  return `<span class="pill ${r.ok ? "on" : "off"}">${r.ok ? `answers in ${r.seconds}s` : blame}</span>`;
 }
 
 /* A refusal is the whole point of the Test button, so it is printed, not left in a title. */
 function modelTestError(id) {
   const r = modelEditor.results[id];
   if (!r || r.ok) return "";
-  return `<p class="problems modelerr">${esc(id)} refused: ${esc(r.error)}</p>`;
+  const advice = r.advice ? `<br />${esc(r.advice)}` : "";
+  return `<p class="problems modelerr">${esc(id)} refused: ${esc(r.error)}${advice}</p>`;
 }
 
 function editModelRow(i, key, value) {
@@ -187,7 +192,9 @@ async function testModelRow(i) {
   modelEditor.testing = "";
   renderModelEditor();
   const r = modelEditor.results[id];
-  toast(r.ok ? `${id} answers` : `${id} refused: ${r.error}`, { kind: r.ok ? "ok" : "bad" });
+  toast(r.ok ? `${id} answers` : r.advice || `${id} refused: ${r.error}`, {
+    kind: r.ok ? "ok" : "bad",
+  });
 }
 
 /* Save the whole list; the server validates it and every picker takes it from /api/state. */

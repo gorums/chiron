@@ -75,7 +75,10 @@
     "timeout": 600,
     "jsonAttempts": 3,
     "chatHistory": 20,
-    "probeTimeout": 90
+    "probeTimeout": 90,
+    "retries": 2,
+    "backoffSeconds": 5,
+    "backoffMaxSeconds": 60
   },
   "generation": {
     "quizItems": 6,

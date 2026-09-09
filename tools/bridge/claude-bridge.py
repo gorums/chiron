@@ -43,6 +43,8 @@ CONFIG_PATH = os.path.join(HERE, "config.json")
 # platform/settings.json, the same file Studio and the build read. BRIDGE_PORT, BRIDGE_HOST
 # and BRIDGE_API_URL in .env or the environment override it (see coursekit.settings).
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "platform"))
+from coursekit.failures import (AUTH, QUOTA, TIMEOUT, UNKNOWN,  # noqa: E402  (stdlib only)
+                                classify, describe, from_status)
 from coursekit.settings import SETTINGS  # noqa: E402  (stdlib only; needs no `markdown`)
 
 PORT = int(SETTINGS.get("bridge.port"))
@@ -273,6 +275,20 @@ def call_api(system, messages, model, max_tokens, key=None):
     return "".join(c.get("text", "") for c in data.get("content", []) if c.get("type") == "text")
 
 
+class CliFailed(RuntimeError):
+    """Claude Code refused or failed. `why` is the kind, from coursekit.failures, so the
+    page can tell "wait a minute" apart from "this account is out until three"."""
+
+    def __init__(self, message, why=UNKNOWN):
+        RuntimeError.__init__(self, message)
+        self.why = why
+
+
+# The kinds where the next model in the chain would fail identically: they are the account,
+# not the model.
+FINAL_KINDS = (QUOTA, AUTH)
+
+
 def call_cli(system, messages, model=None):
     cli = find_cli()
     if not cli:
@@ -285,7 +301,7 @@ def call_cli(system, messages, model=None):
     attempts.append(["-p", "--output-format", "text"])
     attempts.append(["-p"])
     os.makedirs(CLI_CWD, exist_ok=True)
-    last = ""
+    last, why = "", UNKNOWN
     for args in attempts:
         try:
             # The prompt travels on stdin, never as an argument: a Windows command line caps
@@ -296,7 +312,7 @@ def call_cli(system, messages, model=None):
         except subprocess.TimeoutExpired:
             raise
         except Exception as e:
-            last = str(e)[:300]
+            last, why = str(e)[:300], classify(str(e))
             continue
         out = (proc.stdout or "").strip()
         if proc.returncode == 0 and out:
@@ -305,7 +321,11 @@ def call_cli(system, messages, model=None):
             "Claude Code returned nothing. The prompt may have been too long — "
             "try selecting a shorter passage." if proc.returncode == 0 else
             "exit code %s" % proc.returncode)
-    raise RuntimeError("Claude Code failed: " + (last or "no output"))
+        why = classify(last)
+        if why in FINAL_KINDS:
+            break
+    message, why, _when = describe(last or "no output", why)
+    raise CliFailed(message, why)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -451,9 +471,10 @@ class Handler(BaseHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             self._api_failed(e, system, messages)
         except subprocess.TimeoutExpired:
-            self._send(504, {"error": "Claude Code took too long to answer."})
+            self._send(504, {"error": "Claude Code took too long to answer.", "why": TIMEOUT})
         except Exception as e:
-            self._send(502, {"error": str(e)[:400] or "Could not reach Claude."})
+            self._send(502, {"error": str(e)[:400] or "Could not reach Claude.",
+                             "why": getattr(e, "why", "") or classify(str(e))})
 
     @staticmethod
     def _answer(mode, system, messages, model, max_tokens):
@@ -488,7 +509,8 @@ class Handler(BaseHTTPRequestHandler):
             404: "That model is not available for this key.",
             429: "Rate limited, or the key is out of credit.",
         }.get(e.code, "Anthropic API error %s. %s" % (e.code, msg))
-        self._send(e.code if e.code in (401, 429) else 502, {"error": friendly})
+        self._send(e.code if e.code in (401, 429) else 502,
+                   {"error": friendly, "why": from_status(e.code)})
 
 
 def api_error(e):

@@ -21,7 +21,7 @@ PLATFORM = os.path.dirname(HERE)
 REPO = os.path.dirname(PLATFORM)
 sys.path.insert(0, PLATFORM)
 
-from coursekit import assessments, bundler, config, library, loader, paths, renderer, scaffold, settings, validate  # noqa: E402
+from coursekit import assessments, bundler, config, failures, library, loader, paths, renderer, scaffold, settings, validate  # noqa: E402
 from coursekit.errors import CourseError, DataError, ManifestError  # noqa: E402
 
 MODULE_MD = """# M{n:02d} — Lesson {n}
@@ -817,6 +817,58 @@ class TestShippedMarketingCourse(unittest.TestCase):
         self.assertEqual(len(mods), 19)
         self.assertEqual(sum(len(m.sections) for m in mods), 152)
 
+
+
+class TestFailureKinds(unittest.TestCase):
+    """`coursekit.failures` is the one place that says what a Claude failure was, because
+    the answer differs per kind: wait out weather, swap a model that was refused, and stop
+    at once when the account itself is the problem."""
+
+    def test_the_wordings_the_cli_really_uses_are_recognised(self):
+        cases = {
+            "Claude usage limit reached. Your limit will reset at 3pm.": failures.QUOTA,
+            "API Error: 429 rate_limit_error": failures.QUOTA,
+            "Your credit balance is too low to access the Anthropic API": failures.QUOTA,
+            "Invalid API key - please run /login": failures.AUTH,
+            "API Error: 401 authentication_error": failures.AUTH,
+            "unrecognized_model: claude-x[1m]": failures.MODEL,
+            '"claude-x" isn\'t described by this version\'s model catalog': failures.MODEL,
+            "API Error: 529 overloaded_error": failures.TRANSIENT,
+            "fetch failed: ECONNRESET": failures.TRANSIENT,
+            "API Error: 500 Internal server error": failures.TRANSIENT,
+        }
+        for text, kind in cases.items():
+            self.assertEqual(failures.classify(text), kind, text)
+
+    def test_a_failure_nobody_planned_for_is_permanent(self):
+        """Unknown is not retried: trying something we cannot name again is how a run burns
+        an hour to arrive at the same error."""
+        self.assertEqual(failures.classify("exit code 1 with no output"), failures.UNKNOWN)
+        self.assertEqual(failures.classify(""), failures.UNKNOWN)
+
+    def test_the_reset_time_is_repeated_back_without_its_timezone(self):
+        line = "Claude usage limit reached. Your limit will reset at 3pm (America/New_York)."
+        self.assertEqual(failures.resets_at(line), "3pm")
+        self.assertIn("3pm", failures.explain(failures.QUOTA, line, failures.resets_at(line)))
+        self.assertEqual(failures.resets_at("API Error: 429"), "")
+
+    def test_every_kind_has_a_sentence_and_none_of_them_is_stderr(self):
+        for kind in (failures.QUOTA, failures.AUTH, failures.MODEL, failures.TRANSIENT):
+            said = failures.explain(kind, "raw stderr nobody should read")
+            self.assertTrue(said.endswith("."), said)
+            self.assertNotIn("raw stderr", said)
+
+    def test_describe_is_the_whole_classification_in_one_call(self):
+        said, kind, when = failures.describe("usage limit reached, resets at 9:00 AM.")
+        self.assertEqual((kind, when), (failures.QUOTA, "9:00 AM"))
+        self.assertIn("9:00 AM", said)
+
+    def test_an_http_status_says_the_same_things_in_numbers(self):
+        self.assertEqual(failures.from_status(429), failures.QUOTA)
+        self.assertEqual(failures.from_status(401), failures.AUTH)
+        self.assertEqual(failures.from_status(404), failures.MODEL)
+        self.assertEqual(failures.from_status(529), failures.TRANSIENT)
+        self.assertEqual(failures.from_status(418), failures.UNKNOWN)
 
 
 class TestCodeConventions(unittest.TestCase):

@@ -465,6 +465,162 @@ class TestCallEvents(unittest.TestCase):
         claude_cli._say("nothing listens")
 
 
+class TestFailureHandling(unittest.TestCase):
+    """What `ask` does when Claude says no. The kind decides: weather is waited out, a model
+    that was refused is swapped, and an exhausted account ends the run at once - trying the
+    next model there wastes a minute and then blames the wrong thing."""
+
+    def setUp(self):
+        self.backoff = claude_cli.BACKOFF
+        claude_cli.BACKOFF = 0          # the waiting is the point, not the wall clock
+
+    def tearDown(self):
+        claude_cli.BACKOFF = self.backoff
+
+    def _with_cli(self, run, fn):
+        original = (claude_cli.find_cli, claude_cli.subprocess.run)
+        claude_cli.find_cli, claude_cli.subprocess.run = (lambda: "claude"), run
+        try:
+            job = jobs.Job("t").start(fn)
+            end = time.time() + 10
+            while time.time() < end and not job.finished:
+                time.sleep(0.01)
+            self.assertTrue(job.finished)
+            return job
+        finally:
+            claude_cli.find_cli, claude_cli.subprocess.run = original
+
+    @staticmethod
+    def _says(stderr, code=1):
+        import subprocess
+        return lambda argv, **kw: subprocess.CompletedProcess(argv, code, stdout="", stderr=stderr)
+
+    def test_an_exhausted_account_stops_the_chain_at_the_first_model(self):
+        seen = []
+        refuse = self._says("Claude usage limit reached. Your limit will reset at 3pm.")
+        def run(argv, **kw):
+            seen.append(argv)
+            return refuse(argv)
+        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        self.assertEqual(len(seen), 1, "every model draws on the same account")
+        self.assertEqual(job.status, jobs.FAILED)
+        self.assertEqual(job.why, "quota")
+        self.assertIn("3pm", job.error)
+        self.assertNotIn("stderr", job.error)
+        self.assertEqual(job.summary()["why"], "quota")
+
+    def test_weather_is_waited_out_on_the_same_model(self):
+        seen = []
+        import subprocess
+        def run(argv, **kw):
+            seen.append(argv)
+            if len(seen) == 1:
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="529 overloaded_error")
+            return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        self.assertEqual(job.result, "ok")
+        self.assertEqual(seen[0], seen[1], "the same model, not the next one on the chain")
+        said = [e["message"] for e in job.events if e["kind"] == "log"]
+        self.assertTrue(any("trying again" in m for m in said), said)
+
+    def test_weather_that_never_clears_gives_up_after_the_settings_say_so(self):
+        seen = []
+        refuse = self._says("529 overloaded_error")
+        def run(argv, **kw):
+            seen.append(argv)
+            return refuse(argv)
+        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        self.assertEqual(job.status, jobs.FAILED)
+        self.assertEqual(job.why, "transient")
+        # every model on the chain, each tried claude.retries + 1 times
+        self.assertEqual(len(seen), len(set(map(tuple, seen))) * (claude_cli.RETRIES + 1))
+
+    def test_a_timeout_is_not_paid_for_twice(self):
+        """A call that already spent its whole timeout is not worth another model's."""
+        seen = []
+        def run(argv, **kw):
+            seen.append(argv)
+            raise claude_cli.subprocess.TimeoutExpired(argv, 1)
+        job = self._with_cli(run, lambda j: claude_cli.ask("hi", timeout=1, what="x"))
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(job.why, "timeout")
+
+    def test_the_call_event_carries_the_kind(self):
+        job = self._with_cli(self._says("Claude usage limit reached."),
+                             lambda j: claude_cli.ask("hi", what="x"))
+        ends = [e for e in job.events if e["kind"] == "call" and e["phase"] == "end"]
+        self.assertEqual(ends[0]["why"], "quota")
+
+    def test_the_probe_does_not_blame_a_model_for_the_account(self):
+        """The settings page asks about one model; an out-of-quota account would refuse
+        every id on the list, and calling that a bad model sends the reader off editing
+        something that was never wrong."""
+        original = (claude_cli.find_cli, claude_cli.subprocess.run)
+        claude_cli.find_cli = lambda: "claude"
+        claude_cli.subprocess.run = self._says("Claude usage limit reached, resets at 3pm.")
+        try:
+            result = claude_cli.probe("claude-x", timeout=1)
+        finally:
+            claude_cli.find_cli, claude_cli.subprocess.run = original
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["why"], "quota")
+        self.assertIn("3pm", result["advice"])
+        self.assertIn("usage limit", result["error"])     # the CLI's own words are kept
+
+
+class TestTutorRouteReportsWhy(unittest.TestCase):
+    """`/api/ask` sends the kind with the error, because the page decides from it whether to
+    offer Try again or send the reader to Settings."""
+
+    class Reply:
+        """Just enough Handler for one route method."""
+
+        def __init__(self, body):
+            self.body, self.sent, self.code = body, None, 200
+
+        def _body(self):
+            return self.body
+
+        def _fail(self, message, code=400, **extra):
+            self.sent, self.code = dict(extra, error=message), code
+
+        def _json(self, obj, code=200):
+            self.sent, self.code = obj, code
+
+        def _model(self, brief):
+            return ""
+
+    def _ask(self, raises=None, text="hello"):
+        from studio import server
+        original = (claude_cli.available, claude_cli.ask)
+        claude_cli.available = lambda: True
+        def fake(prompt, **kw):
+            if raises:
+                raise raises
+            return text
+        claude_cli.ask = fake
+        reply = self.Reply({"messages": [{"role": "user", "content": "hi"}]})
+        try:
+            server.Handler.ask(reply)
+        finally:
+            claude_cli.available, claude_cli.ask = original
+        return reply
+
+    def test_a_good_answer_is_unchanged(self):
+        reply = self._ask()
+        self.assertEqual(reply.code, 200)
+        self.assertEqual(reply.sent["text"], "hello")
+
+    def test_an_exhausted_account_is_named_as_one(self):
+        failed = claude_cli.ClaudeFailed("out until 3pm.", kind="quota", detail="usage limit",
+                                         resets_at="3pm")
+        reply = self._ask(raises=failed)
+        self.assertEqual(reply.code, 502)
+        self.assertEqual(reply.sent["why"], "quota")
+        self.assertEqual(reply.sent["resetsAt"], "3pm")
+        self.assertEqual(reply.sent["error"], "out until 3pm.")
+
+
 class TestPrompts(unittest.TestCase):
     """Prompts are content, but a few properties are load-bearing."""
 
@@ -889,6 +1045,21 @@ class TestModelDiscovery(unittest.TestCase):
 
         removed, _ = discover.removals([gone], api_answered=True, probe=probe, keep_one=True)
         self.assertEqual(removed, [], "never emptied")
+
+    def test_an_account_problem_removes_nothing(self):
+        """A probe refused for anything but the model - an exhausted account, a signed-out
+        CLI, a dropped connection - would refuse every id there is. A check that ran at three
+        in the morning must not empty the list because of it."""
+        from studio import discover
+        rows = [{"id": "claude-a"}, {"id": "claude-b"}]
+        out_of_quota = lambda mid: {"ok": False, "why": "quota", "error": "usage limit"}
+        removed, checked = discover.removals(rows, api_answered=False, probe=out_of_quota,
+                                             keep_one=False)
+        self.assertEqual(removed, [])
+        self.assertEqual(checked, {"claude-a": False, "claude-b": False})
+        refused = lambda mid: {"ok": False, "why": "model", "error": "unrecognized_model"}
+        removed, _ = discover.removals(rows, api_answered=False, probe=refused, keep_one=False)
+        self.assertEqual(removed, rows)
 
     def test_run_reports_without_saving(self):
         from studio import discover
