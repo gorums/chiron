@@ -55,9 +55,9 @@ async function viewSettingsPage() {
     </div>
 
     <div class="card">
-      <h3 class="eyebrow">Claude Code</h3>
-      <p>${s.claude.available ? `<span class="pill on">found</span> <span class="mono">${esc(s.claude.path)}</span>` : `<span class="pill off">not found on PATH</span> — writing a course and the tutor are off until it is installed and signed in.`}</p>
-      ${s.claude.available ? "" : `<p class="sub">Install the <span class="mono">claude</span> command on this machine's PATH, run <span class="mono">claude login</span>, then reload this page.</p>`}
+      <h3 class="eyebrow">Providers</h3>
+      <p class="sub">How a model is reached. Each row is configured in <span class="mono">providers</span> in the platform settings; a key belongs in <span class="mono">.env</span> and is never shown here or sent to a course page.</p>
+      ${providerRows((s.llm || s.claude || {}).providers || [])}
     </div>
 
     <div class="card">
@@ -68,7 +68,7 @@ async function viewSettingsPage() {
 
     <div class="card">
       <h3 class="eyebrow">Platform settings</h3>
-      <p class="sub">Every default the platform has — ports, the API endpoint, the model list, timeouts, generation counts, the page's study rules and layout — is in <span class="mono">${esc(s.paths.settings)}</span>. Per-machine overrides go in <span class="mono">.env</span> or the environment under these names: ${Object.entries(
+      <p class="sub">Every default the platform has — ports, the providers, the model list, timeouts, generation counts, the page's study rules and layout — is in <span class="mono">${esc(s.paths.settings)}</span>. Per-machine overrides go in <span class="mono">.env</span> or the environment under these names: ${Object.entries(
         s.envKeys || {}
       )
         .map(([k, v]) => `<span class="mono" title="${esc(v)}">${esc(k)}</span>`)
@@ -103,7 +103,7 @@ async function viewSettingsPage() {
         <button class="btn sm" onclick="clearLogs()" title="Empties what this page shows. The log file on disk is untouched.">Clear log buffer</button>
       </div>
       <pre class="logbox" id="logbox" role="log" aria-live="polite" aria-label="Studio log">loading…</pre>
-      <p class="sub result">The full file is <span class="mono">${esc(s.paths.log || "console only")}</span>, rotating at ${Math.round((s.logs.maxBytes || 0) / 100000) / 10} MB × ${s.logs.backups}. Every Claude call is one line: model, time taken, prompt and reply size, and the CLI's stderr when it fails.</p>
+      <p class="sub result">The full file is <span class="mono">${esc(s.paths.log || "console only")}</span>, rotating at ${Math.round((s.logs.maxBytes || 0) / 100000) / 10} MB × ${s.logs.backups}. Every call to a model is one line: model, time taken, prompt and reply size, and what it said when it failed.</p>
     </div>`;
   $("#profileform").onsubmit = e => {
     e.preventDefault();
@@ -129,6 +129,30 @@ function settingRow(r) {
   const why = SOURCE_HELP[r.source] || "";
   return `<tr><td>${esc(r.key)}</td><td class="mono">${esc(String(r.value))}</td>
     <td class="sub"${why ? ` title="${esc(why)}"` : ""}>${esc(source || "default")}</td></tr>`;
+}
+
+/* One provider: what it is, whether it can answer, and how many models it reaches. A key
+   is never printed - only whether one is set, which is all anyone needs to see. */
+function providerRow(p) {
+  const state = !p.enabled
+    ? `<span class="pill off">not enabled</span>`
+    : p.available
+      ? `<span class="pill on">ready</span>`
+      : `<span class="pill off">${p.kind === "cli" ? "not on this PATH" : "no key"}</span>`;
+  const where = p.path || p.url || "";
+  const counted = p.models === 1 ? "1 model" : `${p.models} models`;
+  const marks = [p.isDefault ? "default" : "", counted].filter(Boolean).join(" · ");
+  const hint =
+    p.enabled && !p.available && p.hint ? `<span class="sub"> ${esc(p.hint)}</span>` : "";
+  return `<p class="rowline"><b>${esc(p.label)}</b> ${state}
+    <span class="sub">${esc(marks)}</span>
+    ${where ? `<span class="mono grow">${esc(where)}</span>` : `<span class="grow"></span>`}
+    </p>${hint}`;
+}
+
+function providerRows(rows) {
+  if (!rows.length) return `<p class="sub">No provider is configured.</p>`;
+  return rows.map(providerRow).join("");
 }
 
 function jupyterStatusLine(j) {

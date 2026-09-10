@@ -15,13 +15,14 @@ import time
 from typing import Any, Dict, List
 
 from coursekit import config as ck_config
+from coursekit import llm
 from coursekit import loader as ck_loader
 from coursekit import settings as ck_settings
 from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, curriculum, discover, generator, jupyter, manage, models, prefs, progress, reviews
+from . import curriculum, discover, generator, jupyter, manage, models, prefs, progress, reviews
 from . import log as logmod
 from .errors import GenerationError
 from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, store
@@ -268,9 +269,10 @@ def state() -> Dict[str, Any]:
     courses = list_courses()
     return {
         "courses": courses,
-        "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or "",
-                   "model": PREFS.model, "models": models_view(),
-                   "defaultModel": SETTINGS.model_id(PREFS.model)},
+        "llm": llm_view(),
+        # The name this block had when there was only ever one provider. A page built or
+        # loaded before that changed still looks for it; it goes when nothing does.
+        "claude": llm_view(),
         "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
         "jupyter": jupyter_public(),
         "root": REPO_ROOT,
@@ -294,10 +296,40 @@ def profiles_view() -> Dict[str, Any]:
 def models_view() -> List[Dict[str, str]]:
     """The models a form may pick from, as the UI shows them: `/api/state` carries the list
     so every writing form can offer it without a second request. `id` is the name a form
-    sends (the CLI alias); `apiId` is the full id a served course page stores and sends to
-    the API."""
-    return [{"id": m[0], "name": m[1], "note": m[2], "apiId": SETTINGS.model_id(m[0])}
+    sends (the short alias); `apiId` is the full id a served course page stores and sends;
+    `provider` is the row in `providers` that reaches it, and `providerLabel` is that row as
+    a person reads it."""
+    labels = {name: cfg.get("label") or name for name, cfg in SETTINGS.providers.items()}
+    return [{"id": m["name"], "name": m["label"], "note": m["note"],
+             "apiId": SETTINGS.model_id(m["name"]), "provider": m["provider"],
+             "providerLabel": labels.get(m["provider"], m["provider"])}
             for m in prefs.models()]
+
+
+def providers_view() -> List[Dict[str, Any]]:
+    """Every configured provider, as the settings page shows them: what it is, whether it is
+    enabled, whether it can answer right now, and how many models it reaches. The disabled
+    ones are here too - a model can be added to a provider before it is switched on, and a
+    row nobody can see is a row nobody can enable."""
+    counted: Dict[str, int] = {}
+    for m in SETTINGS.models:
+        counted[m["provider"]] = counted.get(m["provider"], 0) + 1
+    enabled = set(SETTINGS.provider_names())
+    return [dict(p.describe(), models=counted.get(p.name, 0),
+                 enabled=p.name in enabled,
+                 isDefault=p.name == SETTINGS.default_provider)
+            for p in llm.providers(all_of_them=True)]
+
+
+def llm_view() -> Dict[str, Any]:
+    """`/api/state` and `/api/settings`: what can answer, which model is chosen, and the list
+    every form picks from. `available` is about the provider a job would run on - a key for a
+    provider nobody writes with must not read as "Studio may write"."""
+    default = llm.provider_for(SETTINGS.provider_of(PREFS.model))
+    return {"available": default.available(), "provider": default.name,
+            "providerLabel": default.label, "hint": getattr(default, "hint", ""),
+            "providers": providers_view(), "model": PREFS.model, "models": models_view(),
+            "defaultModel": SETTINGS.model_id(PREFS.model)}
 
 
 def settings_view() -> Dict[str, Any]:
@@ -309,7 +341,8 @@ def settings_view() -> Dict[str, Any]:
         "models": models_view(),
         "modelList": models.current(),
         "discovery": discover.status(),
-        "claude": {"available": claude_cli.available(), "path": claude_cli.find_cli() or ""},
+        "llm": llm_view(),
+        "claude": llm_view(),
         "jupyter": jupyter_public(),
         "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,
                   "state": STATE_ROOT, "log": LOG_FILE, "settings": SETTINGS.path,

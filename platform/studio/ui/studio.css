@@ -955,7 +955,15 @@ table.paths td:first-child {
   grid-template-columns: 1.4fr 0.7fr 1fr 2fr;
   gap: var(--s2);
 }
-.modelrow .fields input {
+/* With more than one provider configured, each row also says which one reaches it. */
+.modelrow .fields.withprovider {
+  grid-template-columns: 0.9fr 1.4fr 0.7fr 1fr 2fr;
+}
+.modelrow .fields select.provider {
+  font-size: var(--fs-sm);
+}
+.modelrow .fields input,
+.modelrow .fields select {
   padding: 7px 10px;
   font-size: 13px;
 }

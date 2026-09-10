@@ -141,17 +141,17 @@ function stepLine(e) {
     return { text: `Step ${e.done} of ${e.total} — ${e.label}`, cls: "head" };
   if (e.kind === "call" && e.phase === "start")
     return {
-      text: `Asking Claude for ${e.what || "a reply"} — ${e.model}, ${(e.chars || 0).toLocaleString()} chars sent`,
+      text: `Asking for ${e.what || "a reply"} — ${e.model}, ${(e.chars || 0).toLocaleString()} chars sent`,
       cls: "dim",
     };
   if (e.kind === "call")
     return e.ok
       ? {
-          text: `Claude answered in ${fmtDur(e.seconds)} — ${(e.reply || 0).toLocaleString()} chars`,
+          text: `Answered in ${fmtDur(e.seconds)} — ${(e.reply || 0).toLocaleString()} chars`,
           cls: "ok",
         }
       : {
-          text: `Claude did not answer after ${fmtDur(e.seconds)} — ${e.error || "no output"}`,
+          text: `No answer after ${fmtDur(e.seconds)} — ${e.error || "no output"}`,
           cls: "bad",
         };
   if (e.kind === "spec")
@@ -286,12 +286,12 @@ function failedHTML(back, courseId, lines) {
       .map(l => l.text)
       .join(" ") || "";
   const canResume = job.kind === "generate" && courseId;
-  // When Claude was the problem rather than the course, the sentence above already says so
+  // When the model was the problem rather than the course, the sentence above already says so
   // and says it better than the log does - pointing at the log there sends the reader off
   // to read the same thing in CLI spelling.
   const account = job.why === "quota" || job.why === "auth";
   const logHint = account ? "" : ' The <a href="#/settings">log</a> has the CLI\'s own error.';
-  const later = account && canResume ? " Resume it once Claude answers again." : "";
+  const later = account && canResume ? " Resume it once it answers again." : "";
   return `<div class="card">
     <h3>${job.status === "cancelled" ? "Stopped" : "It did not finish"}</h3>
     <p class="sub">${esc(why)}</p>
@@ -343,7 +343,7 @@ function tickJob() {
     if (job.call) {
       const secs = now - job.call.at;
       const cap = job.call.timeout ? ` · up to ${fmtDur(job.call.timeout)} allowed` : "";
-      nowEl.innerHTML = `<span class="pulse"></span>Claude is writing ${esc(job.call.what || "a reply")}<span class="mono">${fmtDur(secs)}${cap}</span>`;
+      nowEl.innerHTML = `<span class="pulse"></span>Writing ${esc(job.call.what || "a reply")}<span class="mono">${fmtDur(secs)}${cap}</span>`;
     } else {
       nowEl.innerHTML = `<span class="pulse"></span>Studio is working between calls — saving files, checking them, building.`;
     }

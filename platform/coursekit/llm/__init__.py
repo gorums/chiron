@@ -77,30 +77,43 @@ def build(name: str, cfg: Dict[str, Any]) -> Optional[Provider]:
     return adapter.from_settings(name, cfg) if adapter else None
 
 
-def providers() -> List[Provider]:
+def providers(all_of_them: bool = False) -> List[Provider]:
     """Every enabled provider there is an adapter for, in the order settings.json lists them.
+    `all_of_them` includes the disabled ones, which are configured but offered nowhere.
 
     Built per call rather than kept: a provider holds no state, and the list underneath it
     changes whenever `SETTINGS.reload()` runs - which is how a model saved on the settings
     page reaches every module without a restart.
     """
-    found = [p for name in SETTINGS.provider_names()
+    found = [p for name in SETTINGS.provider_names(all_of_them)
              for p in [build(name, SETTINGS.provider(name))] if p is not None]
     return found or [CliProvider()]
 
 
+def find(name: str) -> Optional[Provider]:
+    """One provider by name, enabled or not - `enabled` governs what is *offered*, not what
+    may be addressed, so a row can be tested before it is switched on. None when nothing is
+    configured under that name."""
+    for p in providers(all_of_them=True):
+        if p.name == name:
+            return p
+    return None
+
+
 def provider_for(name: str = "") -> Provider:
-    """The provider to use. An unknown or empty name means the default one."""
-    found = providers()
+    """The provider to use. An empty name means the default one; a name nothing answers to
+    also falls back, because a caller that guessed wrong should still get an answer rather
+    than a crash - `find` is there for a caller that needs to know."""
     if name:
-        for p in found:
-            if p.name == name:
-                return p
-        wanted = SETTINGS.default_provider
-        for p in found:
-            if p.name == wanted:
-                return p
-    return found[0]
+        found = find(name)
+        if found is not None:
+            return found
+    enabled = providers()
+    wanted = SETTINGS.default_provider
+    for p in enabled:
+        if p.name == wanted:
+            return p
+    return enabled[0]
 
 
 def available(name: str = "") -> bool:
@@ -111,8 +124,19 @@ def available(name: str = "") -> bool:
 
 
 def probe(model: str, timeout: int = 0, name: str = "") -> dict:
-    """One short call with this model only and no fallback."""
-    return provider_for(name).probe(model, timeout)
+    """One short call with this model only and no fallback.
+
+    A name nothing is configured under is refused rather than quietly tried somewhere else:
+    a settings page asking "does this model work on OpenAI" must not be answered by Claude
+    Code saying no.
+    """
+    if name:
+        chosen = find(name)
+        if chosen is None:
+            said = "There is no provider called '%s'." % name
+            return {"ok": False, "seconds": 0, "why": "unknown", "error": said, "advice": said}
+        return chosen.probe(model, timeout)
+    return provider_for().probe(model, timeout)
 
 
 def describe() -> List[dict]:

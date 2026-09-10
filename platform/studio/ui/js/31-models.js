@@ -16,8 +16,14 @@ const modelEditor = {
   checking: false, // is "Check now" running?
 };
 
+/* The providers a row may name, from /api/state. One provider means no choice worth
+   showing: the field is left out and the server fills in the default. */
+function providerChoices() {
+  return (llmState().providers || []).map(p => ({ name: p.name, label: p.label }));
+}
+
 const MODEL_FIELDS = [
-  ["id", "id, as claude --model takes it", "claude-sonnet-5"],
+  ["id", "id, as its provider takes it", "claude-sonnet-5"],
   ["alias", "short alias (optional)", "sonnet"],
   ["label", "shown as", "Claude Sonnet 5"],
   ["note", "when to pick it", "fast and cheap; fine for a patch or the tutor"],
@@ -46,7 +52,7 @@ function modelEditorCard() {
     : "";
   return `<div class="card" id="modelcard">
     <h3 class="eyebrow">Models on offer</h3>
-    <p class="sub">Every picker in Studio and in a course page opened from here offers this list, in this order. Add a model the day it ships, retire one that is gone, and <b>Test</b> it before trusting it with a run: the test asks Claude Code once with that model only. In use: ${source}.</p>
+    <p class="sub">Every picker in Studio and in a course page opened from here offers this list, in this order. Add a model the day it ships, retire one that is gone, and <b>Test</b> it before trusting it with a run: the test asks once with that model only, through the provider that reaches it. In use: ${source}.</p>
     <div class="modelrows gap-top" id="modelrows">${modelEditor.rows.map((r, i) => modelRow(r, i)).join("")}</div>
     <div class="actions gap-top">
       <button class="btn sm" onclick="addModelRow()">Add a model</button>
@@ -117,19 +123,38 @@ async function discoverModels() {
   renderModelEditor();
 }
 
+/* Which provider reaches this model. With one provider configured there is nothing to
+   choose, so the field is left out and the server fills in the default. */
+function providerField(row, i) {
+  const choices = providerChoices();
+  if (choices.length < 2) return "";
+  const options = choices
+    .map(
+      p =>
+        `<option value="${esc(p.name)}" ${p.name === row.provider ? "selected" : ""}>${esc(p.label)}</option>`
+    )
+    .join("");
+  const hint = "Which provider reaches this model";
+  return `<select class="provider" title="${esc(hint)}" aria-label="${esc(hint)}" onchange="editModelRow(${i}, 'provider', this.value)">
+    <option value="" ${row.provider ? "" : "selected"}>(default)</option>${options}</select>`;
+}
+
 function modelRow(row, i) {
-  const inputs = MODEL_FIELDS.map(
-    ([key, hint, sample]) =>
-      `<input type="text" class="${key}" value="${esc(row[key])}" placeholder="${esc(sample)}" title="${esc(hint)}" aria-label="${esc(hint)}" oninput="editModelRow(${i}, '${key}', this.value)" spellcheck="false">`
-  ).join("");
+  const provider = providerField(row, i);
+  const inputs =
+    provider +
+    MODEL_FIELDS.map(
+      ([key, hint, sample]) =>
+        `<input type="text" class="${key}" value="${esc(row[key])}" placeholder="${esc(sample)}" title="${esc(hint)}" aria-label="${esc(hint)}" oninput="editModelRow(${i}, '${key}', this.value)" spellcheck="false">`
+    ).join("");
   const testing = modelEditor.testing === row.id;
   const first = i === 0;
   const last = i === modelEditor.rows.length - 1;
   return `<div class="modelrow">
-    <div class="fields">${inputs}</div>
+    <div class="fields${provider ? " withprovider" : ""}">${inputs}</div>
     <div class="tools">
       ${modelTestResult(row.id)}
-      <button class="btn sm" onclick="testModelRow(${i})" ${testing ? "disabled" : ""} title="Ask Claude Code once with this model only">${testing ? `<span class="spin"></span> Testing…` : "Test"}</button>
+      <button class="btn sm" onclick="testModelRow(${i})" ${testing ? "disabled" : ""} title="Ask once with this model only, through the provider that reaches it">${testing ? `<span class="spin"></span> Testing…` : "Test"}</button>
       <button class="btn sm" onclick="moveModelRow(${i}, -1)" ${first ? "disabled" : ""} title="Move up" aria-label="Move up">${ico("up", 13)}</button>
       <button class="btn sm" onclick="moveModelRow(${i}, 1)" ${last ? "disabled" : ""} title="Move down" aria-label="Move down">${ico("down", 13)}</button>
       <button class="btn sm rm" onclick="removeModelRow(${i})" title="Remove from the list" aria-label="Remove">${ico("close", 13)}</button>
@@ -138,9 +163,10 @@ function modelRow(row, i) {
   ${modelTestError(row.id)}`;
 }
 
-/* "refused" only when the model is what was refused. An account that is out of quota, or a
-   CLI nobody has signed in to, would fail this test for every id on the list, and calling
-   that a bad model sends the reader off editing something that was never wrong. */
+/* "refused" only when the model is what was refused. An account that is out of quota, a
+   provider with no key, or a CLI nobody has signed in to would fail this test for every id
+   on the list, and calling that a bad model sends the reader off editing something that was
+   never wrong. */
 function modelTestResult(id) {
   const r = modelEditor.results[id];
   if (!r) return "";
@@ -187,12 +213,18 @@ function moveModelRow(i, by) {
 }
 
 async function testModelRow(i) {
-  const id = (modelEditor.rows[i].id || "").trim();
+  const row = modelEditor.rows[i];
+  const id = (row.id || "").trim();
   if (!id) return;
   modelEditor.testing = id;
   renderModelEditor();
   try {
-    modelEditor.results[id] = await api("/api/models/test", { model: id });
+    // The provider comes from the row, not from the saved list: a model being added has to
+    // be testable before it is saved.
+    modelEditor.results[id] = await api("/api/models/test", {
+      model: id,
+      provider: row.provider || "",
+    });
   } catch (err) {
     modelEditor.results[id] = { ok: false, seconds: 0, error: err.message };
   }

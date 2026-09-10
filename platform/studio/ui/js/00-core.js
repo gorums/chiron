@@ -17,7 +17,7 @@
 /* $, esc, toast, ico, clock, ago, fmtH, fmtDur and help() come from the shared
    /ui/shared/00-dom.js, the same file the course page inlines. */
 
-let STATE = { courses: [], claude: { available: false }, jobs: [] };
+let STATE = { courses: [], llm: { available: false, providers: [], models: [] }, jobs: [] };
 let route = { name: "library", id: null, query: {} };
 let job = null; // the job screen's state, while one is showing
 let stream = null;
@@ -121,14 +121,25 @@ function liveJobBanner() {
   return `<div class="banner"><span class="pulse"></span><span class="grow">${esc(who ? who + " · " : "")}${esc(jobLabel(j))}${more}</span>
     <a class="btn sm" href="#/job/${esc(j.id)}">Watch it</a></div>`;
 }
-/* Every screen that needs Claude says once, in words, why its buttons are off. */
+/* Everything about who answers comes from /api/state. `llm` is the block; `claude` is what
+   it was called when there was only ever one provider, and a page loaded before the rename
+   still finds it. */
+function llmState() {
+  return STATE.llm || STATE.claude || { available: false, providers: [], models: [] };
+}
+/* The provider a writing job would run on, as a person reads it. */
+function providerName() {
+  return llmState().providerLabel || "The model";
+}
+/* Every screen that needs a model says once, in words, why its buttons are off. */
 function claudeReady() {
-  return !!(STATE.claude && STATE.claude.available);
+  return !!llmState().available;
 }
 function claudeGate() {
   if (claudeReady()) return "";
-  return `<div class="note gap-top">Claude Code is not answering, so everything that writes or reviews is off.
-    Install it and run <span class="mono">claude login</span>, then <a href="#/settings">check the status</a>.</div>`;
+  const hint = llmState().hint;
+  return `<div class="note gap-top">${esc(providerName())} is not answering, so everything that writes or reviews is off.
+    ${hint ? esc(hint) + " " : ""}<a href="#/settings">Check the status</a>.</div>`;
 }
 
 function courseUrl(c, hash) {
@@ -139,11 +150,13 @@ async function refresh() {
   STATE = await api("/api/state");
   paintProfilePicker();
   const pill = $("#claudestate");
-  pill.textContent = STATE.claude.available ? "Claude Code connected" : "Claude Code not found";
-  pill.className = "pill " + (STATE.claude.available ? "on" : "off");
-  pill.title = STATE.claude.available
-    ? "The installed Claude Code CLI is answering. Open Settings & logs."
-    : "Studio cannot reach the Claude Code CLI. Open Settings & logs to see what to do.";
+  const ready = claudeReady();
+  const who = providerName();
+  pill.textContent = ready ? who + " connected" : who + " not answering";
+  pill.className = "pill " + (ready ? "on" : "off");
+  pill.title = ready
+    ? who + " is answering. Open Settings & logs."
+    : "Studio cannot reach " + who + ". Open Settings & logs to see what to do.";
   paintLiveJobs();
   return STATE;
 }

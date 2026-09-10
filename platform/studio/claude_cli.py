@@ -106,9 +106,12 @@ def ask_json(prompt: str, *, model: str = "", timeout: int = DEFAULT_TIMEOUT,
                         asker=lambda p, **kw: ask(p, **kw))
 
 
-def probe(model: str, timeout: int = PROBE_TIMEOUT) -> Dict[str, Any]:
-    """Does the runner accept this model? One short call, this model only, no fallback."""
-    return llm.probe(model, timeout)
+def probe(model: str, timeout: int = PROBE_TIMEOUT, provider: str = "") -> Dict[str, Any]:
+    """Does this model answer? One short call, this model only, no fallback. The provider is
+    the one that reaches the model unless a caller names another."""
+    from coursekit.settings import SETTINGS
+
+    return llm.probe(model, timeout, name=provider or SETTINGS.provider_of(model))
 
 
 # ---- shaping text on the way in and out

@@ -199,22 +199,44 @@ catalogue, which is what stops it removing anything.
 
 ## Phase 6 — Studio UI
 
-- [ ] `catalog.state()` — the `claude` block becomes `llm`
+- [x] `catalog.state()` — the `claude` block becomes `llm`
       (`{available, providers, model, models, defaultModel}`); keep `claude` as an alias for
       one release so an unrebuilt page still boots.
-- [ ] `server.py` — `NO_CLAUDE` → `NO_PROVIDER`, sentence from the provider's label;
+- [x] `server.py` — `NO_CLAUDE` → `NO_PROVIDER`, sentence from the provider's label;
       `_claude()` guard → `_provider()`; docstring route table updated.
-- [ ] `ui/js/31-models.js` — a provider column in the model-list editor; add-a-model picks its
+- [x] `ui/js/31-models.js` — a provider column in the model-list editor; add-a-model picks its
       provider; the Test button says which provider refused.
-- [ ] `ui/js/30-settings.js` — per-provider cards: enabled, endpoint, key state
+- [x] `ui/js/30-settings.js` — per-provider cards: enabled, endpoint, key state
       (`(set)` / empty), Test.
-- [ ] `ui/js/28-model.js` — `modelChoice` / `modelBrief` group by provider when more than one
+- [x] `ui/js/28-model.js` — `modelChoice` / `modelBrief` group by provider when more than one
       is enabled; `quickModelBar` likewise.
-- [ ] `ui/js/00-core.js` — the status pill names the configured provider, not "Claude Code".
-- [ ] `ui/js/10-library.js`, `20-course.js`, `25-figures.js`, `26-media.js`, `27-notebooks.js`,
+- [x] `ui/js/00-core.js` — the status pill names the configured provider, not "Claude Code".
+- [x] `ui/js/10-library.js`, `20-course.js`, `25-figures.js`, `26-media.js`, `27-notebooks.js`,
       `40-job.js` — replace every "Claude" with the provider label or "the model".
-- [ ] Tests: `page_smoke.js` over `ui/js/*.js` still boots; every route in the docstring
+- [x] Tests: `page_smoke.js` over `ui/js/*.js` still boots; every route in the docstring
       resolves.
+
+Also done, not foreseen:
+
+- [x] **A bug found by driving the live API.** `POST /api/models/test` with
+      `provider: "openai"` was answered by Claude Code refusing the model, because
+      `provider_for` fell back to the default for any name not in the *enabled* list.
+      `enabled` governs what is **offered**, not what may be **addressed**:
+      `llm.find(name)` now reaches a configured provider whether or not it is on, and
+      `llm.probe` refuses an unknown name rather than trying somewhere else.
+- [x] The settings page lists **every configured provider**, disabled ones included — a
+      row nobody can see is a row nobody can enable, and a model can be added to a
+      provider before it is switched on.
+- [x] `prefs.models()` returns dicts rather than positional tuples, so a fifth field is
+      not a fifth index every caller has to count to.
+
+**Done.** 134 tests in `test_build.py` (2 new), 144 in `test_studio.py`; prettier clean.
+The new UI was rendered inside the real boot harness (`page_smoke.js --checks`) rather
+than eyeballed: provider rows, grouped model options, the provider column appearing only
+when there is a choice, and the gate quoting the provider's own hint. Then driven live
+against a running Studio on 8795: a probe on a disabled provider now says "OpenAI has no
+API key configured", a real one answers OK in 5.4s, and all five providers report with
+their enabled and ready state.
 
 ## Phase 7 — The course page
 

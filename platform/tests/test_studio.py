@@ -762,16 +762,26 @@ class TestModelChoice(unittest.TestCase):
     def test_models_come_from_platform_settings(self):
         from coursekit.settings import SETTINGS
         from studio import prefs, server
-        self.assertEqual([m[0] for m in prefs.models()], [m["alias"] for m in SETTINGS.models])
+        self.assertEqual([m["name"] for m in prefs.models()],
+                         [m["alias"] for m in SETTINGS.models])
+        self.assertTrue(all(m["provider"] for m in prefs.models()),
+                        "every model says which provider reaches it")
         self.assertEqual(claude_cli.model_aliases(), SETTINGS.model_aliases)
         view = catalog.settings_view()
-        self.assertEqual([m["id"] for m in view["models"]], [m[0] for m in prefs.models()])
+        self.assertEqual([m["id"] for m in view["models"]],
+                         [m["name"] for m in prefs.models()])
         self.assertEqual([m["apiId"] for m in view["models"]], [m["id"] for m in SETTINGS.models],
                          "a served page stores the full id")
+        self.assertEqual([m["provider"] for m in view["models"]],
+                         [m["provider"] for m in SETTINGS.models],
+                         "and which provider reaches it")
         state = catalog.state()
-        self.assertEqual(state["claude"]["models"], view["models"],
+        self.assertEqual(state["llm"]["models"], view["models"],
                          "every writing form offers the list, so /api/state carries it")
-        self.assertEqual(state["claude"]["defaultModel"], SETTINGS.model_id(catalog.PREFS.model))
+        self.assertEqual(state["llm"]["defaultModel"], SETTINGS.model_id(catalog.PREFS.model))
+        self.assertEqual(state["claude"], state["llm"],
+                         "the older name still answers, for a page loaded before the rename")
+        self.assertTrue(state["llm"]["providers"], "and every provider Studio could use")
         self.assertEqual(view["modelList"]["list"], SETTINGS.models)
         self.assertEqual(view["paths"]["settings"], SETTINGS.path)
 

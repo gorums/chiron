@@ -21,14 +21,16 @@ from .ids import DEFAULT_PROFILE, is_profile
 
 
 def models() -> tuple:
-    """(alias, label, note) for every model in use - the only list Settings offers. Read on
-    every call, not once: the list is editable from the settings page (`studio/models.py`)."""
-    return tuple((m.get("alias") or m["id"], m.get("label") or m["id"], m.get("note", ""))
+    """Every model in use - the only list Settings offers - as
+    `{name, label, note, provider}`, where `name` is what a form sends. Read on every call,
+    not once: the list is editable from the settings page (`studio/models.py`)."""
+    return tuple({"name": m.get("alias") or m["id"], "label": m.get("label") or m["id"],
+                  "note": m.get("note", ""), "provider": m["provider"]}
                  for m in SETTINGS.models)
 
 
 def allowed() -> set:
-    return {m[0] for m in models()}
+    return {m["name"] for m in models()}
 
 
 class Prefs:

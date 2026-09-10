@@ -1,4 +1,4 @@
-/* ---------- figures: SVG diagrams for a module, drawn by Claude ----------
+/* ---------- figures: SVG diagrams for a module, drawn by the model ----------
    The course page's Modules tab shows how many modules carry figures and offers to draw
    the missing ones; each module's row menu can draw or redraw its own. Both start a
    "figures" job (POST /api/courses/<id>/figures, .../modules/<mid>/figures) that ends
@@ -12,8 +12,8 @@ function figuresBar(c) {
   const missing = mods.length - withFigures;
   const can = claudeReady();
   const why = can
-    ? "An SVG diagram Claude draws for a section: a flow, a funnel, a 2×2, a build-up the reader steps through. One Claude call per module."
-    : "Claude Code is not answering.";
+    ? "An SVG diagram drawn for a section: a flow, a funnel, a 2×2, a build-up the reader steps through. One call per module."
+    : providerName() + " is not answering.";
   const action =
     missing > 0
       ? `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="drawFigures('${c.id}',null,false)">Draw the missing ${missing}</button>`

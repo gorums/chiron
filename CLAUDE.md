@@ -301,6 +301,12 @@ platform’s only dependency.
 - **A key lives on the provider, not on the request.** `HttpProvider.with_key` is how the
   bridge uses the key it hunted down, so a secret never threads through `Request`, `chain`
   or a job event.
+- **`enabled` governs what is offered, not what may be addressed.** `llm.providers()` is
+  the enabled ones — pickers, discovery, anything asking "what can answer"; `llm.find(name)`
+  reaches a configured provider whether or not it is on, so a row can be tested before it is
+  switched on. `llm.probe` refuses a name nothing is configured under rather than trying
+  somewhere else: "does this model work on OpenAI" must not be answered by Claude Code
+  saying no.
 - **`Provider.catalog()` is how a provider says what exists**, for discovery:
   `{ok, models, known, error}` — `models` is what it would offer, `known` the wider set it
   recognises, because a picker offers five models and accepts twenty. **A source that cannot
@@ -777,6 +783,17 @@ two agree. To add a route: write the method, decorate it, add the line to the do
 
 **It binds to 127.0.0.1, and that is a security boundary, not a default.** Studio writes
 files and spawns processes. Do not make it listen on another interface.
+
+**`/api/state` reports `llm`, not a vendor.** `catalog.llm_view()` is
+`{available, provider, providerLabel, hint, providers, model, models, defaultModel}`:
+`available` is about the provider a writing job would actually run on — a key for a provider
+nobody writes with must not read as "Studio may write" — and `providers` is every configured
+row with `enabled`, `available`, its model count and whether it is the default. The same
+block is still sent as `claude` for one release, because a page loaded before the rename
+looks for it. In the UI, `llmState()` reads whichever is there and `providerName()` is the
+one place a provider is named, so no screen carries a vendor of its own; `_provider(doing)`
+is the server-side guard, and it names the provider that could not answer rather than
+telling someone to install the wrong thing.
 
 **Prompts go in on stdin, never as `-p <prompt>`.** A Windows command line caps at 8191
 characters, and a module prompt is an order of magnitude larger. stdin removes the ceiling.

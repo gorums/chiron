@@ -180,8 +180,8 @@ function moduleToolbar(c) {
     <span class="tgroup">${notebooksBar(c)}</span>
   </div>
   <details class="explainer"><summary>What these do</summary>
-    <p><b>Model</b> — which model runs Review with Claude, Draw figures and Write notebooks from a row's menu.</p>
-    <p><b>Figures</b> — SVG diagrams inlined in a module's Read step. One Claude call per module.</p>
+    <p><b>Model</b> — which model runs Review, Draw figures and Write notebooks from a row's menu.</p>
+    <p><b>Figures</b> — SVG diagrams inlined in a module's Read step. One call per module.</p>
     <p><b>Notebooks</b> — Jupyter notebooks the reader runs inside a module. Only for a course that declares the runtime, under Settings.</p>
   </details>`;
 }
@@ -234,9 +234,9 @@ function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
       <button class="btn sm kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" title="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">${ico("more", 15)}</button>
       <div class="menu hidden" id="menu-${m.id}" role="menu" onkeydown="menuKeys(event,'${m.id}')">
         <a role="menuitem" href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(m.path)}">Edit the text<small>the markdown, by hand</small></a>
-        <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${gate}>${rv && !rv.ownerOnly ? "Review again" : "Review with Claude"}<small>a verdict, gaps, errors, quiz issues · ${esc(modelName(quickModel()))}</small></button>
+        <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${gate}>${rv && !rv.ownerOnly ? "Review again" : "Review this module"}<small>a verdict, gaps, errors, quiz issues · ${esc(modelName(quickModel()))}</small></button>
         <button role="menuitem" onclick="closeMenus();acceptModule('${c.id}','${m.id}',${isGood ? "false" : "true"})">${isGood ? "Unmark" : "Mark as good"}<small>${isGood ? "back to the review's verdict" : "your verdict outranks the review"}</small></button>
-        <button role="menuitem" onclick="closeMenus();toggleRewrite('${m.id}')" ${gate}>Patch or rewrite…<small>with notes, by Claude</small></button>
+        <button role="menuitem" onclick="closeMenus();toggleRewrite('${m.id}')" ${gate}>Patch or rewrite…<small>with notes, by the model</small></button>
         ${figuresMenuItem(c, m)}
         ${notebooksMenuItem(c, m)}
         ${manyParts ? `<div class="sep"></div><label class="label" for="part-${m.id}">Move to part</label><select id="part-${m.id}" onchange="moveModule('${c.id}','${m.id}',this.value,-1)">${(c.parts || []).map(p => `<option value="${esc(p.id)}" ${p.id === part.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>` : ""}
@@ -279,7 +279,7 @@ function reviewBox(c, m, rv) {
       : `<p class="sub">Nothing.</p>`;
   return `<div class="reviewbox hidden" id="rv-${m.id}">
     ${rv.stale ? `<div class="note">This ${rv.accepted ? "verdict" : "review"} is from <b>${new Date(rv.accepted || rv.at).toLocaleString()}</b>; the module was rewritten or edited on <b>${new Date(rv.moduleChangedAt).toLocaleString()}</b>, so it describes the old text. <a href="#" onclick="reviewModule('${c.id}','${m.id}');return false">Review again</a> for a verdict on what is there now, or mark it good if you have read it.</div>` : ""}
-    ${rv.accepted && !rv.stale ? `<p class="sub ok-text">You marked this module good on ${new Date(rv.accepted).toLocaleString()}.${rv.ownerOnly ? " Claude has not reviewed it." : " The review's findings below are kept for reference."}</p>` : ""}
+    ${rv.accepted && !rv.stale ? `<p class="sub ok-text">You marked this module good on ${new Date(rv.accepted).toLocaleString()}.${rv.ownerOnly ? " It has not been reviewed." : " The review's findings below are kept for reference."}</p>` : ""}
     ${
       rv.ownerOnly
         ? ""
@@ -774,7 +774,7 @@ function paintAdd(c) {
       : "");
   $("#tabbody").innerHTML = `<form class="card" id="addform">
     <h3 class="eyebrow">Add a module</h3>
-    <p class="sub">Describe what the course should go further on. Claude designs one module that fits the existing curriculum — building on what is there, not repeating it — writes it, adds its quiz and flashcards, and rebuilds. It is appended to the part you choose and your progress elsewhere is untouched.</p>
+    <p class="sub">Describe what the course should go further on. One module is designed to fit the existing curriculum — building on what is there, not repeating it — writes it, adds its quiz and flashcards, and rebuilds. It is appended to the part you choose and your progress elsewhere is untouched.</p>
     ${from ? `<div class="note gap-top">Coming from <b>${esc(from.id)} · ${esc(from.title)}</b>${sec ? `, section <b>${esc(sec)}</b>` : ""}. Say what that ${sec ? "section" : "module"} left you wanting.</div>` : ""}
     <div class="field gap-top">
       <label for="x-topic">What should the new module cover?</label>
@@ -862,7 +862,7 @@ function paintFiles(c) {
 }
 
 /* The Resume button opens the choices first: a resumed run writes only what is missing,
-   and figures and notebooks are one Claude call each per module it touches. It gets a slot
+   and figures and notebooks are one call each per module it touches. It gets a slot
    of its own, so Check or Build cannot wipe the form out from under it. */
 function toggleResume(id) {
   const out = $("#resumeout");

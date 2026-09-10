@@ -1,6 +1,6 @@
 /* ---------- figures and notebooks: the choices every writing form offers ----------
    Every job that writes module text can also draw figures and write notebooks, one
-   Claude call each per module. Rather than assume, each form - a resumed run, an added
+   call each per module. Rather than assume, each form - a resumed run, an added
    module, a rewrite - shows the two switches (mediaChoices) and sends what was ticked
    (mediaBrief) as `figures` and `notebooks` in the request; the server honours both.
    Notebooks are offered only when the course declares them in its settings. The
@@ -11,10 +11,10 @@ function mediaChoices(prefix, course, note) {
   const kernel = runtime && runtime.kernel ? ` (${esc(runtime.kernel)})` : "";
   const when = note ? ` ${note}` : "";
   const figures = `<label class="radio"><input type="checkbox" id="${prefix}-figures" checked> <b>Draw figures</b></label>
-    <span class="fhint">SVG diagrams where a picture beats a paragraph${when}. One Claude call per module.</span>`;
+    <span class="fhint">SVG diagrams where a picture beats a paragraph${when}. One call per module.</span>`;
   const notebooks = runtime
     ? `<label class="radio"><input type="checkbox" id="${prefix}-notebooks" checked> <b>Write notebooks</b></label>
-       <span class="fhint">A Jupyter notebook the reader runs inside the module${kernel}${when}. One Claude call per module.</span>`
+       <span class="fhint">A Jupyter notebook the reader runs inside the module${kernel}${when}. One call per module.</span>`
     : `<label class="radio off"><input type="checkbox" disabled> <b>Write notebooks</b></label>
        <span class="fhint">Off: this course declares no notebooks. Turn them on under Settings if its subject is learned by running code.</span>`;
   return `<div class="media">${figures}${notebooks}</div>`;

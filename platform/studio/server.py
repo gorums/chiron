@@ -14,7 +14,7 @@ trust both. The table at the bottom of the class lists every route in one place.
     GET  /                                  the UI
     GET  /ui/shared/<file>                  the design system both surfaces are built from
                                             (platform/web: 00-tokens.css, 01-base.css, 00-dom.js)
-    GET  /api/state                         courses (with progress), Claude availability, jobs,
+    GET  /api/state                         courses (with progress), providers and models, jobs,
                                             the active profile, the study calendar, Jupyter
     GET  /api/jupyter                       the Jupyter server: reachable?, its address, the token a served page uses
     GET  /api/search?q=                     every course: modules, sections, passages, glossary terms
@@ -28,7 +28,7 @@ trust both. The table at the bottom of the class lists every route in one place.
     GET  /api/models                        the model list in use, and whether it is Studio's own
     PUT  /api/models                        replace it  {list: [{id, alias, label, note}]}
     POST /api/models/reset                  forget Studio's list; the platform's applies again
-    POST /api/models/test                   ask the CLI once, this model only  {model} -> {ok, seconds, error}
+    POST /api/models/test                   ask once, this model only, on the provider that reaches it  {model, provider} -> {ok, seconds, error}
     POST /api/models/discover               look for new or retired models now (Claude Code's catalog, Anthropic's list)
     GET  /api/logs?limit=&level=&q=         the newest log lines, for the Settings page
     POST /api/logs/clear                    empty the in-memory buffer (the file is kept)
@@ -120,7 +120,9 @@ SEARCH_LIMIT = int(SETTINGS.get("studio.searchLimit"))
 MIN_HOURS = float(SETTINGS.get("generation.minHours"))
 MAX_HOURS = float(SETTINGS.get("generation.maxHours"))
 
-NO_CLAUDE = "Claude Code is not on this PATH, so nothing can be written."
+# What a guard says when the provider a job would run on cannot answer. "%s" is that
+# provider, named, because "install Claude Code" is wrong advice for a missing API key.
+NOTHING_TO_ASK = "%s cannot answer, so nothing can be %s."
 JOB_RUNNING = "That course already has a job running."
 
 # --------------------------------------------------------------------------- routing
@@ -263,9 +265,10 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
-    def _claude(self, message: str = NO_CLAUDE) -> bool:
-        """False, with the reply sent, when Claude Code cannot be found."""
+    def _provider(self, doing: str = "written") -> bool:
+        """False, with the reply sent, when the provider a job would run on cannot answer."""
         if not claude_cli.available():
+            message = NOTHING_TO_ASK % (catalog.llm_view()["providerLabel"], doing)
             self._fail(message)
             return False
         return True
@@ -379,13 +382,13 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/models/test")
     def models_test(self):
+        """One model, on the provider that reaches it. A provider that cannot answer is a
+        result to show in that row, not a 400 for the whole page."""
         body = self._body()
-        if not self._claude():
-            return
         model = str(body.get("model") or "").strip()
         if not models.MODEL_ID.match(model):
             return self._fail("Send the model id to test.")
-        self._json(claude_cli.probe(model))
+        self._json(claude_cli.probe(model, provider=str(body.get("provider") or "")))
 
     @route("GET", r"/api/logs")
     def logs(self):
@@ -643,7 +646,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail("%g hours is the shortest course worth structuring." % MIN_HOURS)
         if hours > MAX_HOURS:
             return self._fail("%g hours is beyond what one course should hold." % MAX_HOURS)
-        if not self._claude():
+        if not self._provider():
             return
         course_id = (brief.get("id") or "").strip().lower()
         if course_id and not is_course_id(course_id):
@@ -666,7 +669,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail("Cannot resume: %s" % exc)
         if not catalog.can_resume(course_id):
             return self._fail("Nothing to resume: this course is complete and consistent. Use Build.")
-        if not self._claude() or not self._idle(course_id):
+        if not self._provider() or not self._idle(course_id):
             return
         cfg = ck_config.load(root)
         asked = self._body()
@@ -684,7 +687,7 @@ class Handler(BaseHTTPRequestHandler):
         brief = self._body()
         if not (brief.get("topic") or "").strip():
             return self._fail("Say what the new module should cover.")
-        if not self._claude() or not self._idle(course_id):
+        if not self._provider() or not self._idle(course_id):
             return
         brief["model"] = self._model(brief)
         log.info("extend: course=%s topic=%r model=%s", course_id, brief["topic"], brief["model"])
@@ -694,7 +697,7 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", MODULE + r"/rewrite")
     def rewrite(self, course_id: str, mid: str):
         brief = self._body()
-        if not self._claude() or not self._idle(course_id):
+        if not self._provider() or not self._idle(course_id):
             return
         brief["model"] = self._model(brief)
         mode = "patch" if brief.get("mode") == "patch" else "rewrite"
@@ -705,7 +708,7 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", COURSE + r"/figures")
     def figures_course(self, course_id: str):
         brief = self._body()
-        if not self._claude("Claude Code is not on this PATH, so nothing can be drawn."):
+        if not self._provider("drawn"):
             return
         if not self._idle(course_id):
             return
@@ -718,7 +721,7 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", MODULE + r"/figures")
     def figures_module(self, course_id: str, mid: str):
         brief = self._body()
-        if not self._claude("Claude Code is not on this PATH, so nothing can be drawn."):
+        if not self._provider("drawn"):
             return
         if not self._idle(course_id):
             return
@@ -731,7 +734,7 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", COURSE + r"/notebooks")
     def notebooks_course(self, course_id: str):
         brief = self._body()
-        if not self._claude("Claude Code is not on this PATH, so nothing can be written."):
+        if not self._provider():
             return
         if not self._idle(course_id):
             return
@@ -744,7 +747,7 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", MODULE + r"/notebooks")
     def notebooks_module(self, course_id: str, mid: str):
         brief = self._body()
-        if not self._claude("Claude Code is not on this PATH, so nothing can be written."):
+        if not self._provider():
             return
         if not self._idle(course_id):
             return
@@ -756,7 +759,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", MODULE + r"/review")
     def review(self, course_id: str, mid: str):
-        if not self._claude("Claude Code is not on this PATH, so nothing can be reviewed."):
+        if not self._provider("reviewed"):
             return
         if not self._idle(course_id):
             return

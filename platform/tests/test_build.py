@@ -1115,6 +1115,28 @@ class TestProviderLayer(unittest.TestCase):
                          ["cmd", "/c", "C:/x/claude.cmd", "-p"])
         self.assertEqual(llm_cli.argv("C:/x/claude.exe", ["-p"]), ["C:/x/claude.exe", "-p"])
 
+    def test_a_provider_is_addressable_before_it_is_enabled(self):
+        """`enabled` governs what is offered, not what may be addressed - otherwise a row
+        cannot be tested until it is switched on, and switching it on is the thing you wanted
+        to test first."""
+        off = [name for name in settings.SETTINGS.provider_names(True)
+               if name not in settings.SETTINGS.provider_names()]
+        self.assertTrue(off, "settings.json ships some providers turned off")
+        self.assertIsNotNone(llm.find(off[0]))
+        self.assertNotIn(off[0], [p.name for p in llm.providers()])
+        self.assertIn(off[0], [p.name for p in llm.providers(all_of_them=True)])
+
+    def test_a_probe_is_never_quietly_answered_by_a_different_provider(self):
+        """"Does this model work on OpenAI" must not be answered by Claude Code saying no."""
+        off = [name for name in settings.SETTINGS.provider_names(True)
+               if name not in settings.SETTINGS.provider_names()]
+        answer = llm.probe("some-model", name=off[0])
+        self.assertFalse(answer["ok"])
+        self.assertIn(llm.find(off[0]).label, answer["error"])
+        nowhere = llm.probe("some-model", name="no-such-provider")
+        self.assertFalse(nowhere["ok"])
+        self.assertIn("no provider called", nowhere["error"])
+
     def test_the_registry_offers_the_cli_provider(self):
         self.assertEqual(llm.provider_for().kind, "cli")
         self.assertEqual(llm.provider_for("nothing-by-that-name").kind, "cli")

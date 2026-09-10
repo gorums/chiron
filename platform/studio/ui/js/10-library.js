@@ -102,11 +102,11 @@ function lastRunLine() {
     <a href="#/job/${esc(j.id)}">view it</a> · <a href="#/jobs">every recent run</a></p>`;
 }
 
-/* Claude Code is what writes a course. If it is missing, say it once, at the top, with
+/* A model is what writes a course. If none can answer, say it once, at the top, with
    the two commands that fix it — not as a silently greyed button. */
 function claudeBanner() {
   if (claudeReady()) return "";
-  return `<div class="note gap-top"><b>Claude Code is not answering.</b> Studio can still open, build and export a course,
+  return `<div class="note gap-top"><b>${esc(providerName())} is not answering.</b> Studio can still open, build and export a course,
     but it cannot write one. Install the <span class="mono">claude</span> command on this machine's PATH, run
     <span class="mono">claude login</span>, then reload. <a href="#/settings">Settings &amp; logs</a> shows what Studio sees.</div>`;
 }
@@ -138,7 +138,7 @@ function firstRun() {
     ${claudeBanner()}
     <div class="firstrun">
       <h2 class="big">No courses yet</h2>
-      <p class="lede">Name a subject and an hour budget. Claude designs the curriculum, you approve it,
+      <p class="lede">Name a subject and an hour budget. The model designs the curriculum, you approve it,
         and it writes every module, quiz and flashcard. Or bring in a course somebody else wrote.</p>
       <div class="rowline center wrapped">
         ${newCourseButton("primary")}
@@ -153,7 +153,7 @@ function newCourseButton(kind) {
   const ok = claudeReady();
   return ok
     ? `<a class="btn ${kind || ""}" href="#/new">New course</a>`
-    : `<button class="btn ${kind || ""}" disabled title="Studio cannot reach the Claude Code CLI, which is what writes a course.">New course</button>`;
+    : `<button class="btn ${kind || ""}" disabled title="Studio cannot reach ${esc(providerName())}, which is what writes a course.">New course</button>`;
 }
 
 function viewLibrary() {
@@ -161,7 +161,7 @@ function viewLibrary() {
   const cards = STATE.courses.map(courseCard).join("");
   const newCard = `<div class="coursecard new">
     <h3>New course</h3>
-    <p>Name a subject and an hour budget. Claude designs the curriculum, you approve it, then it writes every module.</p>
+    <p>Name a subject and an hour budget. The model designs the curriculum, you approve it, then it writes every module.</p>
     ${newCourseButton("primary")}
   </div>`;
   $("#view").innerHTML = `
@@ -363,7 +363,7 @@ function viewNew() {
   $("#view").innerHTML = `
     <p class="crumb"><a href="#/">Courses</a> › New course</p>
     <h2 class="big">New course</h2>
-    <p class="lede">Claude designs the curriculum first and shows it to you. Nothing is written until you approve it.</p>
+    <p class="lede">The curriculum is designed first and shown to you. Nothing is written until you approve it.</p>
     ${claudeGate()}
     <form class="card" id="newform">
       <div class="row">
@@ -393,10 +393,10 @@ function viewNew() {
         <textarea id="f-notes" placeholder="Weighted toward salary and contract talks. Skip hostage-negotiation material."></textarea>
       </div>
       <label class="radio"><input type="checkbox" id="f-figures" checked> <b>Draw figures</b></label>
-      <span class="fhint">One or two SVG diagrams per module where a picture beats a paragraph: a flow, a funnel, a 2×2, a build-up the reader steps through. One extra Claude call per module.</span>
+      <span class="fhint">One or two SVG diagrams per module where a picture beats a paragraph: a flow, a funnel, a 2×2, a build-up the reader steps through. One extra call per module.</span>
       <div class="field gap-top">
         <label>Notebooks</label>
-        <span class="fhint">Jupyter notebooks the reader runs and edits inside each module. Worth it for a subject you learn by running code; one extra Claude call per module.</span>
+        <span class="fhint">Jupyter notebooks the reader runs and edits inside each module. Worth it for a subject you learn by running code; one extra call per module.</span>
         <div class="rowline wrapped gap-top">
           <label class="radio"><input type="radio" name="f-notebooks" value="auto" checked> <b>Planner decides</b></label>
           <label class="radio"><input type="radio" name="f-notebooks" value="yes"> <b>Yes</b></label>

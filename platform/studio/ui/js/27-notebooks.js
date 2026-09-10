@@ -1,4 +1,4 @@
-/* ---------- notebooks: Jupyter notebooks for a module, written by Claude ----------
+/* ---------- notebooks: Jupyter notebooks for a module, written by the model ----------
    Only a course whose course.json declares `notebooks` (the Settings tab has the switch)
    carries any. The Modules tab shows how many modules have one and offers to write the
    missing ones; each module's row menu can write or replace its own. Both start a
@@ -17,7 +17,7 @@ function notebooksBar(c) {
   const server = jupyter.available
     ? `Jupyter is running at ${jupyter.url}, so these run inside the course page.`
     : `Jupyter is not running, so the course page shows their saved runs only. Start it with docker compose up, or build.py jupyter.`;
-  const why = `A Jupyter file Claude writes for a section (kernel ${c.notebooks.kernel}): the reader runs and edits it inside the module. ${server}`;
+  const why = `A Jupyter file written for a section (kernel ${c.notebooks.kernel}): the reader runs and edits it inside the module. ${server}`;
   const action =
     missing > 0
       ? `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="writeNotebooks('${c.id}',null,false)">Write the missing ${missing}</button>`
