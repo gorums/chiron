@@ -1,10 +1,10 @@
-# Claude Code
+# Gemini CLI
 
 **The instructions for this project are in [`common/CONVENTIONS.md`](common/CONVENTIONS.md)**
 — the layout, the conventions a test enforces, the two-layer rule, how a course is authored,
 and why each of them is the way it is.
 
-@common/CONVENTIONS.md
+Read that file first.
 
 They live under `common/` rather than in this file because **no tool's filename should own
 the content**. This project has three of these pointers — `CLAUDE.md`, `AGENTS.md`,
@@ -20,5 +20,6 @@ The same goes for what an agent can *do*. Skills are in
 |---|---|
 | [`course-author`](common/skills/course-author/SKILL.md) | Writing a course from a brief, or extending, rewriting or re-generating one in `courses/`. It is the specification for the module format, the JSON schemas and the pedagogy — read it **before** writing any course content. |
 
-Claude Code finds it through a stub at `.claude/skills/course-author/SKILL.md`, which carries the least it needs and points
+Gemini CLI finds it through a stub at `.gemini/commands/course-author.toml`, which carries the least it needs and points
 at the skill. A test fails if any of the three stubs drifts from it.
+Run it as `/course-author`.

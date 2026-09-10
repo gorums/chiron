@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -370,7 +371,7 @@ DIRTY_SVG = """<?xml version='1.0'?><svg viewBox='0 0 10 10' width='400' height=
 class TestFigures(TempCourseTest):
     """A figure is an SVG under figures/, referenced as `![caption](figures/<name>.svg)` and
     inlined by the build; it is sanitised on the way in and checked like any other file
-    (CLAUDE.md "Figures")."""
+    (CONVENTIONS.md "Figures")."""
 
     def _with_figure(self, name, svg, mid="M01", caption="What to notice"):
         fig_dir = os.path.join(self.course.root, "figures")
@@ -1594,8 +1595,93 @@ class TestBridge(unittest.TestCase):
         self.assertTrue("sk-ant-x".startswith(self.bridge.KEY_SHAPES))
 
 
+class TestSkillStub(unittest.TestCase):
+    """A skill lives in `common/skills/`, so that it belongs to the project rather than to
+    whichever tool is reading it today. Every tool then has its own folder it scans, and its
+    own file format, so each needs a stub - and a stub is a copy, which is the thing this
+    arrangement exists to avoid. So the copies are held to what they claim."""
+
+    ROOT = os.path.dirname(PLATFORM)
+    REAL = os.path.join(ROOT, "common", "skills")
+
+    # tool -> (path to its stub for skill <name>, does its description drive selection?)
+    # Claude Code and Codex both read the description to decide whether a skill applies, so
+    # theirs must match the skill's exactly. Gemini's is a one-line label in `/help`.
+    STUBS = {
+        "Claude Code": (os.path.join(".claude", "skills", "%s", "SKILL.md"), True),
+        "Codex": (os.path.join(".codex", "skills", "%s.md"), True),
+        "Gemini CLI": (os.path.join(".gemini", "commands", "%s.toml"), False),
+    }
+
+    @staticmethod
+    def _description(text):
+        """The description a stub declares, whichever of the three shapes it is written in."""
+        found = re.search(r'^description\s*[:=]\s*"?(.+?)"?\s*$', text, re.M)
+        return found.group(1) if found else ""
+
+    def _skills(self):
+        return sorted(n for n in os.listdir(self.REAL)
+                      if os.path.isdir(os.path.join(self.REAL, n)))
+
+    def test_every_tool_can_find_every_skill(self):
+        """Each of these scans a folder of its own. A skill with a stub for one tool and not
+        the others exists for one tool and not the others, which is what `common/` was made
+        to stop."""
+        self.assertTrue(self._skills(), "there is at least one skill to find")
+        for name in self._skills():
+            for tool, (shape, _selects) in self.STUBS.items():
+                path = os.path.join(self.ROOT, shape % name)
+                self.assertTrue(os.path.isfile(path),
+                                "%s cannot find the %s skill: no %s" % (tool, name, path))
+                text = open(path, encoding="utf-8").read()
+                self.assertIn("common/skills/" + name, text,
+                              "%s's stub does not say where the skill is" % tool)
+
+    def test_a_stub_that_decides_when_to_apply_says_what_the_skill_says(self):
+        """A description is what a tool reads to decide a skill applies at all. One that has
+        drifted from the skill is worse than none: it offers the wrong thing confidently."""
+        for name in self._skills():
+            real = self._description(
+                open(os.path.join(self.REAL, name, "SKILL.md"), encoding="utf-8").read())
+            self.assertTrue(real, "%s has no description" % name)
+            for tool, (shape, selects) in self.STUBS.items():
+                if not selects:
+                    continue
+                stub = self._description(
+                    open(os.path.join(self.ROOT, shape % name), encoding="utf-8").read())
+                self.assertEqual(stub, real, "%s's stub for %s has drifted" % (tool, name))
+
+    def test_every_index_names_every_skill(self):
+        """The folders are how a tool finds a skill; these are how a person does, and how an
+        agent reading the instructions rather than scanning a folder does."""
+        indexes = ["common/skills/README.md", "AGENTS.md", "GEMINI.md", "CLAUDE.md"]
+        for name in self._skills():
+            for index in indexes:
+                text = open(os.path.join(self.ROOT, index), encoding="utf-8").read()
+                self.assertIn(name, text, "%s does not name the %s skill" % (index, name))
+
+    def test_the_real_skill_names_its_references_from_the_repo_root(self):
+        """A relative `references/x.md` means two different things to a tool that opened a
+        stub and one that opened the skill. From the root it means one."""
+        text = open(os.path.join(self.REAL, "course-author", "SKILL.md"), encoding="utf-8").read()
+        self.assertNotIn("`references/", text)
+        self.assertIn("`common/skills/course-author/references/", text)
+
+    def test_the_gemini_command_is_valid_toml_that_carries_the_skill(self):
+        """Its `prompt` is required, and `@{path}` injects a file - so the command carries
+        the real instructions rather than a copy of them."""
+        import tomllib
+
+        for name in self._skills():
+            path = os.path.join(self.ROOT, ".gemini", "commands", name + ".toml")
+            with open(path, "rb") as fh:
+                command = tomllib.load(fh)
+            self.assertIn("prompt", command, "a Gemini command without a prompt does nothing")
+            self.assertIn("@{common/skills/%s/SKILL.md}" % name, command["prompt"])
+
+
 class TestCodeConventions(unittest.TestCase):
-    """The rules in CLAUDE.md "Code conventions" that a test can hold."""
+    """The rules in CONVENTIONS.md "Code conventions" that a test can hold."""
 
     PLATFORM = os.path.dirname(HERE)
     REPO = os.path.dirname(PLATFORM)
@@ -1697,7 +1783,7 @@ class TestCodeConventions(unittest.TestCase):
 
     def test_only_the_token_file_carries_a_colour(self):
         """Every colour the platform has is in web/css/00-tokens.css. A hex or an rgba()
-        anywhere else is a second palette starting (CLAUDE.md "The design system")."""
+        anywhere else is a second palette starting (CONVENTIONS.md "The design system")."""
         import re
         colour = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(")
         offenders = []
@@ -1795,7 +1881,7 @@ class TestCodeConventions(unittest.TestCase):
 
     def test_small_text_meets_AA_in_both_themes(self):
         """Every colour pair the platform prints small text in clears 4.5:1. `--muted` on
-        `--bg` used to sit at about 4.0 (CLAUDE.md "The design system")."""
+        `--bg` used to sit at about 4.0 (CONVENTIONS.md "The design system")."""
         bad = []
         for theme, palette in self._themes().items():
             for fg, bg in self.CONTRAST_PAIRS:
@@ -1845,7 +1931,7 @@ GOOD_NB = json.dumps({
 class TestNotebooks(TempCourseTest):
     """A notebook is an .ipynb under notebooks/, referenced as `[caption](notebooks/<name>.ipynb)`
     and rendered read-only by the build; only a course whose manifest declares `notebooks`
-    may carry one (CLAUDE.md "Notebooks")."""
+    may carry one (CONVENTIONS.md "Notebooks")."""
 
     def _with_notebook(self, name, text, mid="M01", caption="Try it: double a number", declare=True):
         nb_dir = os.path.join(self.course.root, "notebooks")
@@ -1932,7 +2018,7 @@ class TestNotebooks(TempCourseTest):
 class TestJupyterSettings(unittest.TestCase):
     """`jupyter.*` resolves like the bridge: an explicit URL wins, 0.0.0.0 is never told to a
     browser, the internal URL falls back to the public one, and the token stays out of
-    CFG.platform (CLAUDE.md "Notebooks")."""
+    CFG.platform (CONVENTIONS.md "Notebooks")."""
 
     def test_urls_and_token(self):
         s = settings.load(env={"JUPYTER_PORT": "9888", "JUPYTER_HOST": "0.0.0.0"}, dotenv={}, overlay="", studio_file="")

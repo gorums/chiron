@@ -1,0 +1,19 @@
+# A stub. The skill itself is at common/skills/course-author/SKILL.md, under common/ so
+# that it belongs to the project rather than to whichever tool is reading it. @{...} injects
+# that file, so this command carries the real instructions rather than a copy of them.
+
+description = "Write, extend or rewrite a course — the project's course-author skill"
+
+prompt = """
+Follow this project's `course-author` skill exactly. It is the specification for the module
+format, the JSON schemas and the pedagogy.
+
+@{common/skills/course-author/SKILL.md}
+
+Read the references it names before writing any course content:
+common/skills/course-author/references/module-format.md,
+common/skills/course-author/references/data-schemas.md,
+common/skills/course-author/references/pedagogy.md
+
+{{args}}
+"""

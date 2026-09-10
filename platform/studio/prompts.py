@@ -1,6 +1,6 @@
 """The prompts Studio sends.
 
-These are the machine-driven twin of `.claude/skills/course-author/`. The skill guides a
+These are the machine-driven twin of `common/skills/course-author/`. The skill guides a
 model that can read files and iterate; these run unattended, so they carry their contract
 inline and state the output format exactly. When the module format or a JSON schema changes,
 both have to change — the skill's `references/` remain the human-readable source of truth.

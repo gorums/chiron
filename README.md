@@ -186,4 +186,5 @@ git remote add origin https://github.com/<you>/<id>.git && git push -u origin HE
 Progress, finished jobs and trash stay in `state/` on the platform side, keyed by course
 id, so a course repository never carries anyone's reading history.
 
-See `CLAUDE.md` for how the build works and the rules that keep the two layers apart.
+See `common/CONVENTIONS.md` for how the build works and the rules that keep the two layers
+apart. `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` all point at it.

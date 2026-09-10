@@ -2122,7 +2122,7 @@ class TestNotebookWriting(unittest.TestCase):
     """Notebooks for a module: the reply parsed notebook by notebook and cell by cell,
     coerced towards what the build accepts, written under notebooks/ as nbformat 4 and
     referenced from the named section; only for a course whose manifest declares them
-    (CLAUDE.md "Notebooks")."""
+    (CONVENTIONS.md "Notebooks")."""
 
     def setUp(self):
         import tempfile
@@ -2371,7 +2371,7 @@ class TestNotebookWriting(unittest.TestCase):
 class TestJupyter(unittest.TestCase):
     """Studio only asks whether the Jupyter server is up and tells a served page where it
     is; the token goes to the page through /api/jupyter and to nothing else, and a dead
-    server is not probed on every poll (CLAUDE.md "Notebooks")."""
+    server is not probed on every poll (CONVENTIONS.md "Notebooks")."""
 
     def test_view_and_the_public_view(self):
         from coursekit.settings import SETTINGS
