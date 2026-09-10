@@ -240,22 +240,45 @@ their enabled and ready state.
 
 ## Phase 7 — The course page
 
-- [ ] `SETTINGS.page()` — add `providers` (enabled and direct-callable only, never a key);
+- [x] `SETTINGS.page()` — add `providers` (enabled and direct-callable only, never a key);
       keep `apiUrl` / `apiVersion` for one release.
-- [ ] `platform/web/js/14b-wire.js` — new: `WIRE.anthropic`, `WIRE.openai`, `WIRE.gemini`,
+- [x] `platform/web/js/14b-wire.js` — new: `WIRE.anthropic`, `WIRE.openai`, `WIRE.gemini`,
       each with `request`, `reply`, `problem`.
-- [ ] `platform/web/js/14-conn.js` — `callAnthropic` → `callDirect(provider, …)` through
+- [x] `platform/web/js/14-conn.js` — `callAnthropic` → `callDirect(provider, …)` through
       `WIRE`; `TROUBLE_BY_STATUS` stays (it is the JS twin of `from_status`);
       `adoptStudioModels` reads the new `llm` block.
-- [ ] `platform/web/js/01-state.js` — `bridge.keys` map; `upgrade()` moves an old
+- [x] `platform/web/js/01-state.js` — `bridge.keys` map; `upgrade()` moves an old
       `bridge.key` into `keys.anthropic`; `connDefaults()` updated.
-- [ ] `platform/web/js/19-settings.js` — connection card rewritten around providers: pick one,
+- [x] `platform/web/js/19-settings.js` — connection card rewritten around providers: pick one,
       paste its key, Test; the Claude-Code / bridge path becomes one provider among them.
-- [ ] `platform/web/js/17-rail.js`, `08-quiz.js`, `07b-gaps.js`, `17c-learner.js`,
+- [x] `platform/web/js/17-rail.js`, `08-quiz.js`, `07b-gaps.js`, `17c-learner.js`,
       `00-dom.js` — every user-facing "Claude" becomes "the tutor" or a resolved label;
       `HELP.tutor` and `HELP.verdict` rewritten.
-- [ ] Tests: `rail_checks.js` and `learner_checks.js` still pass; a saved model id no longer
+- [x] Tests: `rail_checks.js` and `learner_checks.js` still pass; a saved model id no longer
       in the list falls back to the default.
+
+Also done, not foreseen:
+
+- [x] **`apiProvider`, and the bug that asked for it.** A browser cannot spawn a
+      process, so a model whose provider is the `cli` row is unreachable from a page
+      opened off disk — even with a perfectly good API key, because the same model sits
+      behind an API under a different provider name. Caught by the first live check:
+      `connMode()` said `none` with a key stored. The `cli` row now names its API twin,
+      `page_providers` turns that into `standsInFor`, and the page follows it. A setting,
+      because nothing should infer which company's API serves which model id.
+- [x] **A key that cannot reach the chosen model no longer disables Studio.** The old
+      rule was "any key wins over Studio"; with per-provider keys that let a stored
+      OpenAI key turn off a Studio serving a Claude model. Now only a *usable* key wins.
+- [x] `19-settings.js` shows one key row per callable provider rather than one field, and
+      the cost explainer stopped naming one company's plans.
+
+**Done.** 135 tests in `test_build.py` (1 new), 144 in `test_studio.py`; `rail_checks.js`
+and `learner_checks.js` still pass. 22 new checks run inside the built page: the three
+wire formats byte for byte, the key migration from a pre-provider save, every routing
+case, and that a refusal reports the same six kinds whoever sent it. Then fed the running
+container's own `/api/state` into the built page: it adopts the list, keeps each model's
+provider, and works out that a browser reaches `claude-opus-5` through the Anthropic API
+while Studio reaches it through Claude Code.
 
 ## Phase 8 — The words, and the guards
 

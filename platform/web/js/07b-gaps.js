@@ -1,9 +1,9 @@
 /* ---- step 6 of a module: close the gaps ----
    The last step of the cycle drills what the module's own record says went wrong: the
-   gaps Claude named for this module, the quiz questions missed, the cards that keep
+   gaps named for this module, the quiz questions missed, the cards that keep
    lapsing, the exercises a grader marked partial or wrong (`gapItems` in 17c-learner.js).
-   Each one is a question; the reader answers in writing, Claude grades it against the
-   module text and the original miss, and a correct answer closes the item. Without Claude
+   Each one is a question; the reader answers in writing, the tutor grades it against the
+   module text and the original miss, and a correct answer closes the item. With no tutor
    the reader scores themselves. Answers and verdicts live in `progressOf(mid).gapWork`
    keyed by the item, so a closed item stays closed and the chips in the rail skip it. */
 function renderGapStep(m) {
@@ -38,7 +38,7 @@ function renderGapStep(m) {
     s += `<div class="card gap-top centered"><p class="sub gap-bottom">${open.length ? "You can mark the module complete now and come back to the open gaps; they stay in the tutor's prompt until closed." : "Finished all six steps?"}</p><button class="btn primary" onclick="toggleDone('${m.id}')">Mark ${m.id} complete and unlock its flashcards</button></div>`;
   b.innerHTML = s;
 }
-/* Claude can name gaps this module's record only hints at: offered when connected and the
+/* The tutor can name gaps this module's record only hints at: offered when connected and the
    brief is behind the evidence. */
 function gapRefreshOffer(m) {
   if (connMode() === "none" || !learnerStale()) return "";

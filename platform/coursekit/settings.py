@@ -353,16 +353,31 @@ class Settings:
     def page_providers(self) -> List[Dict[str, Any]]:
         """The providers a browser may call itself: enabled, and speaking a wire format
         rather than running a binary. **Never a key** - a built page is a file anyone may be
-        given, so the reader supplies their own in Settings."""
+        given, so the reader supplies their own in Settings.
+
+        `standsInFor` lists the providers whose models this one also serves. A browser cannot
+        spawn a process, so a model reached through a local tool would otherwise be
+        unreachable from a page opened off disk - even though the same model sits behind an
+        API. Which API is a setting (`apiProvider` on the tool's row), not a guess made from
+        the model's name.
+        """
+        twins: Dict[str, List[str]] = {}
+        for name, cfg in self.providers.items():
+            api = str(cfg.get("apiProvider") or "")
+            if api:
+                twins.setdefault(api, []).append(name)
         out: List[Dict[str, Any]] = []
         for name, cfg in self.providers.items():
             if not cfg.get("enabled", True) or cfg.get("kind") == "cli":
                 continue
             row = {"name": name, "kind": str(cfg.get("kind") or ""),
                    "label": str(cfg.get("label") or name),
-                   "apiUrl": str(cfg.get("apiUrl") or ""), "needsKey": True}
+                   "apiUrl": str(cfg.get("apiUrl") or ""), "needsKey": True,
+                   "standsInFor": twins.get(name, [])}
             if cfg.get("apiVersion"):
                 row["apiVersion"] = str(cfg["apiVersion"])
+            if cfg.get("maxTokensField"):
+                row["maxTokensField"] = str(cfg["maxTokensField"])
             out.append(row)
         return out
 

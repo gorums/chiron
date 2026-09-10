@@ -1,11 +1,15 @@
-/* ============================ talking to Claude ============================ */
-/* ---- talking to Claude ----
-   Two routes, in order of preference:
-     direct  — this page calls api.anthropic.com itself. Nothing to install, nothing to run.
-               Only possible from the local copy of this file; a published page is not
-               allowed to call other hosts.
-     bridge  — the optional little Python program in tools/bridge/. Useful if you would rather
-               use Claude Code than an API key.
+/* ============================ reaching the tutor ============================ */
+/* ---- which way the question goes ----
+   Three routes, and the page picks rather than asking:
+     studio  — this page is served by Course Studio, which answers on its own origin using
+               whatever provider it is configured with. Nothing for the reader to set up.
+     bridge  — the small program in tools/bridge/, for a page opened off disk.
+     direct  — a key the reader pasted into Settings; the page calls that provider itself
+               (the wire formats are in 14b-wire.js). Only possible from a local copy of
+               this file: a published page is not allowed to call other hosts.
+
+   A saved key wins over Studio, because pasting one is an explicit choice to pay per
+   question. Keys are per provider and never leave the browser.
 */
 let bridgeOk = null,
   bridgeErr = "",
@@ -13,7 +17,24 @@ let bridgeOk = null,
   studioOk = false;
 function conn() {
   if (!STATE.bridge) STATE.bridge = connDefaults();
-  return STATE.bridge;
+  const b = STATE.bridge;
+  if (!b.keys || typeof b.keys !== "object") b.keys = {};
+  return b;
+}
+/* The key the reader stored for one provider. */
+function keyFor(name) {
+  return (conn().keys[name] || "").trim();
+}
+function setKeyFor(name, key) {
+  const keys = conn().keys;
+  if (key) keys[name] = key;
+  else delete keys[name];
+}
+/* The provider the reader's chosen model would be reached through, when this page can call
+   it directly, and the key they have for it. */
+function directFor(model) {
+  const provider = providerForModel(model || modelFor(conn()));
+  return provider && keyFor(provider.name) ? provider : null;
 }
 /* An empty model in a saved state (or one this build no longer offers) means the default. */
 function modelFor(b) {
@@ -34,31 +55,30 @@ function tutorModelLabel() {
   return found ? found.label : id;
 }
 /* The model list Studio reports replaces the one this page was built with, in place, so a
-   model added on Studio's settings page is offered here without a rebuild. A saved pick
-   that the new list no longer has falls back to the default through modelFor(). */
-function adoptStudioModels(claude) {
-  const list = Array.isArray(claude.models) ? claude.models.filter(m => m && m.apiId) : [];
+   model added on Studio's settings page is offered here without a rebuild. Each model keeps
+   the provider that reaches it, which is what lets a direct call pick the right wire format.
+   A saved pick that the new list no longer has falls back to the default through modelFor(). */
+function adoptStudioModels(llm) {
+  const list = Array.isArray(llm.models) ? llm.models.filter(m => m && m.apiId) : [];
   if (!list.length) return;
   PLATFORM.models.splice(
     0,
     PLATFORM.models.length,
-    ...list.map(m => ({ id: m.apiId, label: m.name || m.apiId }))
+    ...list.map(m => ({ id: m.apiId, label: m.name || m.apiId, provider: m.provider || "" }))
   );
-  if (claude.defaultModel) PLATFORM.defaultModel = claude.defaultModel;
+  if (llm.defaultModel) PLATFORM.defaultModel = llm.defaultModel;
   if (typeof syncModelPickers === "function") syncModelPickers();
 }
 function isLocalFile() {
   return location.protocol === "file:";
 }
-/* Three routes, in order of preference:
-     studio  — this page is served by Course Studio, which answers on the same origin
-               through the Claude Code it already uses. Nothing to configure.
-     bridge  — the small program in tools/bridge/, for a page opened off disk.
-     direct  — an API key pasted into Settings; the page calls Anthropic itself.
-   A saved key always wins: it is an explicit choice to pay per question. */
+/* Which route is live right now. A key wins over Studio - pasting one is an explicit choice
+   to pay per question - but only a key that can actually reach the chosen model: a stored
+   key for one provider must not turn off a Studio that reaches the model through another. */
 function connMode() {
-  if (studioOk && !conn().key) return "studio";
-  return conn().route === "bridge" && bridgeOk ? "bridge" : conn().key ? "direct" : "none";
+  if (studioOk && !directFor()) return "studio";
+  if (conn().route === "bridge" && bridgeOk) return "bridge";
+  return directFor() ? "direct" : "none";
 }
 async function checkStudio() {
   if (!STUDIO) return false;
@@ -68,8 +88,10 @@ async function checkStudio() {
     const r = await fetch(STUDIO.origin + "/api/state", { signal: ctrl.signal, cache: "no-store" });
     clearTimeout(t);
     const j = await r.json();
-    studioOk = !!(j && j.claude && j.claude.available);
-    if (j && j.claude) adoptStudioModels(j.claude);
+    // `llm` is the block; `claude` is what it was called before providers had names.
+    const llm = (j && (j.llm || j.claude)) || null;
+    studioOk = !!(llm && llm.available);
+    if (llm) adoptStudioModels(llm);
   } catch (e) {
     studioOk = false;
   }
@@ -106,53 +128,62 @@ function worthCheckingSettings(why) {
   return why === "auth" || why === "model" || why === "unknown";
 }
 
-async function callAnthropic(key, system, messages, model, maxTokens) {
-  const body = {
+/* One call the page makes itself. Which provider, and therefore which wire format, comes
+   from the model - the reader picks a model, never a protocol. */
+async function callDirect(system, messages, model, maxTokens, provider, key) {
+  const chosen = provider || providerForModel(model);
+  if (!chosen) {
+    const err = new Error("There is no way to reach that model from this page.");
+    err.why = "model";
+    throw err;
+  }
+  const wire = WIRE[chosen.kind];
+  const stored = key || keyFor(chosen.name);
+  const req = {
     model: model || PLATFORM.defaultModel,
-    max_tokens: maxTokens || TUTOR.maxTokens,
+    maxTokens: maxTokens || TUTOR.maxTokens,
+    maxTokensField: chosen.maxTokensField,
+    system,
     messages: messages.slice(-TUTOR.history),
   };
-  if (system) body.system = system;
-  const r = await fetch(PLATFORM.apiUrl, {
+  const r = await fetch(wire.url(chosen, req), {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": key,
-      "anthropic-version": PLATFORM.apiVersion,
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify(body),
+    headers: wire.headers(chosen, stored),
+    body: JSON.stringify(wire.body(req)),
   });
   let j = null;
   try {
     j = await r.json();
   } catch (e) {}
-  if (!r.ok) {
-    const msg = (j && j.error && j.error.message) || "HTTP " + r.status;
-    const friendly =
-      {
-        401: "Anthropic rejected the key: " + msg,
-        403: "That key is not allowed to do this: " + msg,
-        404: "That model is not available on this key.",
-        429: "Rate limited, or the key is out of credit.",
-        529: "Anthropic is overloaded right now — try again in a moment.",
-      }[r.status] || "Anthropic error " + r.status + ": " + msg;
-    const err = new Error(friendly);
-    err.status = r.status;
-    err.why = troubleFromStatus(r.status);
-    throw err;
-  }
-  return (
-    (j.content || [])
-      .filter(c => c.type === "text")
-      .map(c => c.text)
-      .join("") || "(empty reply)"
-  );
+  if (!r.ok) throw directError(chosen, r.status, wire.problem(j));
+  return wire.reply(j) || "(empty reply)";
 }
 
-async function verifyKey(key) {
+/* What a refused direct call says. The status decides the kind, exactly as it does on the
+   Python side; the provider is named because the reader may hold more than one key. */
+function directError(provider, status, said) {
+  const detail = said || "HTTP " + status;
+  const friendly =
+    {
+      401: provider.label + " rejected the key: " + detail,
+      403: "That key is not allowed to do this: " + detail,
+      404: "That model is not available on this key.",
+      429: "Rate limited, or the key is out of credit.",
+      529: provider.label + " is overloaded right now — try again in a moment.",
+    }[status] || provider.label + " error " + status + ": " + detail;
+  const err = new Error(friendly);
+  err.status = status;
+  err.why = troubleFromStatus(status);
+  return err;
+}
+
+/* One tiny real request, to find out whether a key works before it is relied on. */
+async function verifyKey(key, providerName) {
+  const provider = providerByName(providerName) || providerForModel(modelFor(conn()));
+  if (!provider) return { ok: false, problem: "There is no provider to test that key on." };
+  const model = (PLATFORM.models.find(m => m.provider === provider.name) || {}).id;
   try {
-    await callAnthropic(key, "", [{ role: "user", content: "hi" }], modelFor(conn()), 4);
+    await callDirect("", [{ role: "user", content: "hi" }], model, 4, provider, key);
     return { ok: true };
   } catch (e) {
     const net = /failed|network|load/i.test(e.message || "") && !e.status;
@@ -161,7 +192,9 @@ async function verifyKey(key) {
       problem: net
         ? isLocalFile()
           ? "The request could not leave the browser. Check your internet connection."
-          : "A published page is not allowed to call Anthropic. Open " +
+          : "A published page is not allowed to call " +
+            provider.label +
+            ". Open " +
             CFG.localFile +
             " from your " +
             CFG.folderLabel +
@@ -177,7 +210,7 @@ async function checkBridge(quiet) {
   bridgeChecking = true;
   bridgeErr = "";
   if (!quiet) renderSidebar();
-  if ((await checkStudio()) && !b.key) {
+  if ((await checkStudio()) && !directFor()) {
     // served by Studio: it answers itself
     bridgeOk = true;
     b.mode = "studio";
@@ -186,7 +219,7 @@ async function checkBridge(quiet) {
     redrawForConnection();
     return true;
   }
-  if (b.key && b.route !== "bridge") {
+  if (directFor() && b.route !== "bridge") {
     // direct mode: nothing to probe
     bridgeOk = true;
     b.mode = "direct";
@@ -210,7 +243,7 @@ async function checkBridge(quiet) {
     b.mode = bridgeOk ? "bridge" : "none";
     if (bridgeOk) b.route = "bridge";
     if (!!j.ok && j.ready === false)
-      bridgeErr = "The bridge is running but has no way to reach Claude yet.";
+      bridgeErr = "The bridge is running but has no way to reach a model yet.";
   } catch (e) {
     bridgeOk = false;
     b.mode = "none";
@@ -221,7 +254,7 @@ async function checkBridge(quiet) {
   redrawForConnection();
   return bridgeOk;
 }
-/* The screens that say whether Claude is connected, redrawn once the answer is known. */
+/* The screens that say whether the tutor is connected, redrawn once the answer is known. */
 function redrawForConnection() {
   renderSidebar();
   if (route.view === "settings") viewSettings();
@@ -243,7 +276,7 @@ function tutorError(body, status, fallback) {
 async function askBridge(system, messages) {
   const b = conn();
   if (connMode() === "direct") {
-    return callAnthropic(b.key, system, messages, modelFor(b), TUTOR.maxTokens);
+    return callDirect(system, messages, modelFor(b), TUTOR.maxTokens);
   }
   if (connMode() === "studio") {
     const r = await fetch(STUDIO.origin + "/api/ask", {

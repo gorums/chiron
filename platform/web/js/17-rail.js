@@ -362,12 +362,12 @@ function modelOptions() {
     )
     .join("");
 }
-/* The picker itself, shown under the box so the reader always sees which Claude will
+/* The picker itself, shown under the box so the reader always sees which model will
    answer; every copy on the page carries data-model-pick and is kept in step by
    syncModelPickers(). */
 function modelPicker() {
-  return `<label class="modelpick" title="Which Claude answers in this chat">${ico("spark", 13)}
-    <select data-model-pick aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>`;
+  return `<label class="modelpick" title="Which model answers in this chat">${ico("spark", 13)}
+    <select data-model-pick aria-label="Which model answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>`;
 }
 function syncModelPickers() {
   const id = modelFor(conn());
@@ -438,7 +438,7 @@ function renderChatMenu() {
     ${others.length ? `<div class="cmhead">Other modules</div>` + others.map(convoRow).join("") : ""}
     <div class="cmfoot">
       <label class="cmmodel">Answers from
-        <select data-model-pick aria-label="Which Claude answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>
+        <select data-model-pick aria-label="Which model answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>
       <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat here</button>
       ${cur && cur.msgs.length ? `<button class="btn sm" title="${esc(help("compact"))}" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
       <button class="btn sm" onclick="markFilter='chats';go('#/marks')">All conversations</button>
@@ -645,7 +645,7 @@ async function railAsk(m, c, place, markId) {
   rail.sending = false;
   if (route.view !== "m") return;
   renderRail();
-  if (convoShown() !== c) toast("Claude replied in “" + convoTitle(c) + "”");
+  if (convoShown() !== c) toast("The tutor replied in “" + convoTitle(c) + "”");
   const i2 = document.getElementById("railin");
   if (i2) i2.focus();
 }

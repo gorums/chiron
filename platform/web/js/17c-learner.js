@@ -8,7 +8,7 @@
      with what they answered, a grader's Missing / Wrong findings, a card that keeps
      lapsing, a checkpoint miss, a question asked, a passage marked as unclear;
    - weak spots: the modules the evidence points at, scored without a model;
-   - the brief: what Claude writes from the evidence - a paragraph on how this reader
+   - the brief: what the tutor writes from the evidence - a paragraph on how this reader
      thinks and what keeps going wrong, plus one gap per misconception with a question
      that would test whether it has closed.
 
@@ -388,7 +388,7 @@ function gapChips(mid) {
   return out.slice(0, LEARNER.gapChips);
 }
 
-/* ---- the brief: Claude rewrites the memory from the evidence ---- */
+/* ---- the brief: the tutor rewrites the memory from the evidence ---- */
 const learnerRun = {
   busy: false, // a brief is being written
 };
@@ -517,7 +517,7 @@ async function refreshLearner(quiet) {
       applyLearnerReply(reply);
       ok = true;
       if (!quiet) toast("Your profile is up to date");
-    } else if (!quiet) toast("Could not read Claude's reply — try again");
+    } else if (!quiet) toast("Could not read the reply — try again");
   } catch (e) {
     if (!quiet) toast((e && e.message) || "The tutor did not answer");
   }

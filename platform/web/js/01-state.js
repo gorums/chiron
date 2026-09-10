@@ -18,10 +18,14 @@ const TUTOR = PLATFORM.tutor,
   NOTEBOOKS = PLATFORM.notebooks,
   AUDIO = PLATFORM.audio;
 /* The connection block of a fresh state: where the bridge is expected and which model to
-   ask for. Whatever the reader changes in Settings is kept on top of this. */
+   ask for. Whatever the reader changes in Settings is kept on top of this.
+
+   `keys` is one key per provider, because a reader may plausibly hold two. It never leaves
+   this browser: `progress.DEVICE_KEYS` strips the whole `bridge` block on the way to
+   Studio, and nothing here is ever sent to anywhere but the provider it belongs to. */
 const connDefaults = () => ({
   url: PLATFORM.bridgeUrl,
-  key: "",
+  keys: {},
   model: PLATFORM.defaultModel,
   route: "direct",
   mode: "none",
@@ -67,6 +71,13 @@ function upgrade(s) {
       if (!s[k] || typeof s[k] !== "object") s[k] = b[k];
     }
   );
+  s.bridge = Object.assign(connDefaults(), s.bridge || {});
+  if (!s.bridge.keys || typeof s.bridge.keys !== "object") s.bridge.keys = {};
+  // A save from before providers held one key, and it was always Anthropic's.
+  if (s.bridge.key) {
+    if (!s.bridge.keys.anthropic) s.bridge.keys.anthropic = s.bridge.key;
+    delete s.bridge.key;
+  }
   s.plan = Object.assign({}, b.plan, s.plan || {});
   s.learner = Object.assign(learnerBlank(), s.learner || {});
   s.streak = Object.assign({}, b.streak, s.streak || {});

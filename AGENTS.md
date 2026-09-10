@@ -7,7 +7,7 @@ When reporting information to me, be extremely concise and sacrifice grammar for
 A generic engine for building interactive study courses. You describe a theme and an hour
 budget; the `course-author` skill writes the course; `platform/build.py` renders it into one
 self-contained HTML file that tracks progress, runs spaced repetition, and lets the reader
-ask Claude about whatever passage they are looking at.
+ask Codex about whatever passage they are looking at.
 
 The marketing course is the reference implementation. It was the original project; the
 platform was extracted from it, and it now lives in its own repository like every course.
@@ -85,27 +85,11 @@ each naming the `provider` that reaches it; a row that names none belongs to
 working. An `id` need only be unique within its provider — two providers may well offer the
 same model — while an `alias`, being the short name a person types, is unique across the
 whole list. `llm.*` holds how hard the platform tries: the timeout, the retries, the
-backoff. **A setting written under its older name still works**: `claude.*` and
+backoff. **A setting written under its older name still works**: `Codex.*` and
 `anthropic.*` are read, moved to their new homes by `settings._absorb_legacy`, and reported
 on the settings page with the name they came from. Every `providers.*.apiKey` is a secret
 by rule (`settings.is_secret`), so a provider added later is masked without this file being
 edited.
-
-**The page speaks the wire formats too, in `web/js/14b-wire.js`.** A page opened off disk
-has no Python beside it, and a served page must not need the bridge to ask a question the
-reader is paying for themselves — so `WIRE` is the browser's half of `coursekit/llm/`: one
-entry per kind (`anthropic`, `openai`, `gemini`), each about ten lines of `url`, `headers`,
-`body`, `reply`, `problem`. `14-conn.js` chooses a route and never asks which of them
-answered. **A key is per provider** (`STATE.bridge.keys`, migrated from the single
-`bridge.key` in `upgrade()`), stays in the browser, and a key that cannot reach the chosen
-model does not count: a stored OpenAI key must not turn off a Studio that reaches the model
-another way.
-
-**`apiProvider` is how a local tool and an API are known to be the same models.** A browser
-cannot spawn a process, so a model whose provider is a `cli` row would be unreachable from a
-page off disk — even though the same model sits behind an API. The `cli` row names its API
-twin, `page_providers` turns that into `standsInFor`, and `providerForModel` follows it. It
-is a setting because nothing should be inferring which company's API serves which model id.
 
 **The page gets its slice as `CFG.platform`.** `renderer.runtime_config` merges
 `SETTINGS.page()` into the `CFG` the shell receives: the bridge address, the providers a
@@ -114,7 +98,7 @@ model list with each model's provider and the default, and the `page` block (tut
 sync timing, study rules, rail sizes). `01-state.js` binds them to `PLATFORM`, `TUTOR`, `SYNC`, `STUDY`
 and `LAYOUT`; a fresh state's connection block comes from `connDefaults()`. Do not write an
 address, a model id or a limit into `platform/web/js/` - add a key to `settings.json` and
-read it through `CFG.platform`. `test_build.py` fails on `api.anthropic.com`, a `claude-*`
+read it through `CFG.platform`. `test_build.py` fails on `api.anthropic.com`, a `Codex-*`
 id, `127.0.0.1` or a port literal in the front end, the way it fails on a subject word.
 
 `paths.COURSES_DIR` and `paths.DIST_DIR` are the same mechanism: `paths.courses` and
@@ -148,16 +132,16 @@ dist/<id>/                  build output (generated — do not edit)
 state/                      generated, gitignored, personal:
   progress/<id>.json        the platform's copy of a reader's progress (the default profile)
   progress/<profile>/       the same, for every other reader profile
-  reviews/<id>/<mid>.json   what Claude found when asked to review a module
+  reviews/<id>/<mid>.json   what Codex found when asked to review a module
   jobs/<id>.json            finished generation jobs, replayable after a restart
   trash/                    removed modules and deleted courses — moved, never erased
-  logs/studio.log           every Claude call and job event, rotating (2 MB × 3)
+  logs/studio.log           every Codex call and job event, rotating (2 MB × 3)
   studio.json               Studio-wide preferences: the model
-tools/bridge/               local proxy so a course page can reach Claude
+tools/bridge/               local proxy so a course page can reach Codex
 tools/jupyter/              the Jupyter server's configuration, shared by compose and `build.py jupyter`
 docker/Dockerfile           one image; Studio and the bridge differ only by command
 compose.yaml                both services, restart: unless-stopped
-.claude/skills/course-author/   the skill that writes a course from a brief
+.Codex/skills/course-author/   the skill that writes a course from a brief
 ```
 
 ## Commands
@@ -195,32 +179,32 @@ docker compose logs -f studio    watch a generation run
 docker compose down              stop them
 ```
 
-Needs a `.env` holding `CLAUDE_HOME` — the path to the host's `~/.claude`. Copy `.env.example`.
+Needs a `.env` holding `CLAUDE_HOME` — the path to the host's `~/.Codex`. Copy `.env.example`.
 The same file may set `COURSES_DIR`; compose mounts it at `/work/courses`. `STUDIO_PORT`,
 `BRIDGE_PORT`, `JUPYTER_PORT` and `JUPYTER_TOKEN` there are read by compose *and* by the
 code, so the published port and the one the service binds always agree.
 
 **One image, three services.** Studio, the bridge and Jupyter need the same things — Python,
-and the Claude Code CLI for the first two — so they share a build and differ only in the
+and the Codex CLI for the first two — so they share a build and differ only in the
 command and the mounts. Two Dockerfiles would be two things to keep in step. The `jupyter`
 service is the one that runs code a model wrote, so it gets the courses and the platform's
-configuration and nothing else: no `~/.claude` (see "Notebooks").
+configuration and nothing else: no `~/.Codex` (see "Notebooks").
 
 **Nothing is COPYed into the image.** The repo arrives as a bind mount, so a course written
 inside the container is a real file in the user's folder and editing `platform/` needs only a
 restart. Rebuild only when `docker/Dockerfile` changes.
 
-**`~/.claude` is mounted as a whole directory, never as a single file.** Claude Code refreshes
+**`~/.Codex` is mounted as a whole directory, never as a single file.** Codex refreshes
 its OAuth token by writing a new file and renaming it over the old one, which silently breaks
 a single-file bind mount. The mount is read-write because that refresh has to persist; the
-container then behaves like any other Claude Code session on the account.
+container then behaves like any other Codex session on the account.
 
 **Services bind `0.0.0.0` inside the container, and compose publishes to `127.0.0.1`.**
 `STUDIO_HOST`, `BRIDGE_HOST` and `JUPYTER_HOST` default to loopback in the code and are
 overridden only in the image. Dropping the `127.0.0.1:` prefix from a `ports:` entry would expose a service that
 writes files and spawns processes to the whole network. Do not.
 
-**Claude Code runs from an empty scratch directory** (`claude_cli._SCRATCH`), not the repo.
+**Codex runs from an empty scratch directory** (`claude_cli._SCRATCH`), not the repo.
 It prompts to trust the directory it starts in, which would hang a headless call — worse in a
 container, where the workspace is a bind mount it has never seen. Studio passes everything in
 the prompt and asks the model to read nothing, so it needs no filesystem context.
@@ -241,14 +225,14 @@ from the same file opened off disk, and every difference goes through one detect
   course saved; a tab becoming visible pulls again. Device settings (`bridge`, `ui`, `theme`) never leave the
   browser — `progress.DEVICE_KEYS` strips them again server-side.
 - **The tutor answers on the same origin.** `connMode()` returns `"studio"` when Studio
-  reports Claude available and no API key is saved; `askBridge()` then posts to `/api/ask`,
+  reports Codex available and no API key is saved; `askBridge()` then posts to `/api/ask`,
   which flattens the conversation with `claude_cli.chat_prompt` and runs the CLI on stdin. No
   bridge, no key, no CORS. A saved key still wins: it is an explicit choice to pay per question.
 - **The course can grow from inside.** The module footer links to Studio's course page with
   `?tab=add&from=<mid>` or `?rewrite=<mid>`.
 
 The bridge remains the route for a page opened off disk (`file://`), where none of this
-applies. It is `tools/bridge/tutor-bridge.py` (`claude-bridge.py` still starts it), and it
+applies. It is `tools/bridge/tutor-bridge.py` (`Codex-bridge.py` still starts it), and it
 reaches a model only through `coursekit.llm` — the same provider layer Studio uses, so the
 retry policy, the model chain and the failure kinds are one implementation rather than two
 that drift. What is its own: a loopback socket with CORS, the key hunt (`candidate_keys`,
@@ -277,7 +261,7 @@ platform’s only dependency.
 | `shape` | flattening a conversation into one prompt; digging JSON out of prose |
 | `cli` | a model reached through a headless binary |
 | `wire` | a model reached over HTTP: everything but the shape of a request and a reply |
-| `claude_code` | what one particular binary knows about, read out of its bytes |
+| `Codex` | what one particular binary knows about, read out of its bytes |
 | `anthropic` | Anthropic's Messages API |
 | `openai` | OpenAI's Chat Completions — and every server that speaks it |
 | `gemini` | Google's generateContent |
@@ -285,7 +269,7 @@ platform’s only dependency.
 
 - **A provider runs one call and classifies what came back. `chain` decides what to do about
   it.** The retry policy, the JSON insistence and the progress reporting are the platform’s,
-  not any vendor’s, so they are written once (see "When Claude says no" for the rules).
+  not any vendor’s, so they are written once (see "When Codex says no" for the rules).
 - **A prompt is sent verbatim when a caller built one.** `Request.prompt` goes through
   untouched — a module prompt is a document, not a conversation, and wrapping it in "User:"
   would change what the model is asked. `system` and `messages` are the chat shape, which a
@@ -321,7 +305,7 @@ platform’s only dependency.
   the enabled ones — pickers, discovery, anything asking "what can answer"; `llm.find(name)`
   reaches a configured provider whether or not it is on, so a row can be tested before it is
   switched on. `llm.probe` refuses a name nothing is configured under rather than trying
-  somewhere else: "does this model work on OpenAI" must not be answered by Claude Code
+  somewhere else: "does this model work on OpenAI" must not be answered by Codex
   saying no.
 - **`Provider.catalog()` is how a provider says what exists**, for discovery:
   `{ok, models, known, error}` — `models` is what it would offer, `known` the wider set it
@@ -433,9 +417,9 @@ much as a variable name is a contract with the next person to read the code.
 | Practice | Review, Retrieval practice | the flashcard deck, `#/review` |
 | Fix mistakes | mistake queue | `#/review/mistakes` |
 | mastery: Not started · Read · Practised · Proficient · Mastered | | each with a `help()` line |
-| tutor | Claude, assistant, chat panel | who answers in the page |
-| Claude | model | who writes and reviews in Studio |
-| Claude Code | | the installed CLI; the status pill only |
+| tutor | Codex, assistant, chat panel | who answers in the page |
+| Codex | model | who writes and reviews in Studio |
+| Codex | | the installed CLI; the status pill only |
 | model | | the picker |
 | Rebuild | publish, render | write `dist/` again |
 | Stop (a run) / Cancel (a form) | | |
@@ -462,7 +446,7 @@ and everything else exists to make the practice half of that honest:
 | Study plan (hours per week or a target date), the "today" list, streak freezes, a study-day heatmap, browser notifications when served by Studio | `10b-plan.js`, `10-stats.js`, `01-state.js` (`markDay`) |
 | The tutor as grader: Elaborate and Apply answers, `short` quiz answers, filled worksheets and role-play transcripts all get a `VERDICT:` line and a Covered / Missing / Wrong / Ask-yourself reply | `17b-grader.js` |
 | Role-play: the tutor plays `assess.roleplay.persona` in the rail and stays in character until "Finish & get feedback" | `17b-grader.js`, `17-rail.js` (`c.kind === "rp"`) |
-| Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Claude | `11b-worksheets.js`; the inputs are made at build time by `library.fillable` |
+| Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Codex | `11b-worksheets.js`; the inputs are made at build time by `library.fillable` |
 | Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `07-module.js`, `06-home.js` |
 | Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `07c-figures.js`, `css/02-content.css` |
 | Listening: the Read step read aloud by the browser's own speech engine, block by block with the spoken block highlighted; a section heard to its end is ticked read; voice and speed under `S.ui` (see "Listening") | `07d-audio.js`, `css/02-content.css` |
@@ -486,7 +470,7 @@ it answers. It is built in three layers by `17c-learner.js`:
   a checkpoint miss, a question asked in the rail, a passage marked as unclear. Each line
   carries a `weight`; `weakSpots()` sums them per module, so the page can point at weak
   modules without a model.
-- **The brief** is what Claude writes from the evidence (`refreshLearner`): a paragraph on
+- **The brief** is what Codex writes from the evidence (`refreshLearner`): a paragraph on
   how this reader thinks and what keeps going wrong, up to `page.learner.maxGaps` gaps
   `{id, mid, topic, why, ask, status}` - each with one question that would test whether
   the gap has closed - and a few strengths. `parseLearnerReply` distrusts the structure
@@ -509,7 +493,7 @@ it answers. It is built in three layers by `17c-learner.js`:
   `why`), each lapsing card (`l:<card>`), each exercise graded partial or wrong (its
   grader key). The reader answers in writing; `checkGapAnswer` grades it with the module
   text and the original miss and closes the item only on `correct` (a right answer with
-  wrong reasoning is `partial`); without Claude the reader scores themselves. Answers and
+  wrong reasoning is `partial`); without Codex the reader scores themselves. Answers and
   verdicts live in `progressOf(mid).gapWork[key]`, so a closed item stays closed, leaves
   the chips and the tutor prompt, and `stepDone(m, 5)` is true once the step was opened
   and nothing is left. The course record lists the modules with open items.
@@ -733,7 +717,7 @@ Studio's origin, because Jupyter's default refuses to be framed.
 - `docker compose up` starts it as the `jupyter` service from the same image (Notebook 7,
   ipykernel, numpy, pandas, matplotlib; the pip line in the Dockerfile is where a course's
   packages go). It mounts the courses read-write and `platform/` and `tools/` read-only,
-  and **not** `~/.claude`: it runs code a model wrote, and a kernel with the OAuth
+  and **not** `~/.Codex`: it runs code a model wrote, and a kernel with the OAuth
   directory in reach is one `open()` from the token. Studio reaches it as
   `JUPYTER_INTERNAL_URL=http://jupyter:<port>`; the browser at the published loopback port.
 - `python platform/build.py jupyter` runs the same thing on the host (`pip install
@@ -779,7 +763,7 @@ reading validation errors next to the course they belong to.
 | `jupyter` | the Jupyter server: is it reachable, and what a served page is told (`GET /api/jupyter`); `build.py jupyter` |
 | `models` | the model list Studio offers: validated, saved to `state/settings.json`, live everywhere after `SETTINGS.reload()`; `GET/PUT /api/models`, `/api/models/reset`, `/api/models/test` |
 | `discover` | keeps that list current without anyone typing an id: every provider is asked what it knows (`Provider.catalog`) and the answers merge per provider; `schedule()` runs daily, `POST /api/models/discover` runs now |
-| `reviews` | what Claude or the owner thinks of a module, under `state/reviews/` |
+| `reviews` | what Codex or the owner thinks of a module, under `state/reviews/` |
 | `catalog` | what the API reports: `course_summary`, `course_detail`, `state`, `calendar`, `settings_view` |
 | `runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |
 | `progress` | the platform-side copy of reader state, one JSON file per course |
@@ -805,7 +789,7 @@ files and spawns processes. Do not make it listen on another interface.
 `available` is about the provider a writing job would actually run on — a key for a provider
 nobody writes with must not read as "Studio may write" — and `providers` is every configured
 row with `enabled`, `available`, its model count and whether it is the default. The same
-block is still sent as `claude` for one release, because a page loaded before the rename
+block is still sent as `Codex` for one release, because a page loaded before the rename
 looks for it. In the UI, `llmState()` reads whichever is there and `providerName()` is the
 one place a provider is named, so no screen carries a vendor of its own; `_provider(doing)`
 is the server-side guard, and it names the provider that could not answer rather than
@@ -813,9 +797,9 @@ telling someone to install the wrong thing.
 
 **Prompts go in on stdin, never as `-p <prompt>`.** A Windows command line caps at 8191
 characters, and a module prompt is an order of magnitude larger. stdin removes the ceiling.
-`tools/bridge/claude-bridge.py` does the same; its remaining trim only bounds cost per question.
+`tools/bridge/Codex-bridge.py` does the same; its remaining trim only bounds cost per question.
 
-**Every CLI call names its model.** Without `--model`, Claude Code inherits whatever the
+**Every CLI call names its model.** Without `--model`, Codex inherits whatever the
 person last chose interactively, and the headless SDK path rejects some of those (a `[1m]`
 context variant fails with `unrecognized_model`) — which is how a run died at module 8 of 9.
 `claude_cli.model_chain()` tries the requested alias, then Studio's default (`prefs`, env
@@ -825,24 +809,24 @@ resort. `prefs.models()` is the only list the Settings page offers, and it is
 saved over it. **The list is editable without touching a committed file.** The "Models on
 offer" card on `#/settings` (`ui/js/31-models.js`) edits id, alias, label and note per row,
 reorders, adds and removes; Save is `PUT /api/models` with the whole list, which
-`studio/models.py` validates (an id `claude --model` would take, no name used twice, never
+`studio/models.py` validates (an id `Codex --model` would take, no name used twice, never
 empty) and writes to `state/settings.json`, the Studio layer of the settings, then
 `SETTINGS.reload()`. "Back to the platform's list" is `POST /api/models/reset`. A row's
 Test button is `POST /api/models/test`: `claude_cli.probe` asks the CLI once with that
-model only, no fallback chain, within `claude.probeTimeout`, so a typo or a retired id is
+model only, no fallback chain, within `Codex.probeTimeout`, so a typo or a retired id is
 refused on the settings page and not at module 8 of a run. A served course page adopts the
-list Studio reports in `/api/state` (`adoptStudioModels` in `14-conn.js`, `claude.models`
-with `apiId` and `claude.defaultModel`), so it needs no rebuild; a page off disk keeps the
+list Studio reports in `/api/state` (`adoptStudioModels` in `14-conn.js`, `Codex.models`
+with `apiId` and `Codex.defaultModel`), so it needs no rebuild; a page off disk keeps the
 list it was built with, and the bridge reads the layer when it starts.
 
 **Nobody has to type a new model's id.** `studio/discover.py` keeps the list current by
 asking **every configured provider what it knows** (`Provider.catalog`), and merging the
-answers **per provider** — a Claude Code build says nothing about what OpenAI offers, and is
+answers **per provider** — a Codex build says nothing about what OpenAI offers, and is
 not allowed to. An HTTP provider answers from its own `/models` endpoint; a `cli` provider
-has nothing to ask, so `coursekit/llm/claude_code.py` reads the two tables inside the
-`claude` binary (the rows its `/model` picker offers, and the fuller table of everything
+has nothing to ask, so `coursekit/llm/Codex.py` reads the two tables inside the
+`Codex` binary (the rows its `/model` picker offers, and the fuller table of everything
 `--model` accepts) plus the catalogue it last fetched under `CLAUDE_CONFIG_DIR` or
-`~/.claude`. That file is vendor-specific on purpose: the regular expressions are one
+`~/.Codex`. That file is vendor-specific on purpose: the regular expressions are one
 program's internals, so a build that changes shape — or any other CLI — reports "could not be
 read", never "no models".
 
@@ -855,8 +839,8 @@ without dates offers everything it has.
 
 `removals()` decides the candidates, and the rule is about who may be believed.
 `catalog_is_complete` is true for an endpoint that lists what an account may use — absent
-from it means gone — and false for a binary scan, because an older Claude Code passes an id
-it has never heard of straight to the API and it works (2.1.252 accepted `claude-fable-5-1`
+from it means gone — and false for a binary scan, because an older Codex passes an id
+it has never heard of straight to the API and it works (2.1.252 accepted `Codex-fable-5-1`
 without listing it). For those, a candidate stays unless one real call (`llm.probe`, on that
 provider) is refused *for being that model*: an account out of quota refuses every id there
 is, and a nightly check run while the account was out must not shrink the list. **No
@@ -867,21 +851,21 @@ after Studio starts and every `discovery.hours` (0 turns it off); the Models car
 last check and has "Check now". Studio on the host and Studio in the container share
 `state/settings.json`, so each check is made against the tools that Studio can actually run.
 
-**When Claude says no, the reason decides what happens next.** Claude Code reports an
+**When Codex says no, the reason decides what happens next.** Codex reports an
 exhausted account, an overloaded server and a model it does not recognise the same way — a
 non-zero exit and a line of stderr — so `coursekit/llm/failures.py` names the kind once
 (`quota`, `auth`, `model`, `transient`, `timeout`, `unknown`) and everything above it acts
 on the name rather than reading stderr again. It sits in `coursekit`, stdlib-only, because
-`tools/bridge/claude-bridge.py` imports it from outside the package the way it imports
+`tools/bridge/Codex-bridge.py` imports it from outside the package the way it imports
 `settings`.
 
-- **`transient` is waited out**, on the same model: `claude.retries` further attempts with
-  the wait doubling from `claude.backoffSeconds` to `claude.backoffMaxSeconds`. A
+- **`transient` is waited out**, on the same model: `Codex.retries` further attempts with
+  the wait doubling from `Codex.backoffSeconds` to `Codex.backoffMaxSeconds`. A
   forty-minute run used to die at module 8 of 9 on a five-second outage.
 - **`model` moves down the chain**, which is what the chain was for.
 - **`quota`, `auth` and `timeout` end it at once.** Every model on the chain draws on the
   same account, so trying the next one wastes a minute and then tells the reader the wrong
-  story — "Claude Code refused Opus" when the truth is "this account is out until 3pm". A
+  story — "Codex refused Opus" when the truth is "this account is out until 3pm". A
   usage-limit message that names its reset time has it repeated back.
 - **The message is a sentence, not stderr.** `explain()` writes what to do; the CLI's own
   words go to `detail` and the log. A `ClaudeFailed` carries `kind`, `detail` and
@@ -918,11 +902,11 @@ generator call site passes `what=` ("the text of M03", "the quiz and flashcards 
 can say where a job is without replaying it: the header pill (`#jobstate`), the library
 cards and the course page show that line and poll every few seconds while anything runs.
 The job screen ticks once a second - step, time on this step, total, a rough estimate from
-the steps already finished, and what Claude is writing right now - and the tab title
+the steps already finished, and what Codex is writing right now - and the tab title
 carries the step. Check, Build and an import are synchronous and show a spinner with a
 clock (`busy()` in `studio.js`) with the buttons disabled meanwhile.
 
-**Log first, then look.** `log.log` is the `studio` logger. Every Claude call logs model,
+**Log first, then look.** `log.log` is the `studio` logger. Every Codex call logs model,
 duration, prompt/reply size and stderr on failure; every job event logs a line; every
 unhandled route error logs a traceback. Read it at **Settings & logs** (`#/settings`) or in
 `state/logs/studio.log`. `STUDIO_LOG_LEVEL=DEBUG` adds access lines. Rotation size and
@@ -962,8 +946,8 @@ Without a model (`studio/manage.py`):
 | `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, the notebooks runtime (off, or a kernel and packages), part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
 | `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title and its `order` entry go; the reply carries the check result. |
 | `POST /api/courses/<id>/modules/<mid>/move` | `{part, index}`: reorder within a part or move to another; writes `order`, moves the file, never touches study data. |
-| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/` by `reviews.py`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
-| `POST /api/courses/<id>/modules/<mid>/accept` | `{accepted: bool}`: the owner's own verdict, "this is good". `reviews.accept_module` stores it in the same review file (`accepted`, and `ownerOnly` when there was no review), the row shows "good" over whatever Claude said, and it goes stale like a review when the module changes. |
+| `POST /api/courses/<id>/modules/<mid>/review` | a job: Codex reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/` by `reviews.py`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
+| `POST /api/courses/<id>/modules/<mid>/accept` | `{accepted: bool}`: the owner's own verdict, "this is good". `reviews.accept_module` stores it in the same review file (`accepted`, and `ownerOnly` when there was no review), the row shows "good" over whatever Codex said, and it goes stale like a review when the module changes. |
 | `POST /api/courses/<id>/delete` | needs `{confirm: <id>}`; moves `courses/<id>` and `dist/<id>` to `state/trash/<id>-<stamp>/` and forgets the progress copy. |
 
 The reader's open questions (`state.marks` with status `open`/`answered`) come back in the
@@ -993,7 +977,7 @@ boots the whole UI under node with `page_smoke.js`, so a name one file uses and 
 declares fails the suite.
 
 **Nothing hijacks the screen you asked for.** A live run is a banner with a link
-(`liveJobBanner`), not a redirect; a missing Claude Code is one sentence at the top
+(`liveJobBanner`), not a redirect; a missing Codex is one sentence at the top
 (`claudeGate`, `claudeBanner`), not a row of silently greyed buttons; the nav highlights the
 section that owns the route, not only the three top-level ones (`NAV_OWNER`). Under 720px
 the nav collapses into a ☰ menu, because otherwise New course and Settings are unreachable.
@@ -1011,9 +995,9 @@ have to change.** The skill's `references/` stay the human-readable source of tr
 
 Use the `course-author` skill for hand-guided work. Its references are the specification:
 
-- `.claude/skills/course-author/references/module-format.md` — the markdown contract
-- `.claude/skills/course-author/references/data-schemas.md` — the JSON schemas
-- `.claude/skills/course-author/references/pedagogy.md` — what makes a course worth finishing
+- `.Codex/skills/course-author/references/module-format.md` — the markdown contract
+- `.Codex/skills/course-author/references/data-schemas.md` — the JSON schemas
+- `.Codex/skills/course-author/references/pedagogy.md` — what makes a course worth finishing
 
 Do not write course content freehand without reading those; the format is enforced and the
 pedagogy is the point.
@@ -1127,7 +1111,7 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
 - Every module in `studio/` has tests in `test_studio.py`; the engine in `test_build.py`.
   A new route gets a line in the server docstring (the test checks it resolves) and, when
   it does real work, a test through `Handler` with a stub `claude_cli.ask`.
-- Tests stub Claude by replacing `claude_cli.ask`; they never make a network call.
+- Tests stub Codex by replacing `claude_cli.ask`; they never make a network call.
 - A test that guards a rule of this file names the rule in its docstring.
 
 ## Gotchas
