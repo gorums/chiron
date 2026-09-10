@@ -124,18 +124,40 @@ Also done, not foreseen:
 
 ## Phase 4 — OpenAI, Gemini, and a generic CLI
 
-- [ ] `platform/coursekit/llm/openai.py` — Chat Completions; system as a `system` message;
+- [x] `platform/coursekit/llm/openai.py` — Chat Completions; system as a `system` message;
       `choices[0].message.content`; `Authorization: Bearer`; base URL from settings so the
       same adapter serves Ollama, LM Studio, vLLM, OpenRouter, Groq and Azure.
-- [ ] `platform/coursekit/llm/gemini.py` — `generateContent`; `systemInstruction`;
+- [x] `platform/coursekit/llm/gemini.py` — `generateContent`; `systemInstruction`;
       `contents[].parts[].text` with `assistant` → `model`; `x-goog-api-key`.
-- [ ] `llm/failures.py` — OpenAI (`insufficient_quota`, `invalid_api_key`, `model_not_found`,
+- [x] `llm/failures.py` — OpenAI (`insufficient_quota`, `invalid_api_key`, `model_not_found`,
       `rate_limit_exceeded`, `context_length_exceeded`) and Google (`RESOURCE_EXHAUSTED`,
       `PERMISSION_DENIED`, `NOT_FOUND`, `UNAVAILABLE`) patterns.
-- [ ] `llm/cli.py` — argv from the provider's `command` / `args` / `modelFlag` / `promptOn`
+- [x] `llm/cli.py` — argv from the provider's `command` / `args` / `modelFlag` / `promptOn`
       settings; Claude Code becomes one configuration among several.
-- [ ] Tests: one round-trip per wire format against a stubbed `urlopen`; the shared retry and
+- [x] Tests: one round-trip per wire format against a stubbed `urlopen`; the shared retry and
       chain logic behaves identically across all four kinds.
+
+Also done, not foreseen:
+
+- [x] `llm/wire.py` — `HttpProvider`: the socket, the key, the probe and the failure
+      translation, written once. An adapter fills in four hooks (`url_for`, `headers`,
+      `body_for`, `text_of`), which is why `openai.py` and `gemini.py` are ~70 lines.
+      `anthropic.py` was moved onto it in the same pass rather than left as a third copy.
+- [x] `maxTokensField` per provider. Newer OpenAI reasoning models reject `max_tokens`
+      and older servers reject `max_completion_tokens`; guessing here would be a literal
+      in the code for something that differs per server.
+- [x] **A bug the live test found.** `llm.complete` on a provider with no models listed
+      silently replaced the asked-for model with the default: a request naming
+      `llama3.1:70b` went out as `opus`. `model_chain` now says which list it is
+      consulting — the list decides where it has anything to say about that provider,
+      and passes the name through where it has not. Two Studio tests caught the
+      over-correction (a model taken off the list must still not be asked for), which is
+      how the rule ended up stated properly rather than patched twice.
+
+**Done.** 132 tests in `test_build.py` (16 new: both wire formats, the shared-failure
+sweep across all four providers, the argument-passing CLI), 141 in `test_studio.py`.
+Proved live against a local OpenAI-shaped server: system prompt as a turn, the model id
+sent verbatim, one attempt, the reply read back out of `choices[0].message.content`.
 
 ## Phase 5 — Discovery, per provider
 

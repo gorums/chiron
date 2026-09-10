@@ -102,23 +102,36 @@ def default_model() -> str:
 def model_chain(model: str = "", provider_name: str = "") -> List[str]:
     """The models to try, in order: what was asked for, then the default.
 
-    **A chain never crosses providers.** Falling back from a model one provider refused to a
-    model on another account answers a question the caller did not ask, and bills someone
-    who did not agree to it. When the provider has models of its own in the list, only those
-    are on the chain; when it has none - a provider configured before its models were added,
-    or a test double - there is nothing to filter by and the chain is what it always was.
+    Two rules, and they pull in opposite directions until you say which list is being
+    consulted:
+
+    - **The list decides, where it has anything to say.** A model that was taken off it, or
+      a name nobody recognises, is not worth a call: `models.list` is what the settings page
+      and discovery maintain, and honouring a dead id would undo both. But a provider with
+      no models listed yet - a local server, a provider configured before its models were
+      added - has nothing to say, and then what was asked for is what is asked for.
+    - **A chain never crosses providers.** Falling back from a model one provider refused to
+      a model on another account answers a question the caller did not ask, and bills
+      someone who did not agree to it. So the default is a fallback only where it is that
+      provider's default too.
     """
-    mine = None
-    if provider_name:
-        listed = SETTINGS.models_for(provider_name)
-        mine = {m["id"] for m in listed} | {m["alias"] for m in listed if m.get("alias")}
-        mine = mine or None
-    chain: List[str] = []
+    listed = SETTINGS.models_for(provider_name) if provider_name else SETTINGS.models
+    known = {m["id"] for m in listed} | {m["alias"] for m in listed if m.get("alias")}
     aliases = model_aliases()
-    for candidate in ((model or "").strip(), default_model()):
-        alias = aliases.get(candidate)
-        if alias and alias not in chain and (mine is None or alias in mine):
-            chain.append(alias)
+    chain: List[str] = []
+
+    asked = (model or "").strip()
+    if asked:
+        short = aliases.get(asked)
+        if short and short in known:
+            chain.append(short)
+        elif not known:
+            chain.append(short or asked)
+
+    fallback = aliases.get(default_model())
+    ours = not provider_name or SETTINGS.provider_of(default_model()) == provider_name
+    if fallback and ours and fallback not in chain:
+        chain.append(fallback)
     return chain
 
 

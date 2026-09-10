@@ -260,7 +260,10 @@ platform’s only dependency.
 | `base` | what a provider is: `Provider`, `Request`, `Reply`, `Capabilities`, `LLMFailed` |
 | `shape` | flattening a conversation into one prompt; digging JSON out of prose |
 | `cli` | a model reached through a headless binary |
-| `anthropic` | a model reached through Anthropic's Messages API |
+| `wire` | a model reached over HTTP: everything but the shape of a request and a reply |
+| `anthropic` | Anthropic's Messages API |
+| `openai` | OpenAI's Chat Completions — and every server that speaks it |
+| `gemini` | Google's generateContent |
 | `chain` | retries, model fallback, and telling whoever is watching |
 
 - **A provider runs one call and classifies what came back. `chain` decides what to do about
@@ -278,10 +281,22 @@ platform’s only dependency.
   `SETTINGS.provider_of`; asking every call site to know as well would be a second place to
   keep right. `llm.provider_for(name)` is there for the one caller that does have a provider
   in hand — the bridge, which found its own key.
-- **A chain never crosses providers.** `model_chain(model, provider)` offers only models
-  that provider reaches: falling back to a model on another account answers a question
-  nobody asked and bills someone who did not agree to it. A provider with no models listed
-  yet is not filtered by, because there is nothing to filter with.
+- **An HTTP provider is four hooks.** `wire.HttpProvider` owns the socket, the key, the
+  probe and the failure translation; an adapter says only where the request goes
+  (`url_for`), how the key travels (`headers`), what the body looks like (`body_for`) and
+  where the reply is (`text_of`). That is about forty lines each, which is why
+  `openai.py` and `gemini.py` are short. **`openai` is worth more than the API it is named
+  after**: Chat Completions is the lingua franca, so pointing `apiUrl` at Ollama, LM Studio,
+  vLLM, OpenRouter, Groq or Azure needs no new file — `local` in `settings.json` is that
+  adapter aimed at a machine of your own. The one thing those servers disagree on is what
+  the token cap is called, so `maxTokensField` is a setting rather than a guess.
+- **`model_chain(model, provider)` obeys two rules that pull against each other.** *The
+  list decides, where it has anything to say*: a model taken off `models.list`, or a name
+  nobody recognises, is not asked for — honouring a dead id would undo both the settings
+  page and discovery. *But a provider with no models listed yet has nothing to say*, and
+  then what was asked for is what is asked for; quietly substituting the default would
+  answer a different question, on a different account. And *a chain never crosses
+  providers*: the default is a fallback only where it is that provider's default too.
 - **A key lives on the provider, not on the request.** `AnthropicProvider.with_key` is how
   the bridge uses the key it hunted down, so a secret never threads through `Request`,
   `chain` or a job event.

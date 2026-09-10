@@ -64,12 +64,13 @@ class CliProvider(Provider):
 
     def __init__(self, name: str = "claude-code", label: str = "Claude Code",
                  commands=COMMANDS, args=HEADLESS, model_flag: str = "--model",
-                 hint: str = "", scratch: str = ""):
+                 prompt_on: str = "stdin", hint: str = "", scratch: str = ""):
         self.name = name
         self.label = label
         self.commands = tuple(commands)
         self.args = list(args)
         self.model_flag = model_flag
+        self.prompt_on = prompt_on      # "stdin", or "arg" for a tool that wants it there
         self.hint = hint                # what to do when it is there but will not answer
         self.scratch = scratch or SETTINGS.scratch_dir
 
@@ -82,6 +83,7 @@ class CliProvider(Provider):
                    commands=tuple(cfg.get("command") or COMMANDS),
                    args=list(cfg.get("args") or HEADLESS),
                    model_flag=str(cfg.get("modelFlag") or "--model"),
+                   prompt_on=str(cfg.get("promptOn") or "stdin"),
                    hint=str(cfg.get("signinHint") or ""))
 
     # ---- what it is
@@ -151,12 +153,17 @@ class CliProvider(Provider):
 
     def _run(self, cli: str, args: List[str], prompt: str, timeout: int
              ) -> subprocess.CompletedProcess:
-        """One call from the scratch directory, the prompt on stdin. The argument vector is a
-        list and there is no shell, so a model id can never be read as a command."""
+        """One call from the scratch directory. The argument vector is a list and there is no
+        shell, so neither a model id nor a prompt can ever be read as a command.
+
+        `promptOn: "arg"` is for a tool that will not read stdin. It is not the default and
+        should not be: a Windows command line caps at 8191 characters, which a module prompt
+        passes an order of magnitude ago."""
         os.makedirs(self.scratch, exist_ok=True)
+        on_stdin = self.prompt_on != "arg"
         return subprocess.run(
-            argv(cli, args),
-            input=prompt,
+            argv(cli, args if on_stdin else args + [prompt]),
+            input=prompt if on_stdin else None,
             capture_output=True,
             text=True,
             timeout=timeout,

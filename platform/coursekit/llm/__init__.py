@@ -18,7 +18,10 @@ The pieces, in dependency order:
 | `base` | what a provider is: `Provider`, `Request`, `Reply`, `Capabilities`, `LLMFailed` |
 | `shape` | flattening a conversation into one prompt; digging JSON out of prose |
 | `cli` | a model reached through a headless binary |
-| `anthropic` | a model reached through Anthropic's Messages API |
+| `wire` | a model reached over HTTP: everything but the shape of a request and a reply |
+| `anthropic` | Anthropic's Messages API |
+| `openai` | OpenAI's Chat Completions - and every server that speaks it |
+| `gemini` | Google's generateContent |
 | `chain` | retries, model fallback, and telling whoever is watching |
 
 `provider_for(name)` is how a caller gets one, and the names are the rows of the `providers`
@@ -58,10 +61,14 @@ from .chain import (  # noqa: F401
 )
 from .anthropic import AnthropicProvider
 from .cli import CliProvider
+from .gemini import GeminiProvider
+from .openai import OpenAIProvider
 from .shape import CHAT_HISTORY, chat_prompt, slice_json, strip_fence  # noqa: F401
+from .wire import HttpProvider  # noqa: F401
 
 # Which adapter serves which `kind`. A kind that is not here has no adapter yet.
-ADAPTERS = {"cli": CliProvider, "anthropic": AnthropicProvider}
+ADAPTERS = {"cli": CliProvider, "anthropic": AnthropicProvider,
+            "openai": OpenAIProvider, "gemini": GeminiProvider}
 
 
 def build(name: str, cfg: Dict[str, Any]) -> Optional[Provider]:

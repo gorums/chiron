@@ -27,7 +27,10 @@ from coursekit.llm import base as llm_base  # noqa: E402
 from coursekit.llm import anthropic as llm_anthropic  # noqa: E402
 from coursekit.llm import chain as llm_chain  # noqa: E402
 from coursekit.llm import cli as llm_cli  # noqa: E402
+from coursekit.llm import gemini as llm_gemini  # noqa: E402
+from coursekit.llm import openai as llm_openai  # noqa: E402
 from coursekit.llm import shape as llm_shape  # noqa: E402
+from coursekit.llm import wire as llm_wire  # noqa: E402
 from coursekit.errors import CourseError, DataError, ManifestError  # noqa: E402
 
 MODULE_MD = """# M{n:02d} — Lesson {n}
@@ -939,10 +942,10 @@ class Answers(llm_base.Provider):
     an exception to raise."""
 
     kind = "test"
-    name = "test"
     label = "The test provider"
 
-    def __init__(self, *script):
+    def __init__(self, *script, name="claude-code"):
+        self.name = name                # stand in for a real provider: the chain rules apply
         self.script = list(script)
         self.seen = []                  # the model each attempt asked for
 
@@ -1081,6 +1084,29 @@ class TestProviderLayer(unittest.TestCase):
         self.assertEqual(provider._args_for(""), ["-p", "--output-format", "text"],
                          "no model named means the default of the binary itself")
 
+    def test_a_tool_that_will_not_read_stdin_can_take_the_prompt_as_an_argument(self):
+        """Not the default, and it must not become one: a Windows command line caps at 8191
+        characters and a module prompt passed that an order of magnitude ago."""
+        seen = {}
+
+        def fake_run(argv, **kw):
+            seen["argv"], seen["input"] = argv, kw.get("input")
+
+            class Done:
+                returncode, stdout, stderr = 0, "ok", ""
+
+            return Done()
+
+        provider = llm_cli.CliProvider(prompt_on="arg", commands=("claude",))
+        real_run, real_find = llm_cli.subprocess.run, llm_cli.find_cli
+        llm_cli.subprocess.run, llm_cli.find_cli = fake_run, lambda *a: "claude"
+        try:
+            provider.complete(llm_base.Request(prompt="WRITE M03", model="opus", timeout=5))
+        finally:
+            llm_cli.subprocess.run, llm_cli.find_cli = real_run, real_find
+        self.assertEqual(seen["argv"][-1], "WRITE M03")
+        self.assertIsNone(seen["input"], "it is on the command line, not on stdin")
+
     def test_a_shim_on_windows_is_run_through_cmd(self):
         """A .cmd or .bat cannot be executed directly, and every Windows install is one."""
         if os.name != "nt":
@@ -1120,23 +1146,20 @@ def refusal(code, payload=None):
     return urllib.error.HTTPError("https://x.test", code, "no", {}, streams.BytesIO(body))
 
 
-class TestAnthropicProvider(unittest.TestCase):
-    """The second provider, and the one that proves the interface: a key instead of a
-    signed-in binary, a system prompt beside the turns instead of inside them, and an HTTP
-    status instead of an exit code. None of that may reach a caller."""
+class WireTest(unittest.TestCase):
+    """Shared scaffolding: one canned HTTP exchange, and the request that was sent."""
 
     def setUp(self):
-        self.provider = llm_anthropic.AnthropicProvider(
-            api_url="https://x.test/v1/messages", models_url="https://x.test/v1/models",
-            api_version="2023-06-01", key="sk-ant-test")
         self.sent = []
-        self.real = llm_anthropic.urllib.request.urlopen
+        self.real = llm_wire.urllib.request.urlopen
 
     def tearDown(self):
-        llm_anthropic.urllib.request.urlopen = self.real
+        llm_wire.urllib.request.urlopen = self.real
 
     def _answers(self, *replies):
+        """Queue the exchanges one script will have, and forget any earlier one."""
         answers = list(replies)
+        self.sent = []
 
         def urlopen(request, timeout=0):
             self.sent.append(request)
@@ -1145,7 +1168,22 @@ class TestAnthropicProvider(unittest.TestCase):
                 raise answer
             return Answered(answer)
 
-        llm_anthropic.urllib.request.urlopen = urlopen
+        llm_wire.urllib.request.urlopen = urlopen
+
+    def _body(self, n=0):
+        return json.loads(self.sent[n].data.decode("utf-8"))
+
+
+class TestAnthropicProvider(WireTest):
+    """The second provider, and the one that proved the interface: a key instead of a
+    signed-in binary, a system prompt beside the turns instead of inside them, and an HTTP
+    status instead of an exit code. None of that may reach a caller."""
+
+    def setUp(self):
+        WireTest.setUp(self)
+        self.provider = llm_anthropic.AnthropicProvider(
+            api_url="https://x.test/v1/messages", models_url="https://x.test/v1/models",
+            api_version="2023-06-01", key="sk-ant-test")
 
     @staticmethod
     def _said(text, stop="end_turn"):
@@ -1222,6 +1260,173 @@ class TestAnthropicProvider(unittest.TestCase):
         self.assertTrue(result["advice"])
 
 
+class TestOpenAIProvider(WireTest):
+    """Chat Completions, which is also Ollama, LM Studio, vLLM, OpenRouter, Groq and Azure -
+    one adapter with the base URL as a setting."""
+
+    def setUp(self):
+        WireTest.setUp(self)
+        self.provider = llm_openai.OpenAIProvider(
+            name="openai", label="OpenAI", api_url="https://o.test/v1/chat/completions",
+            models_url="https://o.test/v1/models", key="sk-test")
+
+    @staticmethod
+    def _said(text, why="stop"):
+        return {"choices": [{"message": {"content": text}, "finish_reason": why}]}
+
+    def test_the_system_prompt_is_a_turn_rather_than_a_field(self):
+        self._answers(self._said("hello"))
+        reply = self.provider.complete(llm_base.Request(
+            system="SYSTEM", messages=[{"role": "user", "content": "why?"},
+                                       {"role": "assistant", "content": "because"}],
+            model="gpt-5.6", timeout=5, max_tokens=50))
+        body = self._body()
+        self.assertEqual(body["messages"][0], {"role": "system", "content": "SYSTEM"})
+        self.assertEqual([m["role"] for m in body["messages"]],
+                         ["system", "user", "assistant"])
+        self.assertEqual(reply.text, "hello")
+        self.assertEqual(self.sent[0].headers["Authorization"], "Bearer sk-test")
+
+    def test_which_name_the_token_cap_goes_by_is_a_setting(self):
+        """Newer reasoning models reject `max_tokens`; every older server rejects the other.
+        Guessing here would be a literal in the code for something that differs per server."""
+        self._answers(self._said("ok"), self._said("ok"))
+        self.provider.complete(llm_base.Request(prompt="hi", timeout=5, max_tokens=9))
+        self.assertIn("max_tokens", self._body(0))
+        newer = self.provider.with_key("sk-test")
+        newer.max_tokens_field = "max_completion_tokens"
+        newer.complete(llm_base.Request(prompt="hi", timeout=5, max_tokens=9))
+        self.assertIn("max_completion_tokens", self._body(1))
+        self.assertNotIn("max_tokens", self._body(1))
+
+    def test_a_truncated_answer_says_so_in_the_notes(self):
+        self._answers(self._said("half a th", why="length"))
+        self.assertIn("length",
+                      self.provider.complete(llm_base.Request(prompt="hi", timeout=5)).notes)
+
+    def test_the_error_body_names_the_kind_the_status_alone_would_miss(self):
+        self._answers(refusal(400, {"error": {"code": "model_not_found", "message": "no"}}))
+        with self.assertRaises(llm_base.LLMFailed) as caught:
+            self.provider.complete(llm_base.Request(prompt="hi", timeout=5))
+        self.assertEqual(caught.exception.kind, failures.MODEL)
+
+    def test_the_catalogue_is_one_page_of_ids(self):
+        self._answers({"data": [{"id": "gpt-5.6"}, {"id": "gpt-4o"}]})
+        self.assertEqual([m["id"] for m in self.provider.catalog()["models"]],
+                         ["gpt-5.6", "gpt-4o"])
+
+
+class TestGeminiProvider(WireTest):
+    """generateContent: the model in the path, `parts` instead of `content`, and the
+    assistant called `model`."""
+
+    def setUp(self):
+        WireTest.setUp(self)
+        self.provider = llm_gemini.GeminiProvider(
+            name="google", label="Google Gemini", api_url="https://g.test/v1beta",
+            key="AIza-test")
+
+    @staticmethod
+    def _said(text, why="STOP"):
+        return {"candidates": [{"content": {"parts": [{"text": text}]}, "finishReason": why}]}
+
+    def test_the_model_goes_in_the_path_and_the_prefix_is_not_repeated(self):
+        self._answers(self._said("ok"), self._said("ok"))
+        self.provider.complete(llm_base.Request(prompt="hi", model="gemini-flash-3", timeout=5))
+        self.provider.complete(llm_base.Request(prompt="hi", model="models/gemini-flash-3",
+                                                timeout=5))
+        wanted = "https://g.test/v1beta/models/gemini-flash-3:generateContent"
+        self.assertEqual([r.full_url for r in self.sent], [wanted, wanted])
+
+    def test_the_assistant_is_called_model_and_the_system_prompt_is_an_instruction(self):
+        self._answers(self._said("ok"))
+        self.provider.complete(llm_base.Request(
+            system="SYSTEM", messages=[{"role": "user", "content": "a"},
+                                       {"role": "assistant", "content": "b"}],
+            model="gemini-flash-3", timeout=5, max_tokens=50))
+        body = self._body()
+        self.assertEqual([c["role"] for c in body["contents"]], ["user", "model"])
+        self.assertEqual(body["contents"][0]["parts"], [{"text": "a"}])
+        self.assertEqual(body["systemInstruction"], {"parts": [{"text": "SYSTEM"}]})
+        self.assertEqual(body["generationConfig"]["maxOutputTokens"], 50)
+
+    def test_the_key_travels_in_a_header_not_the_url(self):
+        """A key in a query string ends up in every log that records a URL."""
+        self._answers(self._said("ok"))
+        self.provider.complete(llm_base.Request(prompt="hi", model="g", timeout=5))
+        self.assertEqual(self.sent[0].headers["X-goog-api-key"], "AIza-test")
+        self.assertNotIn("AIza-test", self.sent[0].full_url)
+
+    def test_the_parts_of_one_answer_are_joined(self):
+        self._answers({"candidates": [{"content": {"parts": [{"text": "ha"}, {"text": "lf"}]}}]})
+        self.assertEqual(
+            self.provider.complete(llm_base.Request(prompt="hi", model="g", timeout=5)).text,
+            "half")
+
+    def test_the_catalogue_keeps_the_resource_path_as_the_id(self):
+        """`models/gemini-flash-3` is what the model field takes, so it is what we store."""
+        self._answers({"models": [{"name": "models/gemini-flash-3", "displayName": "Flash 3"}]})
+        found = self.provider.catalog()["models"]
+        self.assertEqual(found[0]["id"], "models/gemini-flash-3")
+        self.assertEqual(found[0]["label"], "Flash 3")
+
+
+class TestEveryProviderBehavesTheSameWayWhenItFails(WireTest):
+    """The point of the layer: four wire formats, one set of kinds, one retry policy. A
+    caller must not be able to tell which one answered."""
+
+    def _providers(self):
+        return (llm_anthropic.AnthropicProvider(api_url="https://a.test/v1/messages",
+                                                api_version="2023-06-01", key="k"),
+                llm_openai.OpenAIProvider(api_url="https://o.test/v1/chat", key="k"),
+                llm_gemini.GeminiProvider(api_url="https://g.test/v1beta", key="k"))
+
+    def test_a_status_means_the_same_thing_whoever_sent_it(self):
+        for provider in self._providers():
+            for code, kind in ((429, failures.QUOTA), (401, failures.AUTH),
+                               (404, failures.MODEL), (503, failures.TRANSIENT)):
+                self._answers(refusal(code))
+                with self.assertRaises(llm_base.LLMFailed) as caught:
+                    provider.complete(llm_base.Request(prompt="hi", model="m", timeout=5))
+                self.assertEqual(caught.exception.kind, kind, (provider.kind, code))
+                self.assertEqual(caught.exception.provider, provider.name)
+
+    def test_no_key_is_an_auth_failure_and_never_a_call(self):
+        for provider in self._providers():
+            self._answers()
+            with self.assertRaises(llm_base.LLMFailed) as caught:
+                provider.with_key("").complete(llm_base.Request(prompt="hi", timeout=5))
+            self.assertEqual(caught.exception.kind, failures.AUTH, provider.kind)
+        self.assertEqual(self.sent, [], "nothing was sent")
+
+    def test_the_words_three_vendors_use_for_one_kind(self):
+        cases = {"insufficient_quota": failures.QUOTA,
+                 "RESOURCE_EXHAUSTED": failures.QUOTA,
+                 "invalid_api_key": failures.AUTH,
+                 "PERMISSION_DENIED": failures.AUTH,
+                 "model_not_found": failures.MODEL,
+                 "The model `x` does not exist or you do not have access to it":
+                     failures.MODEL,
+                 "UNAVAILABLE": failures.TRANSIENT}
+        for said, kind in cases.items():
+            self.assertEqual(failures.classify(said), kind, said)
+
+    def test_the_retry_policy_is_the_chain_and_not_the_provider(self):
+        """A transient failure is waited out on the same model, whichever provider it was."""
+        for provider in self._providers():
+            self._answers(refusal(503), {"content": [{"type": "text", "text": "ok"}],
+                                         "choices": [{"message": {"content": "ok"}}],
+                                         "candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+            backoff, llm_chain.BACKOFF = llm_chain.BACKOFF, 0
+            try:
+                reply = llm_chain.complete(provider, llm_base.Request(
+                    prompt="hi", model="claude-opus-5", timeout=5))
+            finally:
+                llm_chain.BACKOFF = backoff
+            self.assertEqual(reply.text, "ok", provider.kind)
+            self.assertEqual(len(self.sent), 2, provider.kind)
+
+
 class TestModelChainStaysWithOneProvider(unittest.TestCase):
     """Falling back from a model one provider refused to a model on another account answers
     a question nobody asked, and bills someone who did not agree to it."""
@@ -1232,10 +1437,19 @@ class TestModelChainStaysWithOneProvider(unittest.TestCase):
         self.assertTrue(chain)
         self.assertTrue(set(chain) <= listed)
 
-    def test_a_provider_with_nothing_listed_is_not_filtered_by(self):
-        """A provider configured before its models were added, or a test double."""
-        self.assertEqual(llm_chain.model_chain("sonnet", "nobody-lists-these"),
-                         llm_chain.model_chain("sonnet"))
+    def test_the_default_is_a_fallback_only_where_it_is_the_default(self):
+        """Asking a local server for the model Claude Code would have used wastes a call at
+        best, and answers with the wrong model at worst."""
+        mine = settings.SETTINGS.default_model
+        self.assertIn(mine, llm_chain.model_chain("sonnet", "claude-code"))
+        self.assertNotIn(mine, llm_chain.model_chain("gpt-5.6", "openai"))
+        self.assertIn(mine, llm_chain.model_chain("sonnet"), "no provider named, no filtering")
+
+    def test_a_model_the_list_never_heard_of_is_still_the_model_that_was_asked_for(self):
+        """A local server's tag, or a model added to a provider but not to `models.list`.
+        Quietly sending the default instead answers a different question than the caller
+        asked, and on a different account."""
+        self.assertEqual(llm_chain.model_chain("llama3.1:70b", "local"), ["llama3.1:70b"])
 
 
 class TestBridge(unittest.TestCase):

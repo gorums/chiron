@@ -37,7 +37,7 @@
     "probeCacheSeconds": 15
   },
   "providers": {
-    "_": "How a model is reached. `kind` picks the adapter in coursekit/llm/: `cli` runs a headless binary, the rest speak a wire format. A provider with `enabled: false` keeps its configuration but is offered nowhere. A key is a secret: it is masked on the settings page and never reaches a course page.",
+    "_": "How a model is reached. `kind` picks the adapter in coursekit/llm/: `cli` runs a headless binary, the rest speak a wire format. `openai` is Chat Completions and therefore also Ollama, LM Studio, vLLM, OpenRouter, Groq and Azure - point `apiUrl` at one and set `maxTokensField` to the name that server takes. A provider with `enabled: false` keeps its configuration but is offered nowhere. A key is a secret: it is masked on the settings page and never reaches a course page.",
     "claude-code": {
       "kind": "cli",
       "label": "Claude Code",
@@ -62,6 +62,7 @@
       "enabled": false,
       "apiUrl": "https://api.openai.com/v1/chat/completions",
       "modelsUrl": "https://api.openai.com/v1/models",
+      "maxTokensField": "max_completion_tokens",
       "apiKey": ""
     },
     "google": {
@@ -77,6 +78,7 @@
       "enabled": false,
       "apiUrl": "http://127.0.0.1:11434/v1/chat/completions",
       "modelsUrl": "http://127.0.0.1:11434/v1/models",
+      "maxTokensField": "max_tokens",
       "apiKey": "ollama"
     }
   },

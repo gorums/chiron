@@ -29,19 +29,26 @@ TIMEOUT = "timeout"
 UNKNOWN = "unknown"
 
 # Matched in order, first fit wins, so the distinctive wordings come before the loose ones.
+# Each line holds what one provider calls that kind: a signed-in CLI prints one thing, and
+# Anthropic, OpenAI and Google each name it their own way in an error body. They are together
+# because the answer to all of them is the same, which is the whole point of a kind.
 _SIGNS = (
     (QUOTA, re.compile(
         r"usage limit|rate.?limit|too many requests|\b429\b|quota|"
-        r"out of credit|credit balance|insufficient", re.I)),
+        r"out of credit|credit balance|insufficient|"
+        r"RESOURCE_EXHAUSTED|billing_hard_limit", re.I)),
     (AUTH, re.compile(
         r"not logged in|please (?:log|sign) in|invalid api key|unauthorized|"
-        r"authentication|permission_error|\b401\b|\b403\b", re.I)),
+        r"authentication|permission_error|invalid_api_key|account_deactivated|"
+        r"PERMISSION_DENIED|UNAUTHENTICATED|\b401\b|\b403\b", re.I)),
     (MODEL, re.compile(
         r"unrecognized_model|unknown model|invalid model|model not found|"
-        r"not_found_error|not a valid model|model catalog|\b404\b", re.I)),
+        r"not_found_error|model_not_found|NOT_FOUND|not a valid model|model catalog|"
+        r"does not exist or you do not have access|\b404\b", re.I)),
     (TRANSIENT, re.compile(
         r"overloaded|\b5(?:00|02|03|29)\b|internal server error|bad gateway|"
-        r"service unavailable|fetch failed|socket hang up|connection (?:reset|refused|closed)|"
+        r"service unavailable|UNAVAILABLE|server_error|fetch failed|socket hang up|"
+        r"connection (?:reset|refused|closed)|"
         r"network|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN", re.I)),
 )
 
