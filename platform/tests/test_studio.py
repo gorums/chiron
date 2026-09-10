@@ -833,14 +833,28 @@ class TestModelList(unittest.TestCase):
         from studio import models
         good = models.normalise([{"id": "claude-x-9", "alias": "x", "label": " X ", "note": "n"},
                                  {"id": "claude-y-1"}])
-        self.assertEqual(good, [{"id": "claude-x-9", "alias": "x", "label": "X", "note": "n"},
-                                {"id": "claude-y-1", "label": "claude-y-1", "note": ""}])
+        self.assertEqual(good, [{"provider": "claude-code", "id": "claude-x-9", "label": "X",
+                                 "note": "n", "alias": "x"},
+                                {"provider": "claude-code", "id": "claude-y-1",
+                                 "label": "claude-y-1", "note": ""}])
         for bad in ([], "x", [{}], [{"id": "Claude Opus"}], [{"id": "claude-x", "alias": "bad alias"}],
                     [{"id": "claude-x"}, {"id": "claude-x"}],
                     [{"id": "claude-x", "alias": "a"}, {"id": "claude-y", "alias": "a"}],
-                    [{"id": "claude-x", "alias": "claude-y"}, {"id": "claude-y"}]):
+                    [{"id": "claude-x", "alias": "claude-y"}, {"id": "claude-y"}],
+                    [{"id": "claude-x", "provider": "no-such-provider"}]):
             with self.assertRaises(ValueError, msg=repr(bad)):
                 models.normalise(bad)
+
+    def test_two_providers_may_offer_the_same_model(self):
+        """An id is a model of one provider - the same open model behind OpenAI and behind a
+        local server is two rows. An alias is a name a person types, so it stays unique."""
+        from studio import models
+        both = models.normalise([{"id": "gpt-5.6", "provider": "openai", "alias": "sol"},
+                                 {"id": "gpt-5.6", "provider": "local", "alias": "sol-local"}])
+        self.assertEqual([m["provider"] for m in both], ["openai", "local"])
+        with self.assertRaises(ValueError):
+            models.normalise([{"id": "gpt-5.6", "provider": "openai", "alias": "sol"},
+                              {"id": "gpt-5.6", "provider": "local", "alias": "sol"}])
 
     def test_replace_is_live_and_reset_forgets(self):
         from studio import models, prefs

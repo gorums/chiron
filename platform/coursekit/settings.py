@@ -61,13 +61,43 @@ ENV_KEYS: Dict[str, str] = {
     "JUPYTER_URL": "jupyter.url",
     "JUPYTER_INTERNAL_URL": "jupyter.internalUrl",
     "JUPYTER_TOKEN": "jupyter.token",
-    "BRIDGE_API_URL": "anthropic.apiUrl",
-    "ANTHROPIC_API_KEY": "anthropic.apiKey",
-    "ANTHROPIC_API_VERSION": "anthropic.apiVersion",
+    "BRIDGE_API_URL": "providers.anthropic.apiUrl",
+    "ANTHROPIC_API_KEY": "providers.anthropic.apiKey",
+    "ANTHROPIC_API_VERSION": "providers.anthropic.apiVersion",
+    "OPENAI_API_KEY": "providers.openai.apiKey",
+    "GOOGLE_API_KEY": "providers.google.apiKey",
+    "LLM_DEFAULT_PROVIDER": "llm.defaultProvider",
 }
 
-# Settings that are secrets: shown as set or empty, never by value.
-SECRET_KEYS = ("anthropic.apiKey", "jupyter.token")
+# Where a setting used to live -> where it is read now. A block below is only present if
+# something deliberately set it - an overlay, Studio's file, or a settings.json older than
+# the providers block - so when it is present it wins, and then it is absorbed and dropped.
+# This is what keeps an existing .env or overlay working across the rename.
+LEGACY_KEYS: Dict[str, str] = {
+    "claude.timeout": "llm.timeout",
+    "claude.jsonAttempts": "llm.jsonAttempts",
+    "claude.chatHistory": "llm.chatHistory",
+    "claude.probeTimeout": "llm.probeTimeout",
+    "claude.retries": "llm.retries",
+    "claude.backoffSeconds": "llm.backoffSeconds",
+    "claude.backoffMaxSeconds": "llm.backoffMaxSeconds",
+    "anthropic.apiUrl": "providers.anthropic.apiUrl",
+    "anthropic.modelsUrl": "providers.anthropic.modelsUrl",
+    "anthropic.apiVersion": "providers.anthropic.apiVersion",
+    "anthropic.apiKey": "providers.anthropic.apiKey",
+}
+LEGACY_BLOCKS = ("claude", "anthropic")
+
+# Settings that are secrets: shown as set or empty, never by value. A key belongs to a
+# provider and a provider can be added from the settings page, so this is a rule rather than
+# a list of names.
+SECRET_KEYS = ("jupyter.token",)
+SECRET_SUFFIXES = (".apiKey",)
+
+
+def is_secret(dotted: str) -> bool:
+    """Is this setting a secret? Every provider key, and the Jupyter token."""
+    return dotted in SECRET_KEYS or dotted.endswith(SECRET_SUFFIXES)
 
 # Binding to every interface is how a container is reached through its published port; the
 # address a browser on this machine should then use is loopback.
@@ -197,11 +227,65 @@ class Settings:
         """Where Claude Code is run from: an empty folder, so it never asks to trust one."""
         return os.path.join(tempfile.gettempdir(), str(self.get("paths.scratch") or "coursekit-claude"))
 
+    # ---- providers ----
+
+    @property
+    def providers(self) -> Dict[str, Dict[str, Any]]:
+        """Every configured provider, by name, in the order the file lists them. A provider
+        with `enabled: false` keeps its configuration and is offered nowhere."""
+        out: Dict[str, Dict[str, Any]] = {}
+        for name, cfg in self.section("providers").items():
+            if name != "_" and isinstance(cfg, dict):
+                out[name] = cfg
+        return out
+
+    def provider_names(self, all_of_them: bool = False) -> List[str]:
+        """The providers on offer, in file order. `all_of_them` includes the disabled ones,
+        which the settings page still has to show."""
+        return [name for name, cfg in self.providers.items()
+                if all_of_them or cfg.get("enabled", True)]
+
+    def provider(self, name: str) -> Dict[str, Any]:
+        """One provider configuration, or an empty dict when there is no such row."""
+        return dict(self.providers.get(name) or {})
+
+    @property
+    def default_provider(self) -> str:
+        """The provider a model that names none belongs to. An unknown name falls back to the
+        first enabled provider, so the platform can never point at a row that is not there."""
+        wanted = str(self.get("llm.defaultProvider") or "").strip()
+        offered = self.provider_names()
+        if wanted in offered:
+            return wanted
+        return offered[0] if offered else wanted
+
     # ---- models ----
 
     @property
     def models(self) -> List[Dict[str, Any]]:
-        return [dict(m) for m in (self.get("models.list") or []) if isinstance(m, dict) and m.get("id")]
+        """Every model on offer. A row that names no provider belongs to the default one,
+        which is what lets a model list saved before providers existed keep working."""
+        fallback = self.default_provider
+        out: List[Dict[str, Any]] = []
+        for m in (self.get("models.list") or []):
+            if isinstance(m, dict) and m.get("id"):
+                entry = dict(m)
+                entry["provider"] = str(entry.get("provider") or fallback)
+                out.append(entry)
+        return out
+
+    def models_for(self, provider: str) -> List[Dict[str, Any]]:
+        """The models one provider reaches."""
+        return [m for m in self.models if m["provider"] == provider]
+
+    def provider_of(self, alias_or_id: str = "") -> str:
+        """Which provider reaches this model. An unknown name means the default model, and
+        so the provider that reaches it."""
+        alias = self.model_aliases.get(alias_or_id or "", "") or self.default_model
+        for m in self.models:
+            if m.get("alias") == alias or m["id"] == alias:
+                return m["provider"]
+        return self.default_provider
 
     @property
     def model_aliases(self) -> Dict[str, str]:
@@ -266,15 +350,36 @@ class Settings:
 
     # ---- for the browser ----
 
+    def page_providers(self) -> List[Dict[str, Any]]:
+        """The providers a browser may call itself: enabled, and speaking a wire format
+        rather than running a binary. **Never a key** - a built page is a file anyone may be
+        given, so the reader supplies their own in Settings."""
+        out: List[Dict[str, Any]] = []
+        for name, cfg in self.providers.items():
+            if not cfg.get("enabled", True) or cfg.get("kind") == "cli":
+                continue
+            row = {"name": name, "kind": str(cfg.get("kind") or ""),
+                   "label": str(cfg.get("label") or name),
+                   "apiUrl": str(cfg.get("apiUrl") or ""), "needsKey": True}
+            if cfg.get("apiVersion"):
+                row["apiVersion"] = str(cfg["apiVersion"])
+            out.append(row)
+        return out
+
     def page(self) -> Dict[str, Any]:
         """CFG.platform: the slice the built page needs. Presentation-free and course-free."""
+        anthropic = self.provider("anthropic")
         out = self.section("page")
         out.update({
             "bridgeUrl": self.bridge_url,
-            "apiUrl": self.get("anthropic.apiUrl"),
-            "apiVersion": self.get("anthropic.apiVersion"),
+            "providers": self.page_providers(),
+            # The one wire format the page already speaks, under the names it already uses.
+            # They go when the page reads `providers` instead.
+            "apiUrl": anthropic.get("apiUrl", ""),
+            "apiVersion": anthropic.get("apiVersion", ""),
             "defaultModel": self.model_id(self.default_model),
-            "models": [{"id": m["id"], "label": m.get("label") or m["id"]} for m in self.models],
+            "models": [{"id": m["id"], "label": m.get("label") or m["id"],
+                        "provider": m["provider"]} for m in self.models],
         })
         return out
 
@@ -297,7 +402,7 @@ class Settings:
                         str(v.get("id") if isinstance(v, dict) else v) for v in value),
                         "source": self.overrides.get(dotted, "settings.json")})
                 else:
-                    shown = ("(set)" if value else "") if dotted in SECRET_KEYS else value
+                    shown = ("(set)" if value else "") if is_secret(dotted) else value
                     rows.append({"key": dotted, "value": shown,
                                  "source": self.overrides.get(dotted, "settings.json")})
         walk(self.data, "")
@@ -387,7 +492,24 @@ def load(path: str = SETTINGS_FILE, *, env: Optional[Dict[str, str]] = None,
     if studio_file and os.path.isfile(studio_file):
         _merge_file(data, overrides, studio_file, STUDIO_SOURCE, "Studio's settings file")
         _apply_env(data, overrides, dotenv, env, env_keys)
+    _absorb_legacy(data, overrides)
     return Settings(data, overrides, path, overlay or "", studio_file or "", env, dotenv)
+
+
+def _absorb_legacy(data: Dict[str, Any], overrides: Dict[str, str]) -> None:
+    """Move a setting written under its older name to where it is read now, then drop the
+    older name so there is one place to look. Present at all means deliberately set, so it
+    wins over the default it lands on; where it came from is carried across, because that is
+    what the settings page shows."""
+    for old, new in LEGACY_KEYS.items():
+        value = _get(data, old)
+        if value is None:
+            continue
+        _set(data, new, value)
+        overrides[new] = overrides.get(old) or ("the older %s" % old)
+        overrides.pop(old, None)
+    for block in LEGACY_BLOCKS:
+        data.pop(block, None)
 
 
 def _leaves(node: Dict[str, Any], prefix: str = "") -> Iterable[str]:

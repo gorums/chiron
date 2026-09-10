@@ -21,7 +21,7 @@ Environment overrides:
     ANTHROPIC_API_KEY   use this key and never touch config.json
     BRIDGE_PORT         overrides `bridge.port` in platform/settings.json
     BRIDGE_HOST         overrides `bridge.host` (containers set 0.0.0.0)
-    BRIDGE_API_URL      overrides `anthropic.apiUrl`
+    BRIDGE_API_URL      overrides `providers.anthropic.apiUrl`
     BRIDGE_MODE         force "api" or "cli"
     BRIDGE_ECHO=1       test mode: echo messages back, call nothing
 """
@@ -53,8 +53,8 @@ PORT = int(SETTINGS.get("bridge.port"))
 HOST = str(SETTINGS.get("bridge.host"))
 ECHO = os.environ.get("BRIDGE_ECHO") == "1"
 FORCE_MODE = os.environ.get("BRIDGE_MODE", "").strip().lower()
-API_URL = str(SETTINGS.get("anthropic.apiUrl"))
-API_VERSION = str(SETTINGS.get("anthropic.apiVersion"))
+API_URL = str(SETTINGS.get("providers.anthropic.apiUrl"))
+API_VERSION = str(SETTINGS.get("providers.anthropic.apiVersion"))
 API_TIMEOUT = int(SETTINGS.get("bridge.apiTimeout"))
 MAX_TOKENS = int(SETTINGS.get("page.tutor.maxTokens"))
 MAX_TOKENS_CAP = int(SETTINGS.get("bridge.maxTokensCap"))

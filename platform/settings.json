@@ -1,5 +1,5 @@
 {
-  "_": "Every tunable of the platform, in one place. Nothing in platform/ or tools/ carries its own default; it reads this file through coursekit.settings. Per-machine overrides go in .env or the environment (see .env.example), or in a JSON overlay named by SETTINGS_FILE. The `page` block, plus the bridge address, the API endpoint and the model list, reach the browser as CFG.platform.",
+  "_": "Every tunable of the platform, in one place. Nothing in platform/ or tools/ carries its own default; it reads this file through coursekit.settings. Per-machine overrides go in .env or the environment (see .env.example), or in a JSON overlay named by SETTINGS_FILE. The `page` block, plus the bridge address, the providers a browser may call and the model list, reach the browser as CFG.platform. `providers` says how a model is reached and `models.list` says which ones there are, each naming its provider; the older `anthropic.*` and `claude.*` blocks are still read and moved to their new homes, so an existing .env or overlay keeps working.",
   "paths": {
     "courses": "courses",
     "dist": "dist",
@@ -36,34 +36,77 @@
     "probeTimeout": 2,
     "probeCacheSeconds": 15
   },
-  "anthropic": {
-    "apiUrl": "https://api.anthropic.com/v1/messages",
-    "modelsUrl": "https://api.anthropic.com/v1/models",
-    "apiVersion": "2023-06-01",
-    "apiKey": ""
+  "providers": {
+    "_": "How a model is reached. `kind` picks the adapter in coursekit/llm/: `cli` runs a headless binary, the rest speak a wire format. A provider with `enabled: false` keeps its configuration but is offered nowhere. A key is a secret: it is masked on the settings page and never reaches a course page.",
+    "claude-code": {
+      "kind": "cli",
+      "label": "Claude Code",
+      "enabled": true,
+      "command": ["claude", "claude.cmd", "claude.exe"],
+      "args": ["-p", "--output-format", "text"],
+      "modelFlag": "--model",
+      "signinHint": "Run `claude` once in a terminal, sign in, and try again."
+    },
+    "anthropic": {
+      "kind": "anthropic",
+      "label": "Anthropic API",
+      "enabled": true,
+      "apiUrl": "https://api.anthropic.com/v1/messages",
+      "modelsUrl": "https://api.anthropic.com/v1/models",
+      "apiVersion": "2023-06-01",
+      "apiKey": ""
+    },
+    "openai": {
+      "kind": "openai",
+      "label": "OpenAI",
+      "enabled": false,
+      "apiUrl": "https://api.openai.com/v1/chat/completions",
+      "modelsUrl": "https://api.openai.com/v1/models",
+      "apiKey": ""
+    },
+    "google": {
+      "kind": "gemini",
+      "label": "Google Gemini",
+      "enabled": false,
+      "apiUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "apiKey": ""
+    },
+    "local": {
+      "kind": "openai",
+      "label": "Local models",
+      "enabled": false,
+      "apiUrl": "http://127.0.0.1:11434/v1/chat/completions",
+      "modelsUrl": "http://127.0.0.1:11434/v1/models",
+      "apiKey": "ollama"
+    }
   },
   "models": {
+    "_": "Every model on offer. `provider` names the row in `providers` that reaches it; left out, it means `llm.defaultProvider`. `alias` is the short name a person types and is unique across the whole list; `id` need only be unique within its provider.",
     "default": "opus",
     "list": [
       {
+        "provider": "claude-code",
         "id": "claude-sonnet-5",
         "alias": "sonnet",
         "label": "Claude Sonnet 5",
         "note": "fast and cheap; fine for a patch, a review or the tutor, thinner for a whole course"
       },
       {
+        "provider": "claude-code",
         "id": "claude-opus-5",
         "alias": "opus",
         "label": "Claude Opus 5",
         "note": "the default: the best writing for the price, and every run so far has finished on it"
       },
       {
+        "provider": "claude-code",
         "id": "claude-fable-5-1",
         "alias": "fable",
         "label": "Claude Fable 5.1",
         "note": "the most capable; twice Opus's price and long turns; for the course that has to be right"
       },
       {
+        "provider": "claude-code",
         "id": "claude-haiku-4-5-20251001",
         "alias": "haiku",
         "label": "Claude Haiku 4.5",
@@ -71,7 +114,9 @@
       }
     ]
   },
-  "claude": {
+  "llm": {
+    "_": "How hard the platform tries, whoever is answering. These are the retry policy and the budgets in coursekit/llm/chain.py, not any provider's own.",
+    "defaultProvider": "claude-code",
     "timeout": 600,
     "jsonAttempts": 3,
     "chatHistory": 20,

@@ -20,14 +20,18 @@ The pieces, in dependency order:
 | `cli` | a model reached through a headless binary |
 | `chain` | retries, model fallback, and telling whoever is watching |
 
-`provider_for(name)` is how a caller gets one. Today there is a single provider, the CLI, and
-the name is ignored; the registry exists so that the row in settings.json which selects one
-has somewhere to arrive.
+`provider_for(name)` is how a caller gets one, and the names are the rows of the `providers`
+block in settings.json. A row whose `kind` has no adapter yet is skipped rather than being an
+error, so the block can describe where the platform is going without breaking what it does
+today; a configuration that leaves nothing at all still yields the CLI, because a platform
+that can reach no model is worse than one that guesses.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+
+from ..settings import SETTINGS
 
 from .base import (  # noqa: F401  (the package's public surface)
     Capabilities,
@@ -54,21 +58,26 @@ from .chain import (  # noqa: F401
 from .cli import CliProvider
 from .shape import CHAT_HISTORY, chat_prompt, slice_json, strip_fence  # noqa: F401
 
-# Built once and kept, because a provider holds no per-call state and finding a binary is a
-# PATH walk. `reload()` throws them away, for when the settings underneath them change.
-_BUILT: Dict[str, Provider] = {}
+# Which adapter serves which `kind`. A kind that is not here has no adapter yet.
+ADAPTERS = {"cli": CliProvider}
 
 
-def build() -> Dict[str, Provider]:
-    """Every configured provider, by name. One for now: the CLI everything already used."""
-    return {"claude-code": CliProvider()}
+def build(name: str, cfg: Dict[str, Any]) -> Optional[Provider]:
+    """One row of the `providers` block, or None when nothing can serve its kind."""
+    adapter = ADAPTERS.get(str(cfg.get("kind") or ""))
+    return adapter.from_settings(name, cfg) if adapter else None
 
 
 def providers() -> List[Provider]:
-    """Every configured provider, in the order settings.json lists them."""
-    if not _BUILT:
-        _BUILT.update(build())
-    return list(_BUILT.values())
+    """Every enabled provider there is an adapter for, in the order settings.json lists them.
+
+    Built per call rather than kept: a provider holds no state, and the list underneath it
+    changes whenever `SETTINGS.reload()` runs - which is how a model saved on the settings
+    page reaches every module without a restart.
+    """
+    found = [p for name in SETTINGS.provider_names()
+             for p in [build(name, SETTINGS.provider(name))] if p is not None]
+    return found or [CliProvider()]
 
 
 def provider_for(name: str = "") -> Provider:
@@ -78,13 +87,11 @@ def provider_for(name: str = "") -> Provider:
         for p in found:
             if p.name == name:
                 return p
+        wanted = SETTINGS.default_provider
+        for p in found:
+            if p.name == wanted:
+                return p
     return found[0]
-
-
-def reload() -> None:
-    """Forget the built providers; the next call builds them from the settings as they are
-    now. `SETTINGS.reload()` is what makes this necessary."""
-    _BUILT.clear()
 
 
 def available(name: str = "") -> bool:

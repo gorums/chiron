@@ -37,14 +37,14 @@ from .shape import slice_json
 log = logging.getLogger("studio.llm")
 
 # Long enough for a full module; short enough that a wedged call cannot stall a job forever.
-DEFAULT_TIMEOUT = int(SETTINGS.get("claude.timeout"))
-JSON_ATTEMPTS = int(SETTINGS.get("claude.jsonAttempts"))
+DEFAULT_TIMEOUT = int(SETTINGS.get("llm.timeout"))
+JSON_ATTEMPTS = int(SETTINGS.get("llm.jsonAttempts"))
 
 # How many second chances a call gets when the failure looks like weather, and how long to
 # wait between them.
-RETRIES = int(SETTINGS.get("claude.retries"))
-BACKOFF = float(SETTINGS.get("claude.backoffSeconds"))
-BACKOFF_MAX = float(SETTINGS.get("claude.backoffMaxSeconds"))
+RETRIES = int(SETTINGS.get("llm.retries"))
+BACKOFF = float(SETTINGS.get("llm.backoffSeconds"))
+BACKOFF_MAX = float(SETTINGS.get("llm.backoffMaxSeconds"))
 
 # Failures no other model on the chain would survive: the account, the login, and a call that
 # has already spent its whole timeout.

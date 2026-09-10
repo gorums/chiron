@@ -7,7 +7,7 @@
    not forty minutes into a run. */
 
 const modelEditor = {
-  rows: [], // the rows being edited: {id, alias, label, note}; saved as one list
+  rows: [], // the rows being edited: {provider, id, alias, label, note}; saved as one list
   results: {}, // id -> the last Test result for that row, {ok, seconds, reply|error}
   testing: "", // the id a test is running for, "" when none
   custom: false, // is the list in use Studio's own rather than the platform's?
@@ -27,6 +27,7 @@ const MODEL_FIELDS = [
 function loadModelEditor(list, discovery) {
   modelEditor.discovery = discovery || modelEditor.discovery || {};
   modelEditor.rows = (list.list || []).map(m => ({
+    provider: m.provider || "",
     id: m.id,
     alias: m.alias || "",
     label: m.label || "",
@@ -160,7 +161,7 @@ function renderModelEditor() {
 }
 
 function addModelRow() {
-  modelEditor.rows.push({ id: "", alias: "", label: "", note: "" });
+  modelEditor.rows.push({ provider: "", id: "", alias: "", label: "", note: "" });
   renderModelEditor();
   const rows = document.querySelectorAll("#modelrows .modelrow input.id");
   if (rows.length) rows[rows.length - 1].focus();
@@ -200,6 +201,7 @@ async function testModelRow(i) {
 /* Save the whole list; the server validates it and every picker takes it from /api/state. */
 async function saveModelList() {
   const list = modelEditor.rows.map(r => ({
+    provider: r.provider || "",
     id: r.id.trim(),
     alias: r.alias.trim(),
     label: r.label.trim(),

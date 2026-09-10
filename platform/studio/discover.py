@@ -11,7 +11,7 @@ gone. Two sources say what exists, and neither needs the owner to do anything:
   change between releases, which is why a scan that finds nothing is reported as "could not
   read", never as "no models"). What the picker offers is what gets added.
 - **Anthropic's model list**, `GET /v1/models`, when an API key is configured
-  (`ANTHROPIC_API_KEY` in `.env` or the environment; `anthropic.apiKey`). It is what a
+  (`ANTHROPIC_API_KEY` in `.env` or the environment; `providers.anthropic.apiKey`). It is what a
   course page in direct mode and the bridge can call, and it carries a creation date per
   model, so only models newer than the newest one already listed are added - never the
   whole back catalogue.
@@ -179,13 +179,13 @@ def parse_cli_catalog(data: bytes) -> Dict[str, Any]:
 # ---- source 2: Anthropic's model list ----
 
 def api_key() -> str:
-    return str(SETTINGS.get("anthropic.apiKey") or "").strip()
+    return str(SETTINGS.get("providers.anthropic.apiKey") or "").strip()
 
 
 def read_api_catalog(key: str = "", url: str = "", timeout: int = TIMEOUT) -> Dict[str, Any]:
     """{ok, models: [{id, label, created}], error}. Every page of `GET /v1/models`."""
     key = key or api_key()
-    url = url or str(SETTINGS.get("anthropic.modelsUrl"))
+    url = url or str(SETTINGS.get("providers.anthropic.modelsUrl"))
     if not key:
         return {"ok": False, "models": [], "error": "no API key configured"}
     found: List[Dict[str, str]] = []
@@ -194,7 +194,8 @@ def read_api_catalog(key: str = "", url: str = "", timeout: int = TIMEOUT) -> Di
         for _ in range(20):                                     # never loop on a bad server
             page = url + "?limit=%d" % API_PAGE + ("&after_id=" + after if after else "")
             req = urllib.request.Request(page, headers={
-                "x-api-key": key, "anthropic-version": str(SETTINGS.get("anthropic.apiVersion"))})
+                "x-api-key": key,
+                "anthropic-version": str(SETTINGS.get("providers.anthropic.apiVersion"))})
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
             for m in body.get("data") or []:

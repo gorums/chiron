@@ -51,8 +51,8 @@ Consequences:
 ## Settings: one file, no literals
 
 **Every default the platform has lives in `platform/settings.json`.** Ports and hosts, the
-Anthropic endpoint and API version, the model list and the default model, every timeout,
-the generation counts, the log rotation, and the page's study rules and layout sizes. No
+providers and the model list, every timeout, the generation counts, the log rotation, and
+the page's study rules and layout sizes. No
 module under `platform/` or `tools/` carries a literal of its own; it asks
 `coursekit.settings.SETTINGS` (`SETTINGS.get("studio.port")`, `SETTINGS.models`,
 `SETTINGS.bridge_url`, ...). The bridge imports the same module from outside the package,
@@ -65,7 +65,7 @@ Resolution, later layers winning:
 | `platform/settings.json` | the committed defaults |
 | `SETTINGS_FILE` | an optional JSON overlay, deep-merged: a different model list, longer timeouts |
 | `state/settings.json` | what Studio's settings page saved - today the model list (`studio/models.py`); deep-merged the same way, written only by Studio, reported as source `Studio` |
-| `.env` at the repo root | the scalar knobs in `settings.ENV_KEYS` (`STUDIO_PORT`, `BRIDGE_HOST`, `STUDIO_MODEL`, `JUPYTER_TOKEN`, ...) |
+| `.env` at the repo root | the scalar knobs in `settings.ENV_KEYS` (`STUDIO_PORT`, `BRIDGE_HOST`, `STUDIO_MODEL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `JUPYTER_TOKEN`, ...) |
 | the environment | the same names, winning over `.env` |
 
 An environment value is coerced to the type of the default it replaces, so `STUDIO_PORT`
@@ -77,10 +77,25 @@ from the model list is therefore a function (`claude_cli.model_aliases()`,
 resolved value with its source. Studio's own preference file, `state/studio.json`, sits on
 top of all of this for the one thing the UI edits: the model.
 
+**A model is named by two settings, never by one.** `providers` says how a model is
+reached — `kind` picks the adapter in `coursekit/llm/`, and a row with `enabled: false`
+keeps its configuration and is offered nowhere. `models.list` says which models there are,
+each naming the `provider` that reaches it; a row that names none belongs to
+`llm.defaultProvider`, which is what lets a list saved before providers existed keep
+working. An `id` need only be unique within its provider — two providers may well offer the
+same model — while an `alias`, being the short name a person types, is unique across the
+whole list. `llm.*` holds how hard the platform tries: the timeout, the retries, the
+backoff. **A setting written under its older name still works**: `claude.*` and
+`anthropic.*` are read, moved to their new homes by `settings._absorb_legacy`, and reported
+on the settings page with the name they came from. Every `providers.*.apiKey` is a secret
+by rule (`settings.is_secret`), so a provider added later is masked without this file being
+edited.
+
 **The page gets its slice as `CFG.platform`.** `renderer.runtime_config` merges
-`SETTINGS.page()` into the `CFG` the shell receives: the bridge address, the API endpoint
-and version, the model list and default, and the `page` block (tutor budgets, sync timing,
-study rules, rail sizes). `01-state.js` binds them to `PLATFORM`, `TUTOR`, `SYNC`, `STUDY`
+`SETTINGS.page()` into the `CFG` the shell receives: the bridge address, the providers a
+browser may call itself (`page_providers` — enabled, not a `cli` kind, **never a key**), the
+model list with each model's provider and the default, and the `page` block (tutor budgets,
+sync timing, study rules, rail sizes). `01-state.js` binds them to `PLATFORM`, `TUTOR`, `SYNC`, `STUDY`
 and `LAYOUT`; a fresh state's connection block comes from `connDefaults()`. Do not write an
 address, a model id or a limit into `platform/web/js/` - add a key to `settings.json` and
 read it through `CFG.platform`. `test_build.py` fails on `api.anthropic.com`, a `claude-*`

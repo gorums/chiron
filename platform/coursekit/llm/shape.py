@@ -21,7 +21,7 @@ from ..settings import SETTINGS
 
 # How many turns of a conversation travel with a question. The page bounds what it sends;
 # this is the backstop.
-CHAT_HISTORY = int(SETTINGS.get("claude.chatHistory"))
+CHAT_HISTORY = int(SETTINGS.get("llm.chatHistory"))
 
 _FENCE = re.compile(r"^\s*```(?:json|markdown|md)?\s*\n(.*?)\n\s*```\s*$", re.S)
 

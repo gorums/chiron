@@ -31,7 +31,7 @@ from .base import Capabilities, LLMFailed, Provider, Reply, Request, failed
 from .failures import TIMEOUT, UNKNOWN, describe
 
 # One probe call has to answer well inside a job's timeout, or the settings page hangs.
-PROBE_TIMEOUT = int(SETTINGS.get("claude.probeTimeout"))
+PROBE_TIMEOUT = int(SETTINGS.get("llm.probeTimeout"))
 PROBE_PROMPT = "Reply with the single word OK and nothing else."
 
 # The headless invocation every call is built on: one prompt on stdin, plain text back.
@@ -64,13 +64,25 @@ class CliProvider(Provider):
 
     def __init__(self, name: str = "claude-code", label: str = "Claude Code",
                  commands=COMMANDS, args=HEADLESS, model_flag: str = "--model",
-                 scratch: str = ""):
+                 hint: str = "", scratch: str = ""):
         self.name = name
         self.label = label
         self.commands = tuple(commands)
         self.args = list(args)
         self.model_flag = model_flag
+        self.hint = hint                # what to do when it is there but will not answer
         self.scratch = scratch or SETTINGS.scratch_dir
+
+    @classmethod
+    def from_settings(cls, name: str, cfg: Dict[str, Any]) -> "CliProvider":
+        """One row of the `providers` block. Everything about the command line is a setting,
+        so a second headless tool is a row rather than a file."""
+        return cls(name=name,
+                   label=str(cfg.get("label") or name),
+                   commands=tuple(cfg.get("command") or COMMANDS),
+                   args=list(cfg.get("args") or HEADLESS),
+                   model_flag=str(cfg.get("modelFlag") or "--model"),
+                   hint=str(cfg.get("signinHint") or ""))
 
     # ---- what it is
 
@@ -82,7 +94,7 @@ class CliProvider(Provider):
 
     def describe(self) -> Dict[str, Any]:
         return {"name": self.name, "kind": self.kind, "label": self.label,
-                "available": self.available(), "path": self.find() or ""}
+                "available": self.available(), "path": self.find() or "", "hint": self.hint}
 
     # ---- one call
 

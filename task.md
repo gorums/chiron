@@ -47,26 +47,44 @@ node platform/tests/page_smoke.js dist/<id>/<output>-local.html
 
 ## Phase 2 — Settings: providers, and models that name one
 
-- [ ] `platform/settings.json` — add the `providers` block (`claude-code`, `anthropic`,
-      `openai`, `google`, `local`) and `llm.*`; give every `models.list` entry a `provider`;
-      keep `anthropic.*` and `claude.*` present but marked deprecated in the `_` note.
-- [ ] `coursekit/settings.py` — read `llm.*` with `claude.*` as fallback; synthesise
+- [x] `platform/settings.json` — add the `providers` block (`claude-code`, `anthropic`,
+      `openai`, `google`, `local`) and `llm.*`; give every `models.list` entry a `provider`.
+      *(The old blocks are gone from the committed file rather than deprecated in place:
+      present at all now means deliberately set by an overlay, Studio or an older
+      settings.json, so `_absorb_legacy` can let them win and then drop them. Two places
+      to look would have been the bug this avoids.)*
+- [x] `coursekit/settings.py` — read `llm.*` with `claude.*` as fallback; synthesise
       `providers.anthropic` from a legacy `anthropic.*` block; `models[].provider` defaults to
       `llm.defaultProvider`.
-- [ ] `coursekit/settings.py` — `SECRET_KEYS` becomes a predicate matching `providers.*.apiKey`
+- [x] `coursekit/settings.py` — `SECRET_KEYS` becomes a predicate matching `providers.*.apiKey`
       and `jupyter.token`; `describe()` and `page()` both use it.
-- [ ] `coursekit/settings.py` — `ENV_KEYS` gains `OPENAI_API_KEY`, `GOOGLE_API_KEY`,
+- [x] `coursekit/settings.py` — `ENV_KEYS` gains `OPENAI_API_KEY`, `GOOGLE_API_KEY`,
       `LLM_DEFAULT_PROVIDER`; existing names repointed (`ANTHROPIC_API_KEY` →
       `providers.anthropic.apiKey`, `BRIDGE_API_URL` → `providers.anthropic.apiUrl`,
       `ANTHROPIC_API_VERSION` → `providers.anthropic.apiVersion`).
-- [ ] `coursekit/settings.py` — `model_aliases`, `default_model`, `model_id` become
+- [x] `coursekit/settings.py` — `model_aliases`, `default_model`, `model_id` become
       provider-aware; add `provider_of(alias_or_id)` and `models_for(provider)`.
-- [ ] `studio/models.py` — widen `MODEL_ID` to `^[a-z0-9][a-z0-9._:/-]{0,119}$`; validate
+- [x] `studio/models.py` — widen `MODEL_ID` to `^[a-z0-9][a-z0-9._:/-]{0,119}$`; validate
       `provider` against the configured providers; uniqueness of `id` per provider, of `alias`
       globally.
-- [ ] `.env.example` — document the new keys; keep every old one working with a note.
-- [ ] Tests: an old-shape `state/settings.json` (no `provider`, `claude.*` only) still loads
+- [x] `.env.example` — document the new keys; keep every old one working with a note.
+- [x] Tests: an old-shape `state/settings.json` (no `provider`, `claude.*` only) still loads
       and resolves; `page()` never carries an `apiKey`; `describe()` shows `(set)` for one.
+
+Also done, not foreseen:
+
+- [x] `llm/__init__.py` builds its providers from the `providers` block, so Claude Code is
+      an ordinary `cli` row (`CliProvider.from_settings`) rather than a hard-coded one. A
+      kind with no adapter yet is skipped, not an error; a configuration that leaves
+      nothing still yields the CLI.
+- [x] `models.normalise` also refuses an alias that is another model's id — with ids now
+      scoped per provider, that collision stopped being caught by the id rule, and
+      `model_aliases` maps both into one table.
+- [x] `ui/js/31-models.js` round-trips each row's `provider` untouched, so saving the list
+      from a Studio that cannot yet edit that column does not silently reassign a model.
+      The column itself is Phase 6.
+
+**Done.** 100 tests in `test_build.py` (4 new), 141 in `test_studio.py` (1 new), `build marketing`, `page_smoke.js` and `prettier --check` clean. Verified on this machine against a real `state/settings.json` written before providers existed: its models resolve to `claude-code` and nothing had to be migrated.
 
 ## Phase 3 — The Anthropic provider, and the bridge on the shared layer
 

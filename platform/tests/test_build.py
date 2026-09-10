@@ -702,12 +702,16 @@ class TestSettings(unittest.TestCase):
 
     def test_shipped_file_is_complete(self):
         s = settings.SETTINGS
-        for key in ("studio.host", "studio.port", "bridge.host", "bridge.port", "anthropic.apiUrl",
-                    "anthropic.apiVersion", "models.default", "claude.timeout", "logs.maxBytes",
+        for key in ("studio.host", "studio.port", "bridge.host", "bridge.port",
+                    "providers.anthropic.apiUrl", "providers.anthropic.apiVersion",
+                    "providers.claude-code.kind", "models.default", "llm.timeout",
+                    "llm.defaultProvider", "logs.maxBytes",
                     "generation.timeouts.module", "build.excerptChars", "page.tutor.maxTokens",
                     "page.study.maxFreezes", "page.ui.railDefault", "page.learner.maxGaps",
                     "page.audio.rate"):
             self.assertIsNotNone(s.get(key), key)
+        self.assertIn(s.default_provider, s.provider_names())
+        self.assertTrue(all(m["provider"] in s.provider_names(True) for m in s.models))
         self.assertIn(s.default_model, s.model_aliases)
         self.assertTrue(s.model_id(s.default_model).startswith("claude-"))
         self.assertEqual(s.model_id("nonsense"), s.model_id(s.default_model))
@@ -741,24 +745,76 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(s.get("studio.port"), 8100)
         self.assertEqual(s.get("studio.host"), settings.SETTINGS.get("studio.host"), "untouched keys survive")
         self.assertEqual(s.default_model, "mini")
-        self.assertEqual(s.page()["models"], [{"id": "claude-mini-9", "label": "Mini"}])
+        self.assertEqual(s.page()["models"],
+                         [{"id": "claude-mini-9", "label": "Mini", "provider": "claude-code"}])
         self.assertEqual(s.overrides["studio.port"], overlay)
         self.assertIn({"key": "studio.port", "value": 8100, "source": overlay}, s.describe())
 
+    def test_a_model_that_names_no_provider_belongs_to_the_default_one(self):
+        """A model list saved before providers existed still resolves - which is what makes
+        this change need no migration."""
+        overlay = self._file("old.json", {
+            "models": {"list": [{"id": "claude-mini-9", "alias": "mini", "label": "Mini"}]},
+        })
+        s = settings.load(env={}, dotenv={}, overlay=overlay, studio_file="")
+        self.assertEqual(s.models[0]["provider"], s.default_provider)
+        self.assertEqual(s.provider_of("mini"), s.default_provider)
+        self.assertEqual([m["id"] for m in s.models_for(s.default_provider)], ["claude-mini-9"])
+
+    def test_the_older_setting_names_are_moved_to_where_they_are_read_now(self):
+        """An existing .env or overlay says `claude.timeout` and `anthropic.apiUrl`. Present
+        at all means deliberately set, so it wins - and the settings page says where it came
+        from rather than showing a key nothing reads."""
+        overlay = self._file("legacy.json", {
+            "claude": {"timeout": 111, "retries": 9},
+            "anthropic": {"apiUrl": "https://example.test/v1/messages"},
+        })
+        s = settings.load(env={}, dotenv={}, overlay=overlay, studio_file="")
+        self.assertEqual(s.get("llm.timeout"), 111)
+        self.assertEqual(s.get("llm.retries"), 9)
+        self.assertEqual(s.get("providers.anthropic.apiUrl"), "https://example.test/v1/messages")
+        self.assertIsNone(s.get("claude.timeout"), "one place to look, not two")
+        self.assertIsNone(s.get("anthropic.apiUrl"))
+        self.assertEqual(s.overrides["llm.timeout"], overlay)
+        self.assertEqual(s.page()["apiUrl"], "https://example.test/v1/messages")
+
+    def test_an_old_env_name_still_reaches_the_setting_it_always_meant(self):
+        s = settings.load(env={"BRIDGE_API_URL": "https://proxy.test/v1/messages",
+                               "ANTHROPIC_API_VERSION": "2024-01-01"},
+                          dotenv={}, overlay="", studio_file="")
+        self.assertEqual(s.provider("anthropic")["apiUrl"], "https://proxy.test/v1/messages")
+        self.assertEqual(s.page()["apiVersion"], "2024-01-01")
+
+    def test_the_page_is_told_which_providers_it_may_call_itself(self):
+        """A provider that runs a binary is no use to a browser, and a disabled one is no use
+        to anybody. A key never goes: a built page is a file anyone may be given."""
+        s = settings.load(env={"ANTHROPIC_API_KEY": "sk-ant-secret"}, dotenv={}, overlay="",
+                          studio_file="")
+        offered = {p["name"]: p for p in s.page()["providers"]}
+        self.assertIn("anthropic", offered)
+        self.assertNotIn("claude-code", offered, "a browser cannot spawn a process")
+        self.assertNotIn("openai", offered, "not enabled")
+        self.assertEqual(offered["anthropic"]["kind"], "anthropic")
+        self.assertTrue(offered["anthropic"]["needsKey"])
+        self.assertNotIn("sk-ant-secret", json.dumps(s.page()))
+
     def test_secrets_are_masked_and_stay_off_the_page(self):
-        """`SECRET_KEYS` (the API key, the Jupyter token) show as set or empty on the settings
-        page and never reach `page()`."""
+        """A provider key and the Jupyter token show as set or empty on the settings page and
+        never reach `page()`. Which settings are secret is a rule - anything called apiKey -
+        because a provider can be added without this file being edited."""
         s = settings.load(env={"ANTHROPIC_API_KEY": "sk-ant-test-secret"}, dotenv={}, overlay="",
                           studio_file="")
-        self.assertEqual(s.get("anthropic.apiKey"), "sk-ant-test-secret")
+        self.assertEqual(s.get("providers.anthropic.apiKey"), "sk-ant-test-secret")
+        self.assertTrue(settings.is_secret("providers.openai.apiKey"))
         rows = {r["key"]: r["value"] for r in s.describe()}
-        self.assertEqual(rows["anthropic.apiKey"], "(set)")
+        self.assertEqual(rows["providers.anthropic.apiKey"], "(set)")
         self.assertEqual(rows["jupyter.token"], "(set)")
         self.assertNotIn("sk-ant-test-secret", json.dumps(s.describe()))
         self.assertNotIn("sk-ant-test-secret", json.dumps(s.page()))
         self.assertNotIn("apiKey", json.dumps(s.page()))
         blank = settings.load(env={}, dotenv={}, overlay="", studio_file="")
-        self.assertEqual({r["key"]: r["value"] for r in blank.describe()}["anthropic.apiKey"], "")
+        self.assertEqual({r["key"]: r["value"] for r in blank.describe()}
+                         ["providers.anthropic.apiKey"], "")
 
     def test_studio_layer_sits_between_overlay_and_environment(self):
         """The list Studio's settings page saves lives in <state>/settings.json, read over
