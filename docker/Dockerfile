@@ -1,18 +1,20 @@
 # One image, three services. Studio and the bridge need exactly the same things — Python to
-# run, and a command-line tool for the `claude-code` provider — so they share a build and
-# differ only in the command compose gives them. Two Dockerfiles would be two things to keep
-# in step. The tool below is what the shipped `providers` block is configured for; a setup
-# that reaches its models through an API key alone does not need it in the image at all.
+# run, and the command-line tools the `cli` providers run — so they share a build and differ
+# only in the command compose gives them. Two Dockerfiles would be two things to keep in
+# step. The tools below are what the shipped `providers` block is configured for; a setup
+# that reaches its models through an API key alone does not need either in the image at all.
 
 FROM python:3.13-slim
 
-# Node is here only to install the Claude Code CLI. Everything else is Python.
-# git and ca-certificates: the CLI expects both.
+# Node is here only to install the CLI providers' tools — one per `cli` row in
+# platform/settings.json. Everything else is Python. git and ca-certificates: both expect them.
+# Each ships a platform binary of its own, so this layer is most of the image's size; drop a
+# package here if its row is one you have turned off.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl git \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  && apt-get install -y --no-install-recommends nodejs \
- && npm install -g @anthropic-ai/claude-code \
+ && npm install -g @anthropic-ai/claude-code @openai/codex \
  && npm cache clean --force \
  && apt-get purge -y curl \
  && apt-get autoremove -y \
@@ -31,6 +33,8 @@ RUN pip install --no-cache-dir "notebook>=7.2,<8" ipykernel numpy pandas matplot
 # CLI warns on every call that the second is missing. The warning goes to stderr and does not
 # corrupt output, but it would run onboarding on each invocation. Seed a minimal one that
 # stays inside the image; nothing here needs to persist or come from the host.
+# Codex needs no equivalent: everything it keeps, including its sign-in, is inside ~/.codex,
+# which compose mounts whole for the same reason.
 RUN printf '{"hasCompletedOnboarding":true}' > /root/.claude.json
 
 WORKDIR /work

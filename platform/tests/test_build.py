@@ -1041,6 +1041,11 @@ class TestProviderLayer(unittest.TestCase):
         return llm_chain.complete(
             provider, llm_base.Request(prompt=prompt, model=model, timeout=5)).text
 
+    @staticmethod
+    def _id(alias):
+        """What a provider is actually sent for a model the chain calls `alias`."""
+        return settings.SETTINGS.model_id(alias)
+
     # ---- the chain
 
     def test_the_asked_for_model_is_tried_first_then_the_default_then_none(self):
@@ -1048,12 +1053,13 @@ class TestProviderLayer(unittest.TestCase):
         itself means. Without it a run dies when every listed model is refused."""
         provider = Answers(refused("unrecognized_model"), refused("unrecognized_model"), "ok")
         self.assertEqual(self._ask(provider, model="sonnet"), "ok")
-        self.assertEqual(provider.seen, ["sonnet", llm_chain.default_model(), ""])
+        self.assertEqual(provider.seen, [self._id("sonnet"),
+                                         self._id(llm_chain.default_model()), ""])
 
     def test_weather_is_waited_out_on_the_same_model(self):
         provider = Answers(refused("529 overloaded_error"), "ok")
         self.assertEqual(self._ask(provider, model="sonnet"), "ok")
-        self.assertEqual(provider.seen, ["sonnet", "sonnet"], "the same model, not the next")
+        self.assertEqual(provider.seen, [self._id("sonnet")] * 2, "the same model, not the next")
 
     def test_weather_that_never_clears_gives_up_after_the_settings_say_so(self):
         provider = Answers(*[refused("529 overloaded_error")] * 99)
@@ -1141,7 +1147,7 @@ class TestProviderLayer(unittest.TestCase):
     def test_the_cli_argv_is_what_it_always_was(self):
         provider = llm_cli.CliProvider()
         self.assertEqual(provider._args_for("opus"),
-                         ["-p", "--output-format", "text", "--model", "opus"])
+                         ["-p", "--output-format", "text", "--model", "claude-opus-5"])
         self.assertEqual(provider._args_for(""), ["-p", "--output-format", "text"],
                          "no model named means the default of the binary itself")
 
@@ -1176,19 +1182,22 @@ class TestProviderLayer(unittest.TestCase):
                          ["cmd", "/c", "C:/x/claude.cmd", "-p"])
         self.assertEqual(llm_cli.argv("C:/x/claude.exe", ["-p"]), ["C:/x/claude.exe", "-p"])
 
-    def test_a_provider_is_sent_the_name_it_knows_the_model_by(self):
-        """The chain works in the short names a person types. A command-line tool takes
-        those; an endpoint has never heard of `opus` and would answer 404."""
+    def test_a_provider_is_sent_the_models_full_id_whatever_kind_it_is(self):
+        """The chain works in the short names a person types; what a provider is given is the
+        full id, because that is the one spelling everything accepts. An endpoint has never
+        heard of `opus`, and only one command-line tool has - a second one would be handed a
+        name it does not know."""
         cli = llm_cli.CliProvider()
         api = llm_anthropic.AnthropicProvider(api_url="https://x.test", key="k")
         default = settings.SETTINGS.default_model
         full = settings.SETTINGS.model_id(default)
         self.assertNotEqual(default, full, "the shipped list has aliases, or this proves nothing")
-        self.assertEqual(cli.model_name(default), default)
-        self.assertEqual(api.model_name(default), full)
-        self.assertEqual(api.model_name(""), "", "no model named stays no model named")
-        self.assertEqual(api.model_name("llama3.1:70b"), "llama3.1:70b",
-                         "a name the list does not carry is already what was meant")
+        for provider in (cli, api):
+            self.assertEqual(provider.model_name(default), full)
+            self.assertEqual(provider.model_name(full), full, "an id is already what was meant")
+            self.assertEqual(provider.model_name(""), "", "no model named stays no model named")
+            self.assertEqual(provider.model_name("llama3.1:70b"), "llama3.1:70b",
+                             "a name the list does not carry is already what was meant")
 
     def test_a_provider_is_addressable_before_it_is_enabled(self):
         """`enabled` governs what is offered, not what may be addressed - otherwise a row

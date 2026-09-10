@@ -37,7 +37,7 @@
     "probeCacheSeconds": 15
   },
   "providers": {
-    "_": "How a model is reached. `kind` picks the adapter in coursekit/llm/: `cli` runs a headless binary, the rest speak a wire format. `apiProvider` on a `cli` row names the provider whose API serves the same models: a browser cannot spawn a process, so that is how a course page opened off disk reaches a model whose provider is a local tool. `openai` is Chat Completions and therefore also Ollama, LM Studio, vLLM, OpenRouter, Groq and Azure - point `apiUrl` at one and set `maxTokensField` to the name that server takes. A provider with `enabled: false` keeps its configuration but is offered nowhere. A key is a secret: it is masked on the settings page and never reaches a course page.",
+    "_": "How a model is reached. `kind` picks the adapter in coursekit/llm/: `cli` runs a headless binary, the rest speak a wire format. `apiProvider` on a `cli` row names the provider whose API serves the same models: a browser cannot spawn a process, so that is how a course page opened off disk reaches a model whose provider is a local tool; a tool whose models are its own has no twin and leaves it out. A `cli` row is asked what models exist by looking inside its binary, so only a row whose name has a reader in coursekit/llm/ is asked at all - `catalog` overrides which one; every other row reports \"could not be read\", which is the truth and not \"no models\". `openai` is Chat Completions and therefore also Ollama, LM Studio, vLLM, OpenRouter, Groq and Azure - point `apiUrl` at one and set `maxTokensField` to the name that server takes. A provider with `enabled: false` keeps its configuration but is offered nowhere. A key is a secret: it is masked on the settings page and never reaches a course page.",
     "claude-code": {
       "kind": "cli",
       "label": "Claude Code",
@@ -47,6 +47,15 @@
       "modelFlag": "--model",
       "apiProvider": "anthropic",
       "signinHint": "Run `claude` once in a terminal, sign in, and try again."
+    },
+    "codex": {
+      "kind": "cli",
+      "label": "OpenAI Codex",
+      "enabled": true,
+      "command": ["codex", "codex.cmd", "codex.exe"],
+      "args": ["exec", "--skip-git-repo-check", "--color", "never", "--sandbox", "read-only", "--ephemeral"],
+      "modelFlag": "--model",
+      "signinHint": "Run `codex` once in a terminal, sign in, and try again."
     },
     "anthropic": {
       "kind": "anthropic",
@@ -59,7 +68,7 @@
     },
     "openai": {
       "kind": "openai",
-      "label": "OpenAI",
+      "label": "OpenAI API",
       "enabled": false,
       "apiUrl": "https://api.openai.com/v1/chat/completions",
       "modelsUrl": "https://api.openai.com/v1/models",
@@ -68,7 +77,7 @@
     },
     "google": {
       "kind": "gemini",
-      "label": "Google Gemini",
+      "label": "Google Gemini API",
       "enabled": false,
       "apiUrl": "https://generativelanguage.googleapis.com/v1beta",
       "apiKey": ""
@@ -114,6 +123,27 @@
         "alias": "haiku",
         "label": "Claude Haiku 4.5",
         "note": "cheap and quick; fine for the tutor, thin for writing modules"
+      },
+      {
+        "provider": "codex",
+        "id": "gpt-5.6-terra",
+        "alias": "terra",
+        "label": "GPT-5.6-Terra",
+        "note": "the balanced Codex model; the one to try first on this provider"
+      },
+      {
+        "provider": "codex",
+        "id": "gpt-5.6-luna",
+        "alias": "luna",
+        "label": "GPT-5.6-Luna",
+        "note": "fast and affordable; fine for the tutor, thinner for writing modules"
+      },
+      {
+        "provider": "codex",
+        "id": "gpt-5.5",
+        "alias": "gpt55",
+        "label": "GPT-5.5",
+        "note": "the previous generation; there when a newer one is refused"
       }
     ]
   },

@@ -970,6 +970,22 @@ class TestModelDiscovery(unittest.TestCase):
         self.assertEqual(found["models"], [])
         self.assertFalse(provider.catalog_is_complete, "so it may never remove a model alone")
 
+    def test_a_second_cli_tool_is_never_handed_claude_codes_reader(self):
+        """"A Claude Code build says nothing about what another tool offers, and is not
+        allowed to" - `claude_code` also reads the catalogue cached under ~/.claude, so a
+        second `cli` row asking it would report those models as its own."""
+        import tempfile
+        from coursekit.llm import cli as llm_cli
+        with tempfile.NamedTemporaryFile(suffix=".exe", delete=False) as fh:
+            fh.write(FAKE_CLI)
+        self.addCleanup(os.remove, fh.name)
+        row = {"kind": "cli", "label": "Some tool", "command": [fh.name]}
+        found = llm_cli.CliProvider.from_settings("other", row).catalog()
+        self.assertFalse(found["ok"], "a present binary nothing understands is still unread")
+        self.assertEqual(found["models"], [])
+        named = llm_cli.CliProvider.from_settings("other", dict(row, catalog="claude-code"))
+        self.assertTrue(named.catalog()["ok"], "and `catalog` is how a row asks for one")
+
     def test_the_catalogue_is_cached_per_file_version(self):
         import tempfile
         from coursekit.llm import claude_code

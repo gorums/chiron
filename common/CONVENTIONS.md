@@ -199,24 +199,31 @@ docker compose down              stop them
 ```
 
 Needs a `.env` holding `CLAUDE_HOME` — the path to the host's `~/.claude`. Copy `.env.example`.
-The same file may set `COURSES_DIR`; compose mounts it at `/work/courses`. `STUDIO_PORT`,
-`BRIDGE_PORT`, `JUPYTER_PORT` and `JUPYTER_TOKEN` there are read by compose *and* by the
-code, so the published port and the one the service binds always agree.
+`CODEX_HOME` is the same thing for the other `cli` provider and is optional: unset, the
+container gets an empty directory and Codex is installed but signed out, which its row on the
+settings page says. The same file may set `COURSES_DIR`; compose mounts it at
+`/work/courses`. `STUDIO_PORT`, `BRIDGE_PORT`, `JUPYTER_PORT` and `JUPYTER_TOKEN` there are
+read by compose *and* by the code, so the published port and the one the service binds always
+agree.
 
 **One image, three services.** Studio, the bridge and Jupyter need the same things — Python,
-and the Claude Code CLI for the first two — so they share a build and differ only in the
-command and the mounts. Two Dockerfiles would be two things to keep in step. The `jupyter`
-service is the one that runs code a model wrote, so it gets the courses and the platform's
-configuration and nothing else: no `~/.claude` (see "Notebooks").
+and the `cli` providers' tools for the first two — so they share a build and differ only in
+the command and the mounts. Two Dockerfiles would be two things to keep in step. **A `cli`
+row in `settings.json` and a package in the image are one decision**: a row whose tool is not
+installed reads "not on this PATH", which is true of the container and says nothing about the
+host. The `jupyter` service is the one that runs code a model wrote, so it gets the courses
+and the platform's configuration and nothing else: no `~/.claude` and no `~/.codex` — which
+is why it extends `*image` and not `*common` (see "Notebooks").
 
 **Nothing is COPYed into the image.** The repo arrives as a bind mount, so a course written
 inside the container is a real file in the user's folder and editing `platform/` needs only a
 restart. Rebuild only when `docker/Dockerfile` changes.
 
-**`~/.claude` is mounted as a whole directory, never as a single file.** Claude Code refreshes
-its OAuth token by writing a new file and renaming it over the old one, which silently breaks
-a single-file bind mount. The mount is read-write because that refresh has to persist; the
-container then behaves like any other Claude Code session on the account.
+**A tool's own directory is mounted whole, never as a single file.** Claude Code refreshes its
+OAuth token by writing a new file and renaming it over the old one, which silently breaks a
+single-file bind mount; Codex does the same with `~/.codex/auth.json`. Both mounts are
+read-write because that refresh has to persist; the container then behaves like any other
+session of that tool on the account.
 
 **Services bind `0.0.0.0` inside the container, and compose publishes to `127.0.0.1`.**
 `STUDIO_HOST`, `BRIDGE_HOST` and `JUPYTER_HOST` default to loopback in the code and are
@@ -301,6 +308,12 @@ platform’s only dependency.
   `SETTINGS.provider_of`; asking every call site to know as well would be a second place to
   keep right. `llm.provider_for(name)` is there for the one caller that does have a provider
   in hand — the bridge, which found its own key.
+- **A person names a model by its alias; a provider is sent its full id.** The chain works in
+  the short names the settings page offers (`opus`, `terra`), and `Provider.model_name` in
+  `base` resolves one to the id before the call, for every kind alike — an endpoint has never
+  heard of `opus`, and only one command-line tool has, so a second `cli` provider handed the
+  alias is refused a model that exists. A name the list does not carry passes through, because
+  then it is already what was meant.
 - **An HTTP provider is four hooks.** `wire.HttpProvider` owns the socket, the key, the
   probe and the failure translation; an adapter says only where the request goes
   (`url_for`), how the key travels (`headers`), what the body looks like (`body_for`) and
@@ -453,7 +466,7 @@ much as a variable name is a contract with the next person to read the code.
 | mastery: Not started · Read · Practised · Proficient · Mastered | | each with a `help()` line |
 | tutor | Claude, assistant, chat panel | who answers in the page |
 | the model | Claude | who writes and reviews in Studio |
-| provider | vendor, backend, service | one way to reach models: a row in `providers` — `claude-code`, `anthropic`, `openai`, `google`, `local` |
+| provider | vendor, backend, service | one way to reach models: a row in `providers` — `claude-code`, `codex`, `anthropic`, `openai`, `google`, `local` |
 | model | | one row of `models.list`: `{provider, id, alias, label, note}` |
 | the model runner | Claude Code | the binary a `cli` provider runs; the status pill names whichever is configured |
 | Rebuild | publish, render | write `dist/` again |
@@ -863,7 +876,11 @@ has nothing to ask, so `coursekit/llm/claude_code.py` reads the two tables insid
 `--model` accepts) plus the catalogue it last fetched under `CLAUDE_CONFIG_DIR` or
 `~/.claude`. That file is vendor-specific on purpose: the regular expressions are one
 program's internals, so a build that changes shape — or any other CLI — reports "could not be
-read", never "no models".
+read", never "no models". **A reader is only ever handed the row it is named for**
+(`cli.READERS`, keyed by provider name, `catalog` on the row to override): the same rule as
+merging per provider, and it has to be enforced here too, because `claude_code` also reads
+the catalogue cached under `~/.claude` and a second `cli` row asking it would report those
+models as its own.
 
 `plan()` is the pure merge: a model a provider offers and the list lacks is added under that
 provider with a note saying when and from where; a model the list has that its own provider

@@ -25,7 +25,7 @@ x-image: &image
   image: course-platform:latest
   restart: unless-stopped
 
-# Studio and the bridge: the platform, the courses, and the CLI provider's own directory.
+# Studio and the bridge: the platform, the courses, and each CLI provider's own directory.
 x-common: &common
   <<: *image
   volumes:
@@ -41,6 +41,12 @@ x-common: &common
     # Read-write, because that refresh has to persist — the container then behaves like any
     # other Claude Code session on your account.
     - ${CLAUDE_HOME:?set CLAUDE_HOME in .env - see .env.example}:/root/.claude
+    # Codex's own directory, for the same reason and on the same terms: it holds auth.json,
+    # which it refreshes by writing and renaming, so the whole directory and read-write.
+    # Unset is not an error the way CLAUDE_HOME is - the default is an empty directory under
+    # state/, which leaves the tool installed but signed out, and its row says so. Point
+    # CODEX_HOME at the host's ~/.codex to use the account you already signed in to.
+    - ${CODEX_HOME:-./state/codex-home}:/root/.codex
   environment:
     # Claude Code writes scratch state here; keeping it off the bind mount avoids littering
     # the repo and makes the container's own state disposable.
@@ -83,7 +89,8 @@ services:
   # Jupyter Notebook, serving the courses directory: a course's notebooks/<mid>-<n>.ipynb
   # opens at /notebooks/<id>/notebooks/<mid>-<n>.ipynb, which the course page embeds.
   # It runs code a model wrote, so it gets the courses and the platform's configuration and
-  # nothing else: no ~/.claude (a kernel could read the OAuth token), no repo write access.
+  # nothing else: no ~/.claude and no ~/.codex (a kernel is one open() from either OAuth
+  # token), no repo write access. That is why it extends *image and not *common.
   # tools/jupyter/jupyter_server_config.py reads the same settings as Studio - port, token,
   # and the Studio origin it allows to frame it.
   jupyter:

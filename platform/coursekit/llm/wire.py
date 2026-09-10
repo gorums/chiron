@@ -28,7 +28,6 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List
 
-from ..settings import SETTINGS
 from .base import Capabilities, LLMFailed, Provider, Reply, Request, failed
 from .failures import AUTH, TIMEOUT, UNKNOWN, describe, from_status
 
@@ -83,17 +82,6 @@ class HttpProvider(Provider):
 
     def available(self) -> bool:
         return bool(self.key and self.api_url)
-
-    def model_name(self, name: str) -> str:
-        """An API wants the model's full id. `opus` is a short name a command-line tool
-        accepts and an endpoint has never heard of, so it is resolved here - and a name the
-        list does not carry is passed through, because then it is already what was meant."""
-        if not name:
-            return ""
-        for m in SETTINGS.models:
-            if m.get("alias") == name or m["id"] == name:
-                return str(m["id"])
-        return name
 
     def describe(self) -> Dict[str, Any]:
         return {"name": self.name, "kind": self.kind, "label": self.label,

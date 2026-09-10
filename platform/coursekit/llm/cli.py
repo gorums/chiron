@@ -40,6 +40,10 @@ HEADLESS = ("-p", "--output-format", "text")
 # The names the binary might go by on this machine, in order.
 COMMANDS = ("claude", "claude.cmd", "claude.exe")
 
+# Who can look inside which binary, by provider name. A reader is one program's internals,
+# so a row gets one only when it is named for it - see `CliProvider.catalog`.
+READERS = {"claude-code": lambda cli: claude_code.read(claude_code.binary(cli))}
+
 
 def find_cli(commands=COMMANDS) -> Optional[str]:
     for name in commands:
@@ -64,7 +68,8 @@ class CliProvider(Provider):
 
     def __init__(self, name: str = "claude-code", label: str = "Claude Code",
                  commands=COMMANDS, args=HEADLESS, model_flag: str = "--model",
-                 prompt_on: str = "stdin", hint: str = "", scratch: str = ""):
+                 prompt_on: str = "stdin", hint: str = "", scratch: str = "",
+                 catalog_reader: str = ""):
         self.name = name
         self.label = label
         self.commands = tuple(commands)
@@ -73,6 +78,7 @@ class CliProvider(Provider):
         self.prompt_on = prompt_on      # "stdin", or "arg" for a tool that wants it there
         self.hint = hint                # what to do when it is there but will not answer
         self.scratch = scratch or SETTINGS.scratch_dir
+        self.catalog_reader = catalog_reader or name    # who knows this binary's insides
 
     @classmethod
     def from_settings(cls, name: str, cfg: Dict[str, Any]) -> "CliProvider":
@@ -84,7 +90,8 @@ class CliProvider(Provider):
                    args=list(cfg.get("args") or HEADLESS),
                    model_flag=str(cfg.get("modelFlag") or "--model"),
                    prompt_on=str(cfg.get("promptOn") or "stdin"),
-                   hint=str(cfg.get("signinHint") or ""))
+                   hint=str(cfg.get("signinHint") or ""),
+                   catalog_reader=str(cfg.get("catalog") or ""))
 
     # ---- what it is
 
@@ -100,9 +107,17 @@ class CliProvider(Provider):
 
     def catalog(self, timeout: int = 0) -> Dict[str, Any]:
         """What this binary knows about, read out of the binary - there is no endpoint to
-        ask. Only Claude Code is understood (`claude_code.py`), and anything else reads as
-        "could not be read", which is exactly right: nothing here knows what it accepts."""
-        return claude_code.read(claude_code.binary(self.find() or ""))
+        ask. A reader understands one program's insides, so a row is only ever handed to the
+        one named for it; anything else reads as "could not be read", which is exactly right:
+        nothing here knows what that tool accepts, which is not "it accepts nothing". Asking
+        the wrong reader would be worse than not asking - `claude_code` also reads the
+        catalogue Claude Code caches under ~/.claude, and would report those models as this
+        tool's own."""
+        reader = READERS.get(self.catalog_reader)
+        if not reader:
+            return {"ok": False, "path": "", "models": [], "known": {},
+                    "error": "nothing here knows what %s accepts" % self.label}
+        return reader(self.find() or "")
 
     # ---- one call
 
@@ -153,9 +168,11 @@ class CliProvider(Provider):
     # ---- the mechanics
 
     def _args_for(self, model: str) -> List[str]:
-        """The argument vector for one call. No model named means the binary's own default,
-        which is the last resort at the end of the chain."""
-        return self.args + ([self.model_flag, model] if model else [])
+        """The argument vector for one call. The model travels as its full id, which every
+        tool takes; no model named means the binary's own default, which is the last resort
+        at the end of the chain."""
+        wanted = self.model_name(model)
+        return self.args + ([self.model_flag, wanted] if wanted else [])
 
     def _run(self, cli: str, args: List[str], prompt: str, timeout: int
              ) -> subprocess.CompletedProcess:

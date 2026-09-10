@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+from ..settings import SETTINGS
 from .failures import UNKNOWN, describe
 
 
@@ -104,7 +105,15 @@ class Provider:
 
     def model_name(self, name: str) -> str:
         """What to send for a model the platform calls `name`. The chain works in the short
-        names a person types; a command-line tool takes those, and an API does not."""
+        names a person types - `opus` - and what a provider is given is the full id, because
+        that is the one spelling everything accepts: an endpoint has never heard of `opus`,
+        and only one command-line tool has. A name the list does not carry is passed through,
+        because then it is already what was meant."""
+        if not name:
+            return ""
+        for m in SETTINGS.models:
+            if m.get("alias") == name or m["id"] == name:
+                return str(m["id"])
         return name
 
     def complete(self, req: Request) -> Reply:
