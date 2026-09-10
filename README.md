@@ -9,9 +9,6 @@ worksheets, the quizzes and the flashcards. The build turns that into **one self
 HTML file** that tracks your progress, schedules your revision, remembers what you keep
 getting wrong, and lets you ask a tutor about whatever paragraph you are stuck on.
 
-The marketing course was the original project and is now the reference implementation. It
-lives in its own repository, like every course: this repository is the platform alone.
-
 ---
 
 ## Contents
@@ -36,7 +33,7 @@ One command, once. The services then come back on every boot, so there is nothin
 by hand:
 
 ```bash
-cp .env.example .env       # set CLAUDE_HOME to your ~/.claude path
+cp .env.example .env       # set CLAUDE_HOME and CODEX_HOME to your path ex: CLAUDE_HOME=~/.claude  and CODEX_HOME=~/.codex
 docker compose up -d --build
 ```
 
