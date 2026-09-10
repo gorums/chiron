@@ -12,7 +12,7 @@ function notebooksBar(c) {
   const withNotebooks = mods.filter(m => m.notebooks > 0).length;
   const total = mods.reduce((n, m) => n + (m.notebooks || 0), 0);
   const missing = mods.length - withNotebooks;
-  const can = claudeReady();
+  const can = providerReady();
   const jupyter = STATE.jupyter || {};
   const server = jupyter.available
     ? `Jupyter is running at ${jupyter.url}, so these run inside the course page.`
@@ -28,7 +28,7 @@ function notebooksBar(c) {
 /* One row menu entry, only in a course that declares notebooks. */
 function notebooksMenuItem(c, m) {
   if (!c.notebooks) return "";
-  const can = claudeReady();
+  const can = providerReady();
   const label = m.notebooks > 0 ? "Replace the notebooks" : "Write notebooks";
   const sub =
     m.notebooks > 0

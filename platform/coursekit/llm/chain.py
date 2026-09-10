@@ -192,7 +192,7 @@ def _one_call(provider: Provider, req: Request, model: str) -> Reply:
     REPORTER.event("call", phase="start", what=req.what, model=label, chars=size,
                    timeout=req.timeout)
     try:
-        reply = provider.complete(_for_model(req, model))
+        reply = provider.complete(_for_model(provider, req, model))
     except LLMFailed as exc:
         took = time.time() - started
         report = log.error if exc.kind == TIMEOUT else log.warning
@@ -211,10 +211,11 @@ def _one_call(provider: Provider, req: Request, model: str) -> Reply:
     return reply
 
 
-def _for_model(req: Request, model: str) -> Request:
-    """The same request, aimed at one model."""
-    return Request(prompt=req.prompt, system=req.system, messages=req.messages, model=model,
-                   timeout=req.timeout, max_tokens=req.max_tokens, what=req.what)
+def _for_model(provider: Provider, req: Request, model: str) -> Request:
+    """The same request, aimed at one model, under the name that provider knows it by."""
+    return Request(prompt=req.prompt, system=req.system, messages=req.messages,
+                   model=provider.model_name(model), timeout=req.timeout,
+                   max_tokens=req.max_tokens, what=req.what)
 
 
 def _size(req: Request) -> int:

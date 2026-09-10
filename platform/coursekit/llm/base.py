@@ -102,6 +102,11 @@ class Provider:
         """Can this provider be used right now - binary found, or key present?"""
         raise NotImplementedError
 
+    def model_name(self, name: str) -> str:
+        """What to send for a model the platform calls `name`. The chain works in the short
+        names a person types; a command-line tool takes those, and an API does not."""
+        return name
+
     def complete(self, req: Request) -> Reply:
         """One call. Raises `LLMFailed` for anything that is not an answer; never returns
         something empty. Retrying, falling back to another model and reporting progress are

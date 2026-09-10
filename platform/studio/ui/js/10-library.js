@@ -104,11 +104,11 @@ function lastRunLine() {
 
 /* A model is what writes a course. If none can answer, say it once, at the top, with
    the two commands that fix it — not as a silently greyed button. */
-function claudeBanner() {
-  if (claudeReady()) return "";
+function providerBanner() {
+  if (providerReady()) return "";
   return `<div class="note gap-top"><b>${esc(providerName())} is not answering.</b> Studio can still open, build and export a course,
-    but it cannot write one. Install the <span class="mono">claude</span> command on this machine's PATH, run
-    <span class="mono">claude login</span>, then reload. <a href="#/settings">Settings &amp; logs</a> shows what Studio sees.</div>`;
+    but it cannot write one. ${esc(llmState().hint || "Configure a provider that can answer")}, then reload.
+    <a href="#/settings">Settings &amp; logs</a> shows what Studio sees.</div>`;
 }
 
 /* Bringing a course in is a way of getting a course, so it sits in the grid beside "New
@@ -135,7 +135,7 @@ function importCard() {
    makes sense once there are courses to show. */
 function firstRun() {
   $("#view").innerHTML = `
-    ${claudeBanner()}
+    ${providerBanner()}
     <div class="firstrun">
       <h2 class="big">No courses yet</h2>
       <p class="lede">Name a subject and an hour budget. The model designs the curriculum, you approve it,
@@ -150,7 +150,7 @@ function firstRun() {
 }
 
 function newCourseButton(kind) {
-  const ok = claudeReady();
+  const ok = providerReady();
   return ok
     ? `<a class="btn ${kind || ""}" href="#/new">New course</a>`
     : `<button class="btn ${kind || ""}" disabled title="Studio cannot reach ${esc(providerName())}, which is what writes a course.">New course</button>`;
@@ -166,7 +166,7 @@ function viewLibrary() {
   </div>`;
   $("#view").innerHTML = `
     ${liveJobBanner()}
-    ${claudeBanner()}
+    ${providerBanner()}
     <h2 class="big">Your courses</h2>
     <p class="lede">Progress is kept here when a course is opened from Studio, so you can pick up where you left off.
       Each course is a folder of markdown — its own repository — in the courses directory shown under Settings.</p>
@@ -364,7 +364,7 @@ function viewNew() {
     <p class="crumb"><a href="#/">Courses</a> › New course</p>
     <h2 class="big">New course</h2>
     <p class="lede">The curriculum is designed first and shown to you. Nothing is written until you approve it.</p>
-    ${claudeGate()}
+    ${providerGate()}
     <form class="card" id="newform">
       <div class="row">
         <div class="field">
@@ -405,7 +405,7 @@ function viewNew() {
       </div>
       ${modelChoice("f", "the curriculum, every module and the study data")}
       <div class="actions gap-top">
-        <button class="btn primary" id="planbtn" ${claudeReady() ? "" : "disabled"}>Design the curriculum</button>
+        <button class="btn primary" id="planbtn" ${providerReady() ? "" : "disabled"}>Design the curriculum</button>
         <a class="btn" href="#/">Cancel</a>
       </div>
       <p class="sub result">A 20-hour course is about 20 modules. Writing them all takes a while — the run shows each one as it lands, and you can stop at any point.</p>

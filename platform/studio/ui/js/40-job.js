@@ -410,7 +410,7 @@ function doneHTML(back) {
     <h3 class="eyebrow ok-text">Finished</h3>
     <h3>${what}</h3>
     <p class="sub">${r.modules} modules · ${r.sections} sections${r.figures ? ` · ${r.figures} figures` : ""}${r.notebooks ? ` · ${r.notebooks} notebooks` : ""} · ${r.quiz} quiz items · ${r.cards} flashcards · ${r.glossary} glossary terms · ${r.kb} KB</p>
-    <div class="actions gap-top">${open}${(job.kind === "rewrite" || job.kind === "extend") && r.module && claudeReady() ? `<button class="btn" onclick="reviewModule('${esc(id)}','${esc(r.module)}')">Review ${esc(r.module)} now</button>` : ""}${back}</div>
+    <div class="actions gap-top">${open}${(job.kind === "rewrite" || job.kind === "extend") && r.module && providerReady() ? `<button class="btn" onclick="reviewModule('${esc(id)}','${esc(r.module)}')">Review ${esc(r.module)} now</button>` : ""}${back}</div>
     ${job.kind === "rewrite" ? `<p class="sub result">An earlier review of ${esc(r.module || "this module")} judged the old text, so the course page now shows it as "before edit". A new review reads what was just written.</p>` : ""}
     <p class="sub result">Opened from here, the course keeps its progress on the platform and asks its questions through Studio — no key, no bridge, no disk copy needed.</p>
   </div>`;

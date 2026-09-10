@@ -1,6 +1,8 @@
-# One image, two services. Studio and the bridge need exactly the same things — Python to
-# run, and the Claude Code CLI to reach Claude — so they share a build and differ only in the
-# command compose gives them. Two Dockerfiles here would be two things to keep in step.
+# One image, three services. Studio and the bridge need exactly the same things — Python to
+# run, and a command-line tool for the `claude-code` provider — so they share a build and
+# differ only in the command compose gives them. Two Dockerfiles would be two things to keep
+# in step. The tool below is what the shipped `providers` block is configured for; a setup
+# that reaches its models through an API key alone does not need it in the image at all.
 
 FROM python:3.13-slim
 

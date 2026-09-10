@@ -22,11 +22,23 @@ function providerChoices() {
   return (llmState().providers || []).map(p => ({ name: p.name, label: p.label }));
 }
 
+/* The placeholder in each field is a real row from the list in use, so the example is
+   always one of the reader's own models rather than a name from whoever shipped this. */
+function modelFieldSamples() {
+  const first = modelList()[0] || {};
+  return {
+    id: first.apiId || "the id its provider takes",
+    alias: first.id || "a short name",
+    label: first.name || "shown as",
+    note: "when to pick it",
+  };
+}
+
 const MODEL_FIELDS = [
-  ["id", "id, as its provider takes it", "claude-sonnet-5"],
-  ["alias", "short alias (optional)", "sonnet"],
-  ["label", "shown as", "Claude Sonnet 5"],
-  ["note", "when to pick it", "fast and cheap; fine for a patch or the tutor"],
+  ["id", "id, as its provider takes it"],
+  ["alias", "short alias (optional)"],
+  ["label", "shown as"],
+  ["note", "when to pick it"],
 ];
 
 /* Load the rows from what the settings page already fetched. */
@@ -141,11 +153,12 @@ function providerField(row, i) {
 
 function modelRow(row, i) {
   const provider = providerField(row, i);
+  const samples = modelFieldSamples();
   const inputs =
     provider +
     MODEL_FIELDS.map(
-      ([key, hint, sample]) =>
-        `<input type="text" class="${key}" value="${esc(row[key])}" placeholder="${esc(sample)}" title="${esc(hint)}" aria-label="${esc(hint)}" oninput="editModelRow(${i}, '${key}', this.value)" spellcheck="false">`
+      ([key, hint]) =>
+        `<input type="text" class="${key}" value="${esc(row[key])}" placeholder="${esc(samples[key])}" title="${esc(hint)}" aria-label="${esc(hint)}" oninput="editModelRow(${i}, '${key}', this.value)" spellcheck="false">`
     ).join("");
   const testing = modelEditor.testing === row.id;
   const first = i === 0;

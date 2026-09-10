@@ -121,22 +121,21 @@ function liveJobBanner() {
   return `<div class="banner"><span class="pulse"></span><span class="grow">${esc(who ? who + " · " : "")}${esc(jobLabel(j))}${more}</span>
     <a class="btn sm" href="#/job/${esc(j.id)}">Watch it</a></div>`;
 }
-/* Everything about who answers comes from /api/state. `llm` is the block; `claude` is what
-   it was called when there was only ever one provider, and a page loaded before the rename
-   still finds it. */
+/* Everything about who answers comes from /api/state. Studio serves this file and that
+   response, so there is no version to be behind: no fallback is needed here. */
 function llmState() {
-  return STATE.llm || STATE.claude || { available: false, providers: [], models: [] };
+  return STATE.llm || { available: false, providers: [], models: [] };
 }
 /* The provider a writing job would run on, as a person reads it. */
 function providerName() {
   return llmState().providerLabel || "The model";
 }
 /* Every screen that needs a model says once, in words, why its buttons are off. */
-function claudeReady() {
+function providerReady() {
   return !!llmState().available;
 }
-function claudeGate() {
-  if (claudeReady()) return "";
+function providerGate() {
+  if (providerReady()) return "";
   const hint = llmState().hint;
   return `<div class="note gap-top">${esc(providerName())} is not answering, so everything that writes or reviews is off.
     ${hint ? esc(hint) + " " : ""}<a href="#/settings">Check the status</a>.</div>`;
@@ -149,8 +148,8 @@ function courseUrl(c, hash) {
 async function refresh() {
   STATE = await api("/api/state");
   paintProfilePicker();
-  const pill = $("#claudestate");
-  const ready = claudeReady();
+  const pill = $("#providerstate");
+  const ready = providerReady();
   const who = providerName();
   pill.textContent = ready ? who + " connected" : who + " not answering";
   pill.className = "pill " + (ready ? "on" : "off");

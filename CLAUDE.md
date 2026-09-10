@@ -349,6 +349,21 @@ grep -rniE "marketing|marketer" platform/web/
 
 must return nothing.
 
+**The same rule applies to whoever makes the model.** Neither front end may say "Claude"
+any more than it may say "marketing": a provider is named from `CFG.platform.providers` or
+from `/api/state`, and a model from its own `label`. `TestEngineIsSubjectAgnostic`
+enforces it over `platform/web/` and `platform/studio/ui/` with three stated exceptions —
+`14b-wire.js`, which *is* the adapters; the block-name fallback in `14-conn.js`, because a
+built page can be older than the Studio serving it; and the one-key migration in
+`01-state.js`. The one-liner:
+
+```
+grep -rniE "claude|anthropic|openai|gemini" platform/web/ platform/studio/ui/
+```
+
+Vendor names belong in `settings.json`, in `coursekit/llm/<vendor>.py`, in `.env.example`,
+in `docker/`, and in this file — nowhere else.
+
 The mirror of that rule: `courses/<id>/` contains no code the platform runs. A course is
 markdown, JSON, SVG figures and, where the subject calls for them, Jupyter notebooks (JSON
 too), nothing else.
@@ -434,9 +449,10 @@ much as a variable name is a contract with the next person to read the code.
 | Fix mistakes | mistake queue | `#/review/mistakes` |
 | mastery: Not started · Read · Practised · Proficient · Mastered | | each with a `help()` line |
 | tutor | Claude, assistant, chat panel | who answers in the page |
-| Claude | model | who writes and reviews in Studio |
-| Claude Code | | the installed CLI; the status pill only |
-| model | | the picker |
+| the model | Claude | who writes and reviews in Studio |
+| provider | vendor, backend, service | one way to reach models: a row in `providers` — `claude-code`, `anthropic`, `openai`, `google`, `local` |
+| model | | one row of `models.list`: `{provider, id, alias, label, note}` |
+| the model runner | Claude Code | the binary a `cli` provider runs; the status pill names whichever is configured |
 | Rebuild | publish, render | write `dist/` again |
 | Stop (a run) / Cancel (a form) | | |
 | Mark as good / Unmark | This is good, Withdraw | the owner's own verdict |

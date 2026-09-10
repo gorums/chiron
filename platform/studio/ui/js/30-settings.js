@@ -57,7 +57,7 @@ async function viewSettingsPage() {
     <div class="card">
       <h3 class="eyebrow">Providers</h3>
       <p class="sub">How a model is reached. Each row is configured in <span class="mono">providers</span> in the platform settings; a key belongs in <span class="mono">.env</span> and is never shown here or sent to a course page.</p>
-      ${providerRows((s.llm || s.claude || {}).providers || [])}
+      ${providerRows((s.llm || {}).providers || [])}
     </div>
 
     <div class="card">

@@ -282,22 +282,50 @@ while Studio reaches it through Claude Code.
 
 ## Phase 8 — The words, and the guards
 
-- [ ] `test_build.py` — extend `HARDCODED` with `claude`, `anthropic`, `openai`, `chatgpt`,
+- [x] `test_build.py` — extend `HARDCODED` with `claude`, `anthropic`, `openai`, `chatgpt`,
       `gemini` (case-insensitive) for `platform/web/js/`; add the same check for
       `platform/studio/ui/js/`. Docstring names the rule.
-- [ ] `test_build.py` — a test that `SETTINGS.page()` carries no `apiKey` for any provider.
-- [ ] `CLAUDE.md` — new "Providers" section (the layer, the settings shape, the `cli` kind,
+- [x] `test_build.py` — a test that `SETTINGS.page()` carries no `apiKey` for any provider.
+- [x] `CLAUDE.md` — new "Providers" section (the layer, the settings shape, the `cli` kind,
       what stays vendor-specific); vocabulary table gains provider / model / the model runner;
       update "Course Studio", "The two-layer rule", "Settings", the bridge paragraphs and the
       module table.
-- [ ] `README.md`, `.env.example`, `tools/bridge/README.md` — provider language throughout.
-- [ ] `docker/Dockerfile` and `compose.yaml` — comments say Claude Code is the default
+- [x] `README.md`, `.env.example`, `tools/bridge/README.md` — provider language throughout.
+- [x] `docker/Dockerfile` and `compose.yaml` — comments say Claude Code is the default
       provider's runner, not a platform requirement; `CLAUDE_HOME` documented as needed only
       when that provider is enabled.
-- [ ] `grep -rniE "claude|anthropic|openai|gemini" platform/web/ platform/studio/ui/` returns
+- [x] `grep -rniE "claude|anthropic|openai|gemini" platform/web/ platform/studio/ui/` returns
       nothing; record the one-liner in CLAUDE.md beside the existing two-layer grep.
-- [ ] Remove the one-release aliases added in Phases 3 and 6 (`/health` legacy fields, the
-      `claude` block in `/api/state`, `claude-bridge.py`) once everything reads the new names.
+- [x] Remove the one-release aliases — *the ones that were actually dead.* Judged one by
+      one rather than swept:
+      - **Removed:** `apiUrl` / `apiVersion` at the top of `CFG.platform`. Nothing reads
+        them since the page took its endpoints from the provider rows.
+      - **Removed:** the `STATE.claude` fallback in the Studio UI. Studio serves both
+        that file and that response, so there is no version to be behind.
+      - **Kept:** the `claude` block in `/api/state`, and the `j.llm || j.claude` read in
+        `14-conn.js`. A built HTML file on someone's disk *can* be older than the Studio
+        serving it, and dropping this turns their tutor off until they rebuild.
+      - **Kept:** `claude-bridge.py`. Nothing in the repo names it any more — compose now
+        says `tutor-bridge.py` — but a shortcut on a desktop might, and 27 lines is a
+        cheap price for not breaking it.
+      - **Not legacy at all:** the flat `/health` fields. `checkBridge` reads every one
+        of them (`echo`, `cli`, `has_key`, `key_source`, `key_hint`, `ok`, `ready`).
+
+Also done, not foreseen:
+
+- [x] The identifiers were lying too. `claudeReady` / `claudeGate` / `claudeBanner` /
+      `#claudestate` became `providerReady` / `providerGate` / `providerBanner` /
+      `#providerstate` — a name that says one vendor while meaning any provider is the
+      same bug as the prose, and harder to notice later.
+- [x] The model editor's placeholders were `claude-sonnet-5` and `Claude Sonnet 5`. They
+      now come from the first row of the list in use, so the example is one of the
+      reader's own models — better than a generic placeholder, and no literal to guard.
+- [x] The "install Claude Code" banner prints the configured provider's own `signinHint`.
+
+**Done.** 137 tests in `test_build.py` (2 new), 144 in `test_studio.py`; every checks
+file (`rail`, `learner`, `audio`, and Phase 7's) still passes; prettier clean. The guard
+was proved to bite: a `/* Claude wrote this */` added to `18-notes.js` failed the suite
+with `18-notes.js names 'claude'`, and removing it passed again.
 
 ---
 
@@ -310,10 +338,24 @@ while Studio reaches it through Claude Code.
 
 ## Definition of done
 
-- A model row naming any of `claude-code`, `anthropic`, `openai`, `google` or `local` can be
-  added on the Studio settings page and used to write a module, review one, draw figures and
-  answer in the tutor — with no code change.
-- `platform/coursekit/llm/` is the only place any wire format or CLI argv appears.
-- No vendor name in `platform/web/js/` or `platform/studio/ui/js/`, enforced by a test.
-- A fresh clone with no `.env` behaves exactly as it does today: Claude Code, Opus 5, one
-  provider, nothing new to configure.
+*Checked on 2026-09-10, at the end of Phase 8. Each line below was run, not reasoned about.*
+
+
+- [x] A model row naming any of `claude-code`, `anthropic`, `openai`, `google` or `local` can
+  be added on the Studio settings page and used to write a module, review one, draw figures
+  and answer in the tutor — with no code change.
+  *Proved: a `local` row plus one model, added through a settings overlay only, and
+  `claude_cli.ask(..., model="llama")` — the call every writer in Studio makes — reached an
+  OpenAI-shaped server on 127.0.0.1:11434, one attempt, prompt verbatim. That run is also
+  what caught the last bug: the API was being sent the alias `llama` instead of the id
+  `llama3.1:70b`. `Provider.model_name` now translates per provider — a CLI takes the short
+  name, an endpoint has never heard of it.*
+- [x] `platform/coursekit/llm/` is the only place any wire format or CLI argv appears, with
+  `web/js/14b-wire.js` as its browser half. *Checked: `x-api-key`, `Bearer`, `x-goog-api-key`
+  and `--output-format` appear in five files, all of them adapters.*
+- [x] No vendor name in `platform/web/js/` or `platform/studio/ui/`, enforced by a test with
+  three stated exceptions. *Proved to bite: a `/* Claude wrote this */` in `18-notes.js`
+  failed the suite by name.*
+- [x] A fresh clone with no `.env` behaves exactly as it did: `claude-code` the default
+  provider, `opus` the default model, the same four models. *Checked with a clean state
+  directory.*

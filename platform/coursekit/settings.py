@@ -383,15 +383,10 @@ class Settings:
 
     def page(self) -> Dict[str, Any]:
         """CFG.platform: the slice the built page needs. Presentation-free and course-free."""
-        anthropic = self.provider("anthropic")
         out = self.section("page")
         out.update({
             "bridgeUrl": self.bridge_url,
             "providers": self.page_providers(),
-            # The one wire format the page already speaks, under the names it already uses.
-            # They go when the page reads `providers` instead.
-            "apiUrl": anthropic.get("apiUrl", ""),
-            "apiVersion": anthropic.get("apiVersion", ""),
             "defaultModel": self.model_id(self.default_model),
             "models": [{"id": m["id"], "label": m.get("label") or m["id"],
                         "provider": m["provider"]} for m in self.models],

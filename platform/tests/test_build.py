@@ -598,6 +598,55 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
     HARDCODED = ("api.anthropic.com/", "claude-sonnet", "claude-opus", "claude-haiku",
                  "claude-fable", "127.0.0.1", "localhost:", ":8787", ":8790", "anthropic-version\": \"20")
 
+    # Who makes the model is configuration, not something either front end knows. The two
+    # surfaces name a provider from `CFG.platform.providers` or from `/api/state`; a literal
+    # here would be a second source of truth, and the one that goes stale.
+    VENDORS = ("claude", "anthropic", "openai", "chatgpt", "gpt-", "gemini", "llama", "mistral")
+
+    # The three places a vendor may be named, each for a reason that is not prose.
+    VENDORS_ALLOWED = {
+        # It is the adapters: one entry per wire format, named for the format it speaks.
+        "14b-wire.js": ("anthropic", "openai", "gemini"),
+        # A built page can be older than the Studio serving it, so it reads both the block's
+        # name and the one it had before providers existed.
+        "14-conn.js": ("claude",),
+        # A save from before providers held one key, and it could only ever have been that one.
+        "01-state.js": ("anthropic",),
+    }
+
+    def test_neither_front_end_names_who_makes_the_model(self):
+        """The two-layer rule, applied to vendors instead of subjects: the engine may not
+        say "Claude" any more than it may say "marketing". Every name a reader sees comes
+        from the settings, through CFG.platform or /api/state."""
+        roots = [os.path.join(PLATFORM, "web", "js"),
+                 os.path.join(PLATFORM, "studio", "ui")]
+        offenders = []
+        for root in roots:
+            for folder, _dirs, names in os.walk(root):
+                for name in sorted(names):
+                    if not name.endswith((".js", ".css", ".html")):
+                        continue
+                    allowed = self.VENDORS_ALLOWED.get(name, ())
+                    text = open(os.path.join(folder, name), encoding="utf-8").read().lower()
+                    for word in self.VENDORS:
+                        if word in text and word not in allowed:
+                            offenders.append("%s names %r" % (name, word))
+        self.assertEqual(offenders, [], "\n".join(offenders) + "\n\n"
+                         "Name it from CFG.platform.providers or /api/state, or add the file "
+                         "to VENDORS_ALLOWED with the reason it is not prose.")
+
+    def test_a_key_never_reaches_a_built_page(self):
+        """A built page is a file anyone may be given. Every provider key is stripped from
+        `page()` by rule, so a provider added later is stripped without this test changing."""
+        keyed = settings.load(env={"ANTHROPIC_API_KEY": "sk-ant-leak",
+                                   "OPENAI_API_KEY": "sk-oai-leak"},
+                              dotenv={}, overlay="", studio_file="")
+        page = json.dumps(keyed.page())
+        self.assertNotIn("sk-ant-leak", page)
+        self.assertNotIn("sk-oai-leak", page)
+        self.assertNotIn("apiKey", page)
+        self.assertTrue(keyed.get("providers.anthropic.apiKey"), "it was set, and still stripped")
+
     def test_no_hardcoded_endpoints_or_models_in_the_front_end(self):
         offenders = []
         for path in bundler.source_files():
@@ -626,7 +675,7 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
         got = renderer.runtime_config(cfg)
         self.assertEqual(got["id"], cfg.id)
         platform = got["platform"]
-        for key in ("bridgeUrl", "apiUrl", "apiVersion", "defaultModel", "models",
+        for key in ("bridgeUrl", "providers", "defaultModel", "models",
                     "tutor", "sync", "study", "ui"):
             self.assertIn(key, platform)
         self.assertIn(platform["defaultModel"], [m["id"] for m in platform["models"]])
@@ -780,14 +829,14 @@ class TestSettings(unittest.TestCase):
         self.assertIsNone(s.get("claude.timeout"), "one place to look, not two")
         self.assertIsNone(s.get("anthropic.apiUrl"))
         self.assertEqual(s.overrides["llm.timeout"], overlay)
-        self.assertEqual(s.page()["apiUrl"], "https://example.test/v1/messages")
+        self.assertEqual(s.page_providers()[0]["apiUrl"], "https://example.test/v1/messages")
 
     def test_an_old_env_name_still_reaches_the_setting_it_always_meant(self):
         s = settings.load(env={"BRIDGE_API_URL": "https://proxy.test/v1/messages",
                                "ANTHROPIC_API_VERSION": "2024-01-01"},
                           dotenv={}, overlay="", studio_file="")
         self.assertEqual(s.provider("anthropic")["apiUrl"], "https://proxy.test/v1/messages")
-        self.assertEqual(s.page()["apiVersion"], "2024-01-01")
+        self.assertEqual(s.page_providers()[0]["apiVersion"], "2024-01-01")
 
     def test_the_page_is_told_which_providers_it_may_call_itself(self):
         """A provider that runs a binary is no use to a browser, and a disabled one is no use
@@ -1125,6 +1174,20 @@ class TestProviderLayer(unittest.TestCase):
         self.assertEqual(llm_cli.argv("C:/x/claude.cmd", ["-p"]),
                          ["cmd", "/c", "C:/x/claude.cmd", "-p"])
         self.assertEqual(llm_cli.argv("C:/x/claude.exe", ["-p"]), ["C:/x/claude.exe", "-p"])
+
+    def test_a_provider_is_sent_the_name_it_knows_the_model_by(self):
+        """The chain works in the short names a person types. A command-line tool takes
+        those; an endpoint has never heard of `opus` and would answer 404."""
+        cli = llm_cli.CliProvider()
+        api = llm_anthropic.AnthropicProvider(api_url="https://x.test", key="k")
+        default = settings.SETTINGS.default_model
+        full = settings.SETTINGS.model_id(default)
+        self.assertNotEqual(default, full, "the shipped list has aliases, or this proves nothing")
+        self.assertEqual(cli.model_name(default), default)
+        self.assertEqual(api.model_name(default), full)
+        self.assertEqual(api.model_name(""), "", "no model named stays no model named")
+        self.assertEqual(api.model_name("llama3.1:70b"), "llama3.1:70b",
+                         "a name the list does not carry is already what was meant")
 
     def test_a_provider_is_addressable_before_it_is_enabled(self):
         """`enabled` governs what is offered, not what may be addressed - otherwise a row

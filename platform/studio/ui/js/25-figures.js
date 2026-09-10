@@ -10,7 +10,7 @@ function figuresBar(c) {
   const withFigures = mods.filter(m => m.figures > 0).length;
   const total = mods.reduce((n, m) => n + (m.figures || 0), 0);
   const missing = mods.length - withFigures;
-  const can = claudeReady();
+  const can = providerReady();
   const why = can
     ? "An SVG diagram drawn for a section: a flow, a funnel, a 2×2, a build-up the reader steps through. One call per module."
     : providerName() + " is not answering.";
@@ -23,7 +23,7 @@ function figuresBar(c) {
 
 /* One row menu entry: draw, or redraw when the module already has figures. */
 function figuresMenuItem(c, m) {
-  const can = claudeReady();
+  const can = providerReady();
   const label = m.figures > 0 ? "Redraw the figures" : "Draw figures";
   const sub =
     m.figures > 0

@@ -83,7 +83,7 @@ function paintCourse(c) {
     ${c.resumable && !live ? `<div class="note gap-top">This course's generation run did not finish — the saved curriculum is still here. <b>Resume the run</b> keeps every module and study-data entry already on disk and writes only what is missing, then builds. See <a href="#/settings">Settings &amp; logs</a> for why it stopped.</div>` : ""}
     ${c.built && c.dirty ? `<p class="sub result"><span class="tag warn" title="${esc(help("dirty"))}">changed since the build</span> A file has been edited since ${esc(ago(c.builtAt))}. Rebuild to put it in the page.</p>` : ""}
     ${c.built && !c.dirty ? `<p class="sub result">Built ${esc(ago(c.builtAt))}. A rebuild keeps your progress — it lives with the platform, not the page.</p>` : ""}
-    ${claudeGate()}
+    ${providerGate()}
     </div>
     <div class="tabs" role="tablist" aria-label="Course">
       ${TABS.map(
@@ -225,7 +225,7 @@ function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
   const rewriting = route.query.rewrite === m.id;
   const rv = reviews[m.id];
   const isGood = !!(rv && rv.accepted && !rv.stale);
-  const gate = claudeReady() ? "" : "disabled";
+  const gate = providerReady() ? "" : "disabled";
   return `<div class="modrow" id="mod-${m.id}">
     <span class="order"><button title="Move ${esc(m.id)} up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">${ico("up", 13)}</button><button title="Move ${esc(m.id)} down" aria-label="Move ${esc(m.id)} down" ${i === total - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">${ico("down", 13)}</button></span>
     <span class="mid">${esc(m.id)}</span>
@@ -797,9 +797,9 @@ function paintAdd(c) {
     </div>
     ${mediaChoices("x", c, "for the new module")}
     ${modelChoice("x", "the design, the module and its study data")}
-    ${claudeGate()}
+    ${providerGate()}
     <div class="actions gap-top">
-      <button class="btn primary" id="extendbtn" ${claudeReady() ? "" : "disabled"}>Design and write it</button>
+      <button class="btn primary" id="extendbtn" ${providerReady() ? "" : "disabled"}>Design and write it</button>
     </div>
   </form>`;
   $("#x-topic").focus();

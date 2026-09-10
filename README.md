@@ -6,7 +6,7 @@ browser.
 You pick a theme and a budget — "marketing, 30 hours"; "negotiation, 20 hours" — and the
 authoring skill writes the whole thing: the curriculum, the modules, the glossary, the
 worksheets, the quizzes and the flashcards. The build turns that into a single HTML file
-that tracks your progress, schedules your revision, and lets you ask Claude about whatever
+that tracks your progress, schedules your revision, and lets you ask a model about whatever
 paragraph you are stuck on.
 
 The marketing course was the original project and is now the reference implementation. It
@@ -34,7 +34,7 @@ line in `.env` (`STUDIO_PORT=…`, `BRIDGE_PORT=…`, see `.env.example`) overri
 
 `docker compose logs -f studio` watches a generation run; `docker compose down` stops both.
 
-It mounts your `~/.claude` so the containers use the Claude Code subscription you are already
+It mounts your `~/.claude` so the containers use the command-line tool you are already
 signed in to — no API key, no per-token bill. Both ports are published to `127.0.0.1` only,
 so nothing outside your machine can reach them.
 
@@ -43,7 +43,7 @@ Open **http://127.0.0.1:8790** and everything happens there:
 - **Your courses**, each with how far you are, and a **Continue** button that opens the next
   module. Progress is kept by the platform in `state/progress/`, so a rebuild, a new browser,
   or a container restart does not lose it.
-- **Study** a course served from Studio. It asks its questions through Studio's own Claude
+- **Study** a course served from Studio. It asks its questions through Studio's own
   Code — no key, no bridge, nothing to open off disk.
 - **Grow a course** when a module leaves you wanting more: the module footer links straight
   to *Add a module* (a new module on that topic, designed to fit the curriculum) or
@@ -55,7 +55,7 @@ Open **http://127.0.0.1:8790** and everything happens there:
   module, delete a course — all reversible: nothing is erased, it moves to `state/trash/`.
 - **A run that dies can be resumed.** The curriculum is saved; *Resume the run* keeps what
   was written and does only the rest.
-- **Settings & logs**: pick the model Studio writes with, and read the log of every Claude
+- **Settings & logs**: pick the model Studio writes with, see every provider it can reach, and read the log of every
   call and job step when something goes wrong.
 
 ## Or run it directly
@@ -64,7 +64,7 @@ Double-click **`start-studio.bat`** (or run `python platform/build.py studio`). 
 opens in your browser.
 
 1. **Describe it** — theme, hours, who is studying. "negotiation, 20 hours, a complete beginner".
-2. **Approve the curriculum** — Claude proposes the parts, the module list and the time split.
+2. **Approve the curriculum** — the model proposes the parts, the module list and the time split.
    Edit the titles and minutes, drop modules you do not want, then say go. Nothing is written
    until you do: twenty modules take a while, so this minute is worth it.
 3. **Watch it write** — each module appears as it lands, with its section and word count. You
@@ -90,7 +90,7 @@ python platform/build.py check negotiation                      # validate
 python platform/build.py build negotiation                      # -> dist/negotiation/
 ```
 
-You can also ask Claude, in this folder:
+You can also ask a coding agent, in this folder:
 
 > Build me a 20-hour course on negotiation.
 
@@ -109,7 +109,7 @@ A single self-contained page — no server, no install, works offline:
   you felt and how right you were.
 - **Flashcards** on a spaced-repetition schedule, unlocked as you finish modules.
 - **Highlight anything** to turn it into a note or a question.
-- **Ask Claude** in a side rail that always knows which section you are reading, with
+- **Ask the tutor** in a side rail that always knows which section you are reading, with
   suggested questions written for that specific passage.
 - **Search everything** with `/`.
 - **Backup / restore** to move progress between machines.
@@ -122,13 +122,13 @@ Each build produces two copies:
 
 | File | Use it for |
 |---|---|
-| `<course>-local.html` | **Studying.** Open it straight from the folder. This is the copy that can talk to Claude. |
+| `<course>-local.html` | **Studying.** Open it straight from the folder. This is the copy whose tutor can answer. |
 | `<course>.html` | Publishing. Everything works except the tutor — a hosted page is not allowed to call Anthropic. |
 
 If you open the course **from Studio**, the tutor already works and progress is kept on the
 platform — nothing to set up. Opening the local copy straight off disk still works too: go to
 **Settings** in the sidebar and either paste an Anthropic API key (a typical question costs a
-fraction of a cent) or start the bridge to use a Claude Code subscription instead — see
+fraction of a cent) or start the bridge to use a subscription you already have instead — see
 `tools/bridge/README.md`.
 
 ---
@@ -144,7 +144,7 @@ platform/          the engine — subject-agnostic
 courses/<id>/      one course, its own git repository (gitignored here — see below)
 dist/<id>/         built output
 state/             yours, not the course's: progress/, finished jobs/, trash/
-tools/bridge/      local proxy, so a course page can reach Claude
+tools/bridge/      local proxy, so a course page opened off disk can reach a model
 docker/            the image both services share
 compose.yaml       Studio + bridge, restarting on every boot
 start-studio.bat   double-click to open Course Studio without Docker
