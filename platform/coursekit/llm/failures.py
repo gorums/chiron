@@ -35,10 +35,10 @@ _SIGNS = (
         r"out of credit|credit balance|insufficient", re.I)),
     (AUTH, re.compile(
         r"not logged in|please (?:log|sign) in|invalid api key|unauthorized|"
-        r"authentication|\b401\b|\b403\b", re.I)),
+        r"authentication|permission_error|\b401\b|\b403\b", re.I)),
     (MODEL, re.compile(
         r"unrecognized_model|unknown model|invalid model|model not found|"
-        r"not a valid model|model catalog|\b404\b", re.I)),
+        r"not_found_error|not a valid model|model catalog|\b404\b", re.I)),
     (TRANSIENT, re.compile(
         r"overloaded|\b5(?:00|02|03|29)\b|internal server error|bad gateway|"
         r"service unavailable|fetch failed|socket hang up|connection (?:reset|refused|closed)|"

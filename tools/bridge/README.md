@@ -1,21 +1,29 @@
-# The Claude bridge — optional
+# The tutor bridge — optional
 
 **You probably do not need this.** A course site calls Anthropic directly: open its
 `-local.html` copy from `dist/`, go to Settings, paste an API key, press Connect. Nothing to
 install, nothing to keep running.
 
-This folder is for one case only: **you would rather use Claude Code than an API key.** The
-bridge routes questions through the `claude` command you are already signed in to, so no key
-and no per-use billing are involved. Start it, then pick "Use the bridge" in the site's
-Settings under the collapsed alternative section.
+This folder is for one case only: **you would rather use a command-line tool you are already
+signed in to than an API key.** The bridge routes questions through it, so no key and no
+per-use billing are involved. Start it, then pick "Use the bridge" in the site's Settings
+under the collapsed alternative section.
+
+The program is `tutor-bridge.py`. `claude-bridge.py` is its old name and still starts it.
 
 ## How it works
 
 A small program runs on your own computer and passes messages along:
 
 ```
-course site (your browser)  →  http://127.0.0.1:8787  →  api.anthropic.com
+course site (your browser)  →  http://127.0.0.1:8787  →  a model
 ```
+
+Which model, and how it is reached, is not the bridge's decision: it asks `coursekit.llm`,
+the same provider layer Studio uses, so a provider added in `platform/settings.json` works
+here without this folder changing. What the bridge itself does is keep a loopback socket with
+CORS, find a key without asking you, choose between the ways in when there is more than one,
+and bound what a single question may cost.
 
 It listens on `127.0.0.1` only, which means nothing outside this computer can reach it. It never writes your API key to disk, and never logs it.
 

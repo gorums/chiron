@@ -43,6 +43,7 @@ import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 from coursekit.failures import MODEL
+from coursekit.llm.anthropic import AnthropicProvider
 from coursekit.settings import SETTINGS
 
 from . import claude_cli, models
@@ -183,33 +184,21 @@ def api_key() -> str:
 
 
 def read_api_catalog(key: str = "", url: str = "", timeout: int = TIMEOUT) -> Dict[str, Any]:
-    """{ok, models: [{id, label, created}], error}. Every page of `GET /v1/models`."""
-    key = key or api_key()
-    url = url or str(SETTINGS.get("providers.anthropic.modelsUrl"))
-    if not key:
-        return {"ok": False, "models": [], "error": "no API key configured"}
-    found: List[Dict[str, str]] = []
-    after = ""
-    try:
-        for _ in range(20):                                     # never loop on a bad server
-            page = url + "?limit=%d" % API_PAGE + ("&after_id=" + after if after else "")
-            req = urllib.request.Request(page, headers={
-                "x-api-key": key,
-                "anthropic-version": str(SETTINGS.get("providers.anthropic.apiVersion"))})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            for m in body.get("data") or []:
-                if isinstance(m, dict) and m.get("id"):
-                    found.append({"id": str(m["id"]), "label": label_for(m.get("display_name", ""), str(m["id"])),
-                                  "created": str(m.get("created_at") or "")})
-            if not body.get("has_more") or not body.get("last_id"):
-                break
-            after = str(body["last_id"])
-    except urllib.error.HTTPError as exc:
-        return {"ok": False, "models": [], "error": "HTTP %s from %s" % (exc.code, url)}
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        return {"ok": False, "models": [], "error": str(exc)[:200]}
-    return {"ok": True, "models": found, "error": ""}
+    """{ok, models: [{id, label, created}], error}. Every page of `GET /v1/models`.
+
+    The paging and the error handling belong to the provider that speaks that wire format;
+    what is left here is the one thing discovery wants differently - a label tidied for a
+    list a person reads."""
+    provider = AnthropicProvider.from_settings("anthropic", SETTINGS.provider("anthropic"))
+    if key:
+        provider = provider.with_key(key)
+    if url:
+        provider.models_url = url
+    found = provider.catalog(timeout)
+    if found.get("ok"):
+        found["models"] = [dict(m, label=label_for(m["label"], m["id"]))
+                           for m in found["models"]]
+    return found
 
 
 # ---- the merge rule ----

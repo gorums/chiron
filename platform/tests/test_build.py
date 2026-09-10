@@ -24,6 +24,7 @@ sys.path.insert(0, PLATFORM)
 from coursekit import assessments, bundler, config, failures, library, loader, paths, renderer, scaffold, settings, validate  # noqa: E402
 from coursekit import llm  # noqa: E402
 from coursekit.llm import base as llm_base  # noqa: E402
+from coursekit.llm import anthropic as llm_anthropic  # noqa: E402
 from coursekit.llm import chain as llm_chain  # noqa: E402
 from coursekit.llm import cli as llm_cli  # noqa: E402
 from coursekit.llm import shape as llm_shape  # noqa: E402
@@ -1092,6 +1093,195 @@ class TestProviderLayer(unittest.TestCase):
         self.assertEqual(llm.provider_for().kind, "cli")
         self.assertEqual(llm.provider_for("nothing-by-that-name").kind, "cli")
         self.assertIn("available", llm.describe()[0])
+
+
+class Answered:
+    """One canned HTTP response, as urlopen hands it over."""
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def refusal(code, payload=None):
+    """An HTTPError the way urllib raises one, body and all."""
+    import io as streams
+    import urllib.error
+
+    body = json.dumps(payload or {}).encode("utf-8")
+    return urllib.error.HTTPError("https://x.test", code, "no", {}, streams.BytesIO(body))
+
+
+class TestAnthropicProvider(unittest.TestCase):
+    """The second provider, and the one that proves the interface: a key instead of a
+    signed-in binary, a system prompt beside the turns instead of inside them, and an HTTP
+    status instead of an exit code. None of that may reach a caller."""
+
+    def setUp(self):
+        self.provider = llm_anthropic.AnthropicProvider(
+            api_url="https://x.test/v1/messages", models_url="https://x.test/v1/models",
+            api_version="2023-06-01", key="sk-ant-test")
+        self.sent = []
+        self.real = llm_anthropic.urllib.request.urlopen
+
+    def tearDown(self):
+        llm_anthropic.urllib.request.urlopen = self.real
+
+    def _answers(self, *replies):
+        answers = list(replies)
+
+        def urlopen(request, timeout=0):
+            self.sent.append(request)
+            answer = answers.pop(0) if answers else {}
+            if isinstance(answer, Exception):
+                raise answer
+            return Answered(answer)
+
+        llm_anthropic.urllib.request.urlopen = urlopen
+
+    @staticmethod
+    def _said(text, stop="end_turn"):
+        return {"content": [{"type": "text", "text": text}], "stop_reason": stop}
+
+    def test_the_system_prompt_travels_beside_the_turns(self):
+        self._answers(self._said("hello"))
+        reply = self.provider.complete(llm_base.Request(
+            system="SYSTEM", messages=[{"role": "user", "content": "why?"}],
+            model="claude-opus-5", timeout=5, max_tokens=99))
+        body = json.loads(self.sent[0].data.decode("utf-8"))
+        self.assertEqual(body["system"], "SYSTEM")
+        self.assertEqual(body["messages"], [{"role": "user", "content": "why?"}])
+        self.assertEqual(body["max_tokens"], 99)
+        self.assertEqual(body["model"], "claude-opus-5")
+        self.assertEqual(reply.text, "hello")
+        self.assertEqual(self.sent[0].headers["X-api-key"], "sk-ant-test")
+
+    def test_a_built_prompt_becomes_the_one_turn(self):
+        """A caller that built its own text is not holding a conversation."""
+        self._answers(self._said("ok"))
+        self.provider.complete(llm_base.Request(prompt="Write M03.", timeout=5))
+        body = json.loads(self.sent[0].data.decode("utf-8"))
+        self.assertEqual(body["messages"], [{"role": "user", "content": "Write M03."}])
+        self.assertNotIn("system", body)
+
+    def test_a_truncated_answer_says_so_in_the_notes(self):
+        self._answers(self._said("half a th", stop="max_tokens"))
+        self.assertIn("max_tokens", self.provider.complete(
+            llm_base.Request(prompt="hi", timeout=5)).notes)
+
+    def test_an_http_status_becomes_the_kind_every_layer_branches_on(self):
+        for code, kind in ((429, failures.QUOTA), (401, failures.AUTH), (404, failures.MODEL),
+                           (529, failures.TRANSIENT)):
+            self._answers(refusal(code, {"error": {"type": "x_error", "message": "no"}}))
+            with self.assertRaises(llm_base.LLMFailed) as caught:
+                self.provider.complete(llm_base.Request(prompt="hi", timeout=5))
+            self.assertEqual(caught.exception.kind, kind, code)
+            self.assertIn("no", caught.exception.detail)
+
+    def test_the_error_body_is_read_when_the_status_says_nothing_useful(self):
+        self._answers(refusal(400, {"error": {"type": "not_found_error", "message": "gone"}}))
+        with self.assertRaises(llm_base.LLMFailed) as caught:
+            self.provider.complete(llm_base.Request(prompt="hi", timeout=5))
+        self.assertEqual(caught.exception.kind, failures.MODEL)
+
+    def test_no_key_is_an_auth_failure_and_not_a_call(self):
+        self._answers()
+        with self.assertRaises(llm_base.LLMFailed) as caught:
+            self.provider.with_key("").complete(llm_base.Request(prompt="hi", timeout=5))
+        self.assertEqual(caught.exception.kind, failures.AUTH)
+        self.assertEqual(self.sent, [], "nothing was sent")
+
+    def test_the_catalogue_reads_every_page(self):
+        self._answers({"data": [{"id": "claude-a", "display_name": "A", "created_at": "2026-01"}],
+                       "has_more": True, "last_id": "claude-a"},
+                      {"data": [{"id": "claude-b", "display_name": "B", "created_at": "2026-02"}],
+                       "has_more": False})
+        found = self.provider.catalog()
+        self.assertTrue(found["ok"])
+        self.assertEqual([m["id"] for m in found["models"]], ["claude-a", "claude-b"])
+
+    def test_a_catalogue_that_cannot_answer_says_so_rather_than_being_empty(self):
+        """"Says nothing" and "offers nothing" mean opposite things to the merge."""
+        self._answers(refusal(500))
+        self.assertEqual(self.provider.catalog()["ok"], False)
+        self.assertEqual(llm_anthropic.AnthropicProvider().catalog()["ok"], False)
+
+    def test_the_probe_never_raises_and_names_the_kind(self):
+        self._answers(refusal(429, {"error": {"message": "rate_limit_error"}}))
+        result = self.provider.probe("claude-opus-5", timeout=5)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["why"], failures.QUOTA)
+        self.assertTrue(result["advice"])
+
+
+class TestModelChainStaysWithOneProvider(unittest.TestCase):
+    """Falling back from a model one provider refused to a model on another account answers
+    a question nobody asked, and bills someone who did not agree to it."""
+
+    def test_only_the_models_that_provider_reaches_are_on_the_chain(self):
+        chain = llm_chain.model_chain(settings.SETTINGS.default_model, "claude-code")
+        listed = {m["alias"] for m in settings.SETTINGS.models_for("claude-code")}
+        self.assertTrue(chain)
+        self.assertTrue(set(chain) <= listed)
+
+    def test_a_provider_with_nothing_listed_is_not_filtered_by(self):
+        """A provider configured before its models were added, or a test double."""
+        self.assertEqual(llm_chain.model_chain("sonnet", "nobody-lists-these"),
+                         llm_chain.model_chain("sonnet"))
+
+
+class TestBridge(unittest.TestCase):
+    """The bridge keeps a socket, a key hunt and a budget. Everything about reaching a model
+    goes through `coursekit.llm`, so there is one implementation rather than two that drift."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        path = os.path.join(os.path.dirname(PLATFORM), "tools", "bridge", "tutor-bridge.py")
+        spec = importlib.util.spec_from_file_location("tutor_bridge_undertest", path)
+        cls.bridge = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.bridge)
+
+    def test_it_reaches_a_model_only_through_the_provider_layer(self):
+        source = open(os.path.join(os.path.dirname(PLATFORM), "tools", "bridge",
+                                   "tutor-bridge.py"), encoding="utf-8").read()
+        for gone in ("def call_api", "def call_cli", "def flatten", "def cli_argv",
+                     "subprocess.run", "x-api-key"):
+            self.assertNotIn(gone, source, "the bridge should not do this itself any more")
+
+    def test_the_budget_drops_the_oldest_turns_first(self):
+        older = [{"role": "user", "content": "a" * 400},
+                 {"role": "assistant", "content": "b" * 400},
+                 {"role": "user", "content": "the newest question"}]
+        system, kept = self.bridge.trim("s" * 100, older, 600)
+        self.assertEqual(kept[-1]["content"], "the newest question")
+        self.assertLess(len(kept), 3)
+        self.assertLessEqual(len(system) + sum(len(m["content"]) for m in kept), 700)
+
+    def test_the_quoted_passage_is_shortened_before_the_question_is(self):
+        system, kept = self.bridge.trim("s" * 8000, [{"role": "user", "content": "why?"}], 2000)
+        self.assertIn("shortened to fit", system)
+        self.assertEqual(kept[0]["content"], "why?")
+
+    def test_a_route_is_chosen_by_what_is_configured(self):
+        self.assertIn(self.bridge.active_mode(), ("cli", "api", "none", "echo"))
+        self.assertEqual(self.bridge.cli_provider().kind, "cli")
+        self.assertEqual(self.bridge.api_provider().kind, "anthropic")
+
+    def test_a_key_is_recognised_whoever_issued_it(self):
+        """The hunt looks for more than one company's key now."""
+        self.assertEqual(self.bridge.KEY_NAMES[0], "ANTHROPIC_API_KEY")
+        self.assertIn("OPENAI_API_KEY", self.bridge.KEY_NAMES)
+        self.assertTrue("sk-ant-x".startswith(self.bridge.KEY_SHAPES))
 
 
 class TestCodeConventions(unittest.TestCase):

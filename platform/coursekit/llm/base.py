@@ -114,7 +114,7 @@ class Provider:
         never raises for a refused model."""
         raise NotImplementedError
 
-    def catalog(self) -> Dict[str, Any]:
+    def catalog(self, timeout: int = 0) -> Dict[str, Any]:
         """The models this provider offers, for discovery: {ok, models, error}. A source that
         cannot answer says so rather than reporting an empty list, because "says nothing" and
         "offers nothing" mean opposite things to the merge."""

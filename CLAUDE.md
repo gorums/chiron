@@ -232,7 +232,15 @@ from the same file opened off disk, and every difference goes through one detect
   `?tab=add&from=<mid>` or `?rewrite=<mid>`.
 
 The bridge remains the route for a page opened off disk (`file://`), where none of this
-applies. It now also passes prompts on stdin from a scratch cwd, like Studio.
+applies. It is `tools/bridge/tutor-bridge.py` (`claude-bridge.py` still starts it), and it
+reaches a model only through `coursekit.llm` — the same provider layer Studio uses, so the
+retry policy, the model chain and the failure kinds are one implementation rather than two
+that drift. What is its own: a loopback socket with CORS, the key hunt (`candidate_keys`,
+which looks in the half-dozen places a key is already likely to be and says which one it
+used), choosing between the ways in and falling back from one to the other mid-question, and
+`trim` — a budget per question, which bounds cost rather than any command-line length.
+`GET /health` reports `providers` alongside the flat fields a page built before that
+release looks for.
 
 ## Reaching a model
 
@@ -252,6 +260,7 @@ platform’s only dependency.
 | `base` | what a provider is: `Provider`, `Request`, `Reply`, `Capabilities`, `LLMFailed` |
 | `shape` | flattening a conversation into one prompt; digging JSON out of prose |
 | `cli` | a model reached through a headless binary |
+| `anthropic` | a model reached through Anthropic's Messages API |
 | `chain` | retries, model fallback, and telling whoever is watching |
 
 - **A provider runs one call and classifies what came back. `chain` decides what to do about
@@ -264,9 +273,18 @@ platform’s only dependency.
 - **`coursekit` never imports `studio`.** Progress goes to a `chain.Reporter`, which by
   default goes nowhere; `studio/claude_cli.py` installs one that forwards to
   `jobs.current()`. That module is now a shim over this layer and nothing else.
-- `llm.provider_for(name)` is how a caller gets one. Today there is a single provider, the
-  CLI, and the name is ignored; the registry exists so the settings row that selects one has
-  somewhere to arrive.
+- **A caller names a model, never a provider.** `models.list` already says which provider
+  reaches which model, so `llm.ask(prompt, model=…)` resolves it through
+  `SETTINGS.provider_of`; asking every call site to know as well would be a second place to
+  keep right. `llm.provider_for(name)` is there for the one caller that does have a provider
+  in hand — the bridge, which found its own key.
+- **A chain never crosses providers.** `model_chain(model, provider)` offers only models
+  that provider reaches: falling back to a model on another account answers a question
+  nobody asked and bills someone who did not agree to it. A provider with no models listed
+  yet is not filtered by, because there is nothing to filter with.
+- **A key lives on the provider, not on the request.** `AnthropicProvider.with_key` is how
+  the bridge uses the key it hunted down, so a secret never threads through `Request`,
+  `chain` or a job event.
 
 ## The two-layer rule
 

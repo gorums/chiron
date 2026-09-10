@@ -1,9 +1,9 @@
 @echo off
-title Course platform - Claude bridge
+title Course platform - tutor bridge
 cd /d "%~dp0"
 
 echo.
-echo   Starting the Claude bridge for your course...
+echo   Starting the tutor bridge for your course...
 echo.
 
 where claude >nul 2>nul
@@ -18,13 +18,13 @@ echo.
 
 where python >nul 2>nul
 if %errorlevel%==0 (
-  python claude-bridge.py
+  python tutor-bridge.py
   goto :done
 )
 
 where py >nul 2>nul
 if %errorlevel%==0 (
-  py claude-bridge.py
+  py tutor-bridge.py
   goto :done
 )
 

@@ -18,6 +18,7 @@ The pieces, in dependency order:
 | `base` | what a provider is: `Provider`, `Request`, `Reply`, `Capabilities`, `LLMFailed` |
 | `shape` | flattening a conversation into one prompt; digging JSON out of prose |
 | `cli` | a model reached through a headless binary |
+| `anthropic` | a model reached through Anthropic's Messages API |
 | `chain` | retries, model fallback, and telling whoever is watching |
 
 `provider_for(name)` is how a caller gets one, and the names are the rows of the `providers`
@@ -55,11 +56,12 @@ from .chain import (  # noqa: F401
     set_reporter,
     timeout_for,
 )
+from .anthropic import AnthropicProvider
 from .cli import CliProvider
 from .shape import CHAT_HISTORY, chat_prompt, slice_json, strip_fence  # noqa: F401
 
 # Which adapter serves which `kind`. A kind that is not here has no adapter yet.
-ADAPTERS = {"cli": CliProvider}
+ADAPTERS = {"cli": CliProvider, "anthropic": AnthropicProvider}
 
 
 def build(name: str, cfg: Dict[str, Any]) -> Optional[Provider]:

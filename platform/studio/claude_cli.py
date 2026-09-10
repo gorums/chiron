@@ -83,7 +83,9 @@ def find_cli() -> Optional[str]:
 
 
 def available() -> bool:
-    return llm.available()
+    """Can the default provider answer? Studio asks this to decide whether it may write, so
+    it is about the one that would run, not about any provider being configured."""
+    return llm.provider_for().available()
 
 
 def _provider(name: str = "") -> Provider:

@@ -88,20 +88,39 @@ Also done, not foreseen:
 
 ## Phase 3 — The Anthropic provider, and the bridge on the shared layer
 
-- [ ] `platform/coursekit/llm/anthropic.py` — `complete`, `probe`, `catalog`, `describe`;
+- [x] `platform/coursekit/llm/anthropic.py` — `complete`, `probe`, `catalog`, `describe`;
       lift `call_api` and `read_api_catalog` from the bridge and `discover.py`.
-- [ ] `llm/failures.py` — keep `from_status`; add Anthropic error-body codes.
-- [ ] `tools/bridge/tutor-bridge.py` — new file: the HTTP server, CORS, `config.json`,
+- [x] `llm/failures.py` — keep `from_status`; add Anthropic error-body codes.
+- [x] `tools/bridge/tutor-bridge.py` — new file: the HTTP server, CORS, `config.json`,
       `candidate_keys` (extended to `OPENAI_API_KEY`, `GOOGLE_API_KEY`), `/health`, `/ask`.
       Every call goes through `coursekit.llm`.
-- [ ] Delete `call_api`, `call_cli`, `flatten`, `cli_argv`, `cli_works`, `verify_key`,
-      `active_mode`, `CliFailed` from the bridge.
-- [ ] `tools/bridge/claude-bridge.py` — reduce to a shim importing `tutor-bridge.py`; update
+- [x] Delete `call_api`, `call_cli`, `flatten`, `cli_argv`, `verify_key`, `api_error`,
+      `CliFailed`, `FINAL_KINDS`, `ALLOWED_MODELS`, `CLI_MODELS` from the bridge.
+      *(`cli_works` and `active_mode` stayed — they are the bridge deciding which route
+      is live, which is its own job. `flatten`'s trimming became `trim`, which returns
+      the trimmed parts for a provider to shape: it bounds cost per question, not any
+      command-line length.)*
+- [x] `tools/bridge/claude-bridge.py` — reduce to a shim importing `tutor-bridge.py`; update
       `start-bridge.bat` and `tools/bridge/README.md`.
-- [ ] `/health` reports `{providers: [{name, label, kind, ready, keySource}], ready}` instead
+- [x] `/health` reports `{providers: [{name, label, kind, ready, keySource}], ready}` instead
       of `{cli, has_key, key_source}`; keep the old fields for one release.
-- [ ] Tests: the bridge answers through a stubbed provider; a 429 becomes `why: "quota"`;
+- [x] Tests: the bridge answers through a stubbed provider; a 429 becomes `why: "quota"`;
       the two-provider chain falls through correctly.
+
+Also done, not foreseen:
+
+- [x] `chain.model_chain(model, provider)` never crosses providers. Falling back to a
+      model on another account answers a question nobody asked and bills someone who did
+      not agree to it. A provider with nothing listed yet is not filtered by.
+- [x] `llm.ask` resolves the provider from the model through `SETTINGS.provider_of`. A
+      caller names a model, never a provider — otherwise every call site in Studio would
+      be a second place to keep right, and a non-default provider would never be reached.
+- [x] `discover.read_api_catalog` delegates to `AnthropicProvider.catalog`, so the paging
+      exists once. Only the label tidying stayed behind, which is discovery's own want.
+- [x] `claude_cli.available()` means the default provider, not any provider — otherwise
+      an Anthropic key with no CLI installed would tell Studio it may write courses.
+
+**Done.** 116 tests in `test_build.py` (16 new: the Anthropic wire format, the provider-scoped chain, the bridge), 141 in `test_studio.py`. The bridge was run for real: `/health` reports both providers, an echo-mode question round-trips, and one live question came back through the CLI provider. `claude-bridge.py` went from 574 lines to a 27-line shim; `tutor-bridge.py` is 489, because what is genuinely the bridge's — the key hunt, the routing, the budget, the HTTP — stayed and got documented. The duplicated model-calling code is what went.
 
 ## Phase 4 — OpenAI, Gemini, and a generic CLI
 

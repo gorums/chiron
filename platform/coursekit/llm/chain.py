@@ -99,13 +99,25 @@ def default_model() -> str:
     return SETTINGS.default_model
 
 
-def model_chain(model: str = "") -> List[str]:
-    """The models to try, in order: what was asked for, then the default."""
+def model_chain(model: str = "", provider_name: str = "") -> List[str]:
+    """The models to try, in order: what was asked for, then the default.
+
+    **A chain never crosses providers.** Falling back from a model one provider refused to a
+    model on another account answers a question the caller did not ask, and bills someone
+    who did not agree to it. When the provider has models of its own in the list, only those
+    are on the chain; when it has none - a provider configured before its models were added,
+    or a test double - there is nothing to filter by and the chain is what it always was.
+    """
+    mine = None
+    if provider_name:
+        listed = SETTINGS.models_for(provider_name)
+        mine = {m["id"] for m in listed} | {m["alias"] for m in listed if m.get("alias")}
+        mine = mine or None
     chain: List[str] = []
     aliases = model_aliases()
     for candidate in ((model or "").strip(), default_model()):
         alias = aliases.get(candidate)
-        if alias and alias not in chain:
+        if alias and alias not in chain and (mine is None or alias in mine):
             chain.append(alias)
     return chain
 
@@ -120,7 +132,7 @@ def complete(provider: Provider, req: Request) -> Reply:
         raise ProviderUnavailable(
             "%s is not available. Install it, or sign in, and try again." % provider.label)
 
-    attempts = model_chain(req.model) + [""]        # last resort: the provider's own default
+    attempts = model_chain(req.model, provider.name) + [""]   # last: its own default model
     last = failed("no output", provider=provider.name)
     for n, model in enumerate(attempts):
         try:
@@ -204,10 +216,15 @@ def _size(req: Request) -> int:
 
 def ask(prompt: str, *, provider: Optional[Provider] = None, model: str = "",
         timeout: int = 0, what: str = "") -> str:
-    """Send one prompt, return the reply text."""
+    """Send one prompt, return the reply text.
+
+    A caller names a model, not a provider: `models.list` already says which provider reaches
+    which model, and asking every call site to know as well would be a second place to keep
+    right.
+    """
     from . import provider_for                       # late: the registry imports this module
 
-    chosen = provider or provider_for()
+    chosen = provider or provider_for(SETTINGS.provider_of(model))
     reply = complete(chosen, Request(prompt=prompt, model=model,
                                      timeout=timeout or DEFAULT_TIMEOUT, what=what))
     return reply.text
