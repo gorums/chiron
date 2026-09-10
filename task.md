@@ -161,16 +161,41 @@ sent verbatim, one attempt, the reply read back out of `choices[0].message.conte
 
 ## Phase 5 — Discovery, per provider
 
-- [ ] Move `read_cli_catalog`, `read_cached_catalog`, `parse_cli_catalog`, `CLI_SELECTOR`,
-      `CLI_CATALOG` into `llm/cli.py` as its `catalog()`; return "could not be read" for a
-      binary that is not Claude Code.
-- [ ] `catalog()` on the `anthropic`, `openai` and `gemini` providers.
-- [ ] `studio/discover.py` — `sources()` asks every enabled provider; `plan` and `removals`
+- [x] Move `read_cli_catalog`, `read_cached_catalog`, `parse_cli_catalog`, `CLI_SELECTOR`,
+      `CLI_CATALOG` out of `discover.py`; `CliProvider.catalog()` delegates to them and
+      returns "could not be read" for a binary that is not Claude Code.
+      *(They went to `llm/claude_code.py`, not into `cli.py`. `cli.py` is how to run any
+      headless tool; these regular expressions are one program's internals. A file named
+      for the vendor is where a vendor-specific thing belongs, and it keeps `cli.py`
+      generic — which is the whole point of the phase.)*
+- [x] `catalog()` on the `anthropic`, `openai` and `gemini` providers.
+- [x] `studio/discover.py` — `sources()` asks every enabled provider; `plan` and `removals`
       keyed by provider; a provider whose sources all failed yields no removal candidates.
-- [ ] `state/models-discovery.json` gains `provider` on every row; the settings-page report
+- [x] `state/models-discovery.json` gains `provider` on every row; the settings-page report
       shows it.
-- [ ] Tests: the existing `plan` / `removals` cases still pass with a provider key; a failing
+- [x] Tests: the existing `plan` / `removals` cases still pass with a provider key; a failing
       provider never shrinks another provider's models.
+
+Also done, not foreseen:
+
+- [x] `Provider.catalog()` grew a stated contract: `{ok, models, known, error}`, where
+      `known` is the wider set a source recognises (a picker offers five models and
+      accepts twenty). `sources()` fills it in for a source that draws no distinction.
+- [x] `catalog_is_complete` on the provider replaces `api_answered` in `removals`. Who
+      may be believed when a model is missing is a property of the source, not of
+      whichever source happened to be called Anthropic.
+- [x] "Only what is newer" generalised: a source whose models carry creation dates offers
+      only what is newer than the newest listed; one without dates offers everything.
+      That was hard-coded as "the API does this, the binary does not".
+- [x] `ui/js/31-models.js` iterates the report's providers instead of naming two sources
+      in prose, and tolerates a report written before this release (plain ids, `cli`/`api`
+      keys) — there is one on disk after an upgrade.
+
+**Done.** 132 tests in `test_build.py`, 144 in `test_studio.py` (3 new; the discovery
+tests were rewritten for the per-provider merge rather than patched). Run against the
+real installed binary: 3 models offered, 19 known, read from the binary, nothing added or
+removed — and the Anthropic row reports "no API key configured" rather than an empty
+catalogue, which is what stops it removing anything.
 
 ## Phase 6 — Studio UI
 

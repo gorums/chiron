@@ -261,6 +261,7 @@ platform’s only dependency.
 | `shape` | flattening a conversation into one prompt; digging JSON out of prose |
 | `cli` | a model reached through a headless binary |
 | `wire` | a model reached over HTTP: everything but the shape of a request and a reply |
+| `claude_code` | what one particular binary knows about, read out of its bytes |
 | `anthropic` | Anthropic's Messages API |
 | `openai` | OpenAI's Chat Completions — and every server that speaks it |
 | `gemini` | Google's generateContent |
@@ -297,9 +298,16 @@ platform’s only dependency.
   then what was asked for is what is asked for; quietly substituting the default would
   answer a different question, on a different account. And *a chain never crosses
   providers*: the default is a fallback only where it is that provider's default too.
-- **A key lives on the provider, not on the request.** `AnthropicProvider.with_key` is how
-  the bridge uses the key it hunted down, so a secret never threads through `Request`,
-  `chain` or a job event.
+- **A key lives on the provider, not on the request.** `HttpProvider.with_key` is how the
+  bridge uses the key it hunted down, so a secret never threads through `Request`, `chain`
+  or a job event.
+- **`Provider.catalog()` is how a provider says what exists**, for discovery:
+  `{ok, models, known, error}` — `models` is what it would offer, `known` the wider set it
+  recognises, because a picker offers five models and accepts twenty. **A source that cannot
+  answer says so rather than reporting an empty list**; the two mean opposite things to the
+  merge. `catalog_is_complete` says whether it may be believed when it leaves a model out: an
+  endpoint listing what an account may use is the whole picture, bytes scraped out of a
+  binary are not.
 
 ## The two-layer rule
 
@@ -748,7 +756,7 @@ reading validation errors next to the course they belong to.
 | `notebooks` | notebooks for one module: parse the delimited cells, write `notebooks/<mid>-<n>.ipynb`, put the references in the text |
 | `jupyter` | the Jupyter server: is it reachable, and what a served page is told (`GET /api/jupyter`); `build.py jupyter` |
 | `models` | the model list Studio offers: validated, saved to `state/settings.json`, live everywhere after `SETTINGS.reload()`; `GET/PUT /api/models`, `/api/models/reset`, `/api/models/test` |
-| `discover` | keeps that list current without anyone typing an id: Claude Code's catalog read out of the installed binary, Anthropic's `GET /v1/models` when a key is set; `plan()` merges, `schedule()` runs daily, `POST /api/models/discover` runs now |
+| `discover` | keeps that list current without anyone typing an id: every provider is asked what it knows (`Provider.catalog`) and the answers merge per provider; `schedule()` runs daily, `POST /api/models/discover` runs now |
 | `reviews` | what Claude or the owner thinks of a module, under `state/reviews/` |
 | `catalog` | what the API reports: `course_summary`, `course_detail`, `state`, `calendar`, `settings_view` |
 | `runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |
@@ -794,43 +802,37 @@ list Studio reports in `/api/state` (`adoptStudioModels` in `14-conn.js`, `claud
 with `apiId` and `claude.defaultModel`), so it needs no rebuild; a page off disk keeps the
 list it was built with, and the bridge reads the layer when it starts.
 
-**Nobody has to type a new model's id.** `studio/discover.py` keeps the list current from
-two sources: the catalog inside the installed `claude` binary (the rows its `/model` picker
-offers and the fuller table of everything `--model` accepts; `claude update` refreshes it,
-and Studio's calls go through that binary, so it is the list that decides whether a run
-works) and, when `ANTHROPIC_API_KEY` is set in `.env` or the environment (`anthropic.apiKey`,
-masked on the settings page with the other `SECRET_KEYS`, never sent to a page), Anthropic's
-`GET /v1/models` (`anthropic.modelsUrl`), from which only models newer than the newest one
-already listed are taken. Claude Code's picker rows come from the catalog it last fetched
-(`cache/model-catalog/*.json` under `CLAUDE_CONFIG_DIR` or `~/.claude`) when there is one,
-else from the seed in the binary. `plan()` is the pure merge: offered and missing is added
-with a note saying when and from where; listed but unknown to every source that answered is
-a *candidate*; a dated snapshot and its bare id are one model. `removals()` decides the
-candidates: absent from Anthropic's list means gone; unknown to the binary's table alone is
-not enough - Claude Code 2.1.252 in the image accepted `claude-fable-5-1` without listing
-it - so such a candidate stays unless one real call (`claude_cli.probe`) is refused. The
-list is never emptied. `run()` applies it through `models.replace` and writes
-`state/models-discovery.json`; `schedule()` runs it `discovery.startDelaySeconds` after
-Studio starts and every `discovery.hours` (0 turns it off); the Models card shows the last
-check and has "Check now". Reading the binary is a regex over its bytes (`CLI_SELECTOR`,
-`CLI_CATALOG`), so a build that changes the shape reports "could not be read" and changes
-nothing. Studio on the host and Studio in the container share `state/settings.json`, so
-each check is made against the Claude Code that runs it. **Every form that
-writes a course picks its model** - new course,
-resume, add a module, patch or rewrite - from the same list (`ui/js/28-model.js`:
-`modelChoice`, `modelBrief`), preselected to Studio's default and sent as `model` in the
-request; `Handler._model` keeps a known alias or id for that job alone and falls back to
-the default otherwise. `/api/state` carries the list as `claude.models` so no form needs a
-second request. The one-click actions - Review with Claude, Draw figures, Write notebooks -
-have no form, so the Modules tab carries one pick for all three (`quickModelBar`,
-`quickModelBrief`; `modelPick.quick`, kept for the session) and their row-menu entries name
-the model that will run. In the course page the tutor's model sits under the chat box, always visible
-(`modelPicker` in `17-rail.js`), in the rail's chat menu and on the Settings page; every
-copy carries `data-model-pick` so `setTutorModel` (`14-conn.js`) can keep them in step
-through `syncModelPickers`, and all of them write `STATE.bridge.model`, which every
-`askBridge` call sends. The default is
-Opus 5: the best writing for the price, with Fable 5.1 on the list for the course that has
-to be right and Sonnet or Haiku for a cheap patch.
+**Nobody has to type a new model's id.** `studio/discover.py` keeps the list current by
+asking **every configured provider what it knows** (`Provider.catalog`), and merging the
+answers **per provider** — a Claude Code build says nothing about what OpenAI offers, and is
+not allowed to. An HTTP provider answers from its own `/models` endpoint; a `cli` provider
+has nothing to ask, so `coursekit/llm/claude_code.py` reads the two tables inside the
+`claude` binary (the rows its `/model` picker offers, and the fuller table of everything
+`--model` accepts) plus the catalogue it last fetched under `CLAUDE_CONFIG_DIR` or
+`~/.claude`. That file is vendor-specific on purpose: the regular expressions are one
+program's internals, so a build that changes shape — or any other CLI — reports "could not be
+read", never "no models".
+
+`plan()` is the pure merge: a model a provider offers and the list lacks is added under that
+provider with a note saying when and from where; a model the list has that its own provider
+does not recognise is a *candidate*; a dated snapshot and its bare id are one model. **A
+source whose models carry creation dates offers only what is newer than the newest already
+listed**, so a first run against an API does not drag in the whole back catalogue; a source
+without dates offers everything it has.
+
+`removals()` decides the candidates, and the rule is about who may be believed.
+`catalog_is_complete` is true for an endpoint that lists what an account may use — absent
+from it means gone — and false for a binary scan, because an older Claude Code passes an id
+it has never heard of straight to the API and it works (2.1.252 accepted `claude-fable-5-1`
+without listing it). For those, a candidate stays unless one real call (`llm.probe`, on that
+provider) is refused *for being that model*: an account out of quota refuses every id there
+is, and a nightly check run while the account was out must not shrink the list. **No
+provider's models are ever all removed.** `run()` applies the result through
+`models.replace` and writes `state/models-discovery.json` — one row per provider, and a
+`provider` on every model added or removed; `schedule()` runs it `discovery.startDelaySeconds`
+after Studio starts and every `discovery.hours` (0 turns it off); the Models card shows the
+last check and has "Check now". Studio on the host and Studio in the container share
+`state/settings.json`, so each check is made against the tools that Studio can actually run.
 
 **When Claude says no, the reason decides what happens next.** Claude Code reports an
 exhausted account, an overloaded server and a model it does not recognise the same way — a

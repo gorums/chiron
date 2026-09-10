@@ -114,11 +114,23 @@ class Provider:
         never raises for a refused model."""
         raise NotImplementedError
 
+    # Is a catalogue from this provider the whole picture? An endpoint that lists what an
+    # account may use is; bytes scraped out of a binary are not, because a build that stopped
+    # mentioning a model still passes it to the API. Only an authoritative source may be
+    # taken as saying a model is gone.
+    catalog_is_complete = False
+
     def catalog(self, timeout: int = 0) -> Dict[str, Any]:
-        """The models this provider offers, for discovery: {ok, models, error}. A source that
-        cannot answer says so rather than reporting an empty list, because "says nothing" and
-        "offers nothing" mean opposite things to the merge."""
-        return {"ok": False, "models": [], "error": "this provider has no catalogue"}
+        """The models this provider offers, for discovery:
+        `{ok, models: [{id, label, created}], known: {id: label}, error}`.
+
+        `models` is what it would offer someone; `known` is the wider set it recognises, when
+        it has one - a picker offers five models and accepts twenty. A source that cannot
+        answer says so rather than reporting an empty list, because "says nothing" and
+        "offers nothing" mean opposite things to the merge.
+        """
+        return {"ok": False, "models": [], "known": {},
+                "error": "this provider has no catalogue"}
 
     def describe(self) -> Dict[str, Any]:
         """What a status screen should say about this provider."""

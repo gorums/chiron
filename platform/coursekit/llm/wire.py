@@ -45,6 +45,9 @@ class HttpProvider(Provider):
 
     kind = ""
     caps = Capabilities(single_prompt=False, system_role=True, max_tokens=True, needs_key=True)
+    # An endpoint that lists what this account may use is the whole picture, so a model
+    # missing from it really is gone.
+    catalog_is_complete = True
 
     def __init__(self, name: str = "", label: str = "", api_url: str = "",
                  models_url: str = "", key: str = "", hint: str = "",

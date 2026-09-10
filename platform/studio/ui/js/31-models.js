@@ -60,33 +60,39 @@ function modelEditorCard() {
   </div>`;
 }
 
+/* What one provider said last time it was asked what models exist. */
+function sourceLine(name, source) {
+  const label = esc(source.label || name);
+  if (!source.ok) return `${label} — ${esc(source.error || "not read yet")}`;
+  const known = source.known > source.offered ? `${source.known} known, ` : "";
+  return `${label} — ${known}${source.offered} offered`;
+}
+
+/* Which models the automatic check added or removed. A report written before models
+   carried a provider holds plain ids, and one is still on disk after an upgrade. */
+function changeLine(rows) {
+  if (!rows || !rows.length) return "none";
+  return rows.map(r => esc(typeof r === "string" ? r : r.id || "")).join(", ");
+}
+
 /* The automatic check: where models come from, when it last ran, what it changed. */
 function discoveryLine() {
   const d = modelEditor.discovery || {};
   const last = d.last || null;
-  const cli = last && last.sources ? last.sources.cli : null;
-  const api = last && last.sources ? last.sources.api : null;
-  const cliText = !cli
-    ? "not read yet"
-    : cli.ok
-      ? `${cli.known} models known, ${cli.offered} offered`
-      : `could not be read (${cli.error})`;
-  const apiText = d.apiConfigured
-    ? api && api.ok
-      ? `${api.count} models listed`
-      : api
-        ? `failed (${api.error})`
-        : "not read yet"
-    : "no API key; set <span class='mono'>ANTHROPIC_API_KEY</span> in <span class='mono'>.env</span> to use it";
+  const sources = (last && last.sources) || {};
+  const names = Object.keys(sources);
+  const asked = names.length
+    ? names.map(n => sourceLine(n, sources[n])).join("; ")
+    : (d.providers || []).map(p => esc(p.label)).join(", ") || "nothing configured";
   const changes = !last
     ? ""
     : last.changed
-      ? ` Added ${last.added.length ? last.added.map(esc).join(", ") : "none"}; removed ${last.removed.length ? last.removed.map(esc).join(", ") : "none"}.`
+      ? ` Added ${changeLine(last.added)}; removed ${changeLine(last.removed)}.`
       : " Nothing new.";
   const when = last ? `Last check ${esc(last.at.replace("T", " "))}.` : "No check has run yet.";
   const every = d.hours > 0 ? `every ${d.hours} hours` : "off (discovery.hours is 0)";
   return `<div class="discovery">
-    <p class="sub result"><b>Kept up to date automatically</b>, ${every}: Claude Code's catalog (${cliText}) and Anthropic's model list (${apiText}). ${when}${changes}</p>
+    <p class="sub result"><b>Kept up to date automatically</b>, ${every}: every provider is asked what it offers. ${asked}. ${when}${changes}</p>
     <div class="actions"><button class="btn sm" onclick="discoverModels()" ${modelEditor.checking ? "disabled" : ""}>${modelEditor.checking ? `<span class="spin"></span> Checking…` : "Check now"}</button></div>
   </div>`;
 }

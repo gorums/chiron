@@ -922,72 +922,59 @@ FAKE_CLI = (
 
 
 class TestModelDiscovery(unittest.TestCase):
-    """The model list keeps itself current (studio/discover.py): Claude Code's catalog is
-    read out of the installed binary, Anthropic's list is read when a key is configured,
-    and the merge adds what is offered, removes what no source knows, and never empties."""
+    """The model list keeps itself current (studio/discover.py): every provider is asked what
+    it knows, and the merge adds what is offered, removes what that provider does not
+    recognise, and never empties. Everything is scoped to one provider - a Claude Code build
+    says nothing about what OpenAI offers."""
 
-    def test_cli_catalog_is_parsed_out_of_the_binary(self):
-        from studio import discover
-        cat = discover.parse_cli_catalog(FAKE_CLI)
+    @staticmethod
+    def _source(name="claude-code", label="Claude Code", complete=False, **fields):
+        """One provider's answer, as `sources()` hands it to the merge."""
+        answer = {"ok": True, "models": [], "known": {}, "error": "", "label": label,
+                  "kind": "cli", "ready": True, "complete": complete}
+        answer.update(fields)
+        return {name: answer}
+
+    def test_the_catalogue_is_parsed_out_of_the_binary(self):
+        from coursekit.llm import claude_code
+        cat = claude_code.parse(FAKE_CLI)
         self.assertTrue(cat["ok"])
-        self.assertEqual([m["id"] for m in cat["offered"]], ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"])
-        self.assertEqual(cat["offered"][0]["label"], "Claude Opus 5")
-        self.assertEqual(set(cat["known"]), {"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-opus-4-1"})
-        nothing = discover.parse_cli_catalog(b"a different build")
+        self.assertEqual([m["id"] for m in cat["models"]],
+                         ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"])
+        self.assertEqual(cat["models"][0]["label"], "Claude Opus 5")
+        self.assertEqual(set(cat["known"]),
+                         {"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5",
+                          "claude-opus-4-1"})
+        nothing = claude_code.parse(b"a different build")
         self.assertFalse(nothing["ok"])
-        self.assertIn("no model catalog", nothing["error"])
+        self.assertIn("no model catalogue", nothing["error"])
+        self.assertEqual(nothing["models"], [], "and it must never read as 'no models'")
 
-    def test_cli_catalog_is_cached_per_file_version(self):
+    def test_a_binary_that_is_not_claude_code_reads_as_could_not_be_read(self):
+        """The regular expressions are one program's internals. Anything else knows nothing
+        about what that tool accepts, which is not the same as knowing it accepts nothing."""
+        from coursekit.llm import cli as llm_cli
+        provider = llm_cli.CliProvider(name="other", label="Some tool", commands=("no-such-cli",))
+        found = provider.catalog()
+        self.assertFalse(found["ok"])
+        self.assertEqual(found["models"], [])
+        self.assertFalse(provider.catalog_is_complete, "so it may never remove a model alone")
+
+    def test_the_catalogue_is_cached_per_file_version(self):
         import tempfile
-        from studio import discover
+        from coursekit.llm import claude_code
         with tempfile.NamedTemporaryFile(suffix=".exe", delete=False) as fh:
             fh.write(FAKE_CLI)
         self.addCleanup(os.remove, fh.name)
-        first = discover.read_cli_catalog(fh.name)
+        first = claude_code.read(fh.name)
         self.assertTrue(first["ok"])
         self.assertEqual(first["path"], fh.name)
-        self.assertEqual(discover.read_cli_catalog(fh.name)["known"], first["known"])
+        self.assertEqual(claude_code.read(fh.name)["known"], first["known"])
+        self.assertFalse(claude_code.read("")["ok"])
 
-    def test_api_catalog_pages_through_v1_models(self):
-        import io
-        import urllib.request
-        from studio import discover
-        pages = {
-            "": {"data": [{"id": "claude-opus-5", "display_name": "Claude Opus 5", "created_at": "2026-04-01T00:00:00Z"}],
-                 "has_more": True, "last_id": "claude-opus-5"},
-            "claude-opus-5": {"data": [{"id": "claude-new-6", "display_name": "Claude New 6", "created_at": "2026-09-01T00:00:00Z"}],
-                              "has_more": False, "last_id": "claude-new-6"},
-        }
-        seen = []
-
-        class Reply(io.BytesIO):
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        def fake_open(req, timeout=0):
-            seen.append((req.full_url, req.get_header("X-api-key")))
-            after = req.full_url.split("after_id=")[1] if "after_id=" in req.full_url else ""
-            return Reply(json.dumps(pages[after]).encode("utf-8"))
-
-        real = urllib.request.urlopen
-        urllib.request.urlopen = fake_open
-        try:
-            got = discover.read_api_catalog(key="sk-test", url="https://example.test/v1/models")
-        finally:
-            urllib.request.urlopen = real
-        self.assertTrue(got["ok"])
-        self.assertEqual([m["id"] for m in got["models"]], ["claude-opus-5", "claude-new-6"])
-        self.assertEqual(len(seen), 2)
-        self.assertEqual(seen[0][1], "sk-test")
-        self.assertIn("after_id=claude-opus-5", seen[1][0])
-        self.assertFalse(discover.read_api_catalog(key="", url="https://example.test/")["ok"], "no key, no call")
-
-    def test_cached_catalog_beats_the_binary_seed(self):
+    def test_a_fetched_catalogue_beats_the_binary_seed(self):
         import tempfile
-        from studio import discover
+        from coursekit.llm import claude_code
         home = tempfile.mkdtemp(prefix="claude-home-")
         self.addCleanup(__import__("shutil").rmtree, home, True)
         folder = os.path.join(home, "cache", "model-catalog")
@@ -997,69 +984,101 @@ class TestModelDiscovery(unittest.TestCase):
                 {"id": "claude-next-7", "name": "Next 7", "section": "main"}]}}}, fh)
         with open(os.path.join(folder, "broken.json"), "w", encoding="utf-8") as fh:
             fh.write("{nope")
-        self.assertEqual(discover.read_cached_catalog(home),
+        self.assertEqual(claude_code.cached_rows(home),
                          [{"id": "claude-next-7", "label": "Claude Next 7"}])
-        self.assertEqual(discover.read_cached_catalog(os.path.join(home, "absent")), [])
+        self.assertEqual(claude_code.cached_rows(os.path.join(home, "absent")), [])
         # the binary's picker rows survive a release that adds fields between name and section
-        rows = discover.parse_cli_catalog(
+        rows = claude_code.parse(
             b'{id:"claude-a-1",family:"a",display_name:"A 1"}'
             b'{id:"claude-a-1",name:"A 1",short_name:"A",extra:{x:1},section:"main"}')
-        self.assertEqual([m["id"] for m in rows["offered"]], ["claude-a-1"])
+        self.assertEqual([m["id"] for m in rows["models"]], ["claude-a-1"])
 
-    def test_plan_adds_offered_removes_unknown_never_empties(self):
+    def test_every_provider_is_asked_and_the_answers_are_filled_in(self):
         from studio import discover
-        current = [{"id": "claude-opus-5", "alias": "opus", "label": "Claude Opus 5", "note": "n"},
-                   {"id": "claude-haiku-4-5-20251001", "alias": "haiku", "label": "Claude Haiku 4.5", "note": ""},
-                   {"id": "claude-gone-3", "label": "Gone", "note": ""}]
-        cli = discover.parse_cli_catalog(FAKE_CLI)
-        api = {"ok": True, "models": [
+        found = discover.sources()
+        self.assertIn("claude-code", found)
+        for name, source in found.items():
+            self.assertIn("known", source, name)
+            self.assertIn("complete", source, name)
+            self.assertTrue(source["label"], name)
+
+    def test_plan_adds_offered_removes_unknown_and_stays_with_one_provider(self):
+        from coursekit.llm import claude_code
+        from studio import discover
+        current = [
+            {"provider": "claude-code", "id": "claude-opus-5", "alias": "opus",
+             "label": "Claude Opus 5", "note": "n"},
+            {"provider": "claude-code", "id": "claude-haiku-4-5-20251001", "alias": "haiku",
+             "label": "Claude Haiku 4.5", "note": ""},
+            {"provider": "claude-code", "id": "claude-gone-3", "label": "Gone", "note": ""},
+            {"provider": "openai", "id": "gpt-5.6", "alias": "sol", "label": "Sol", "note": ""},
+        ]
+        cli = claude_code.parse(FAKE_CLI)
+        found = self._source(**{k: cli[k] for k in ("ok", "models", "known", "error")})
+        new, added, candidates = discover.plan(current, found, "2026-09-09")
+        self.assertEqual([m["id"] for m in added], ["claude-sonnet-5"],
+                         "what its picker offers and the list lacks")
+        self.assertEqual(added[0]["provider"], "claude-code")
+        self.assertIn("added automatically on 2026-09-09", added[0]["note"])
+        self.assertEqual([m["id"] for m in candidates], ["claude-gone-3"],
+                         "the dated haiku is known by its bare id; gpt-5.6 is not its business")
+        self.assertEqual(new[0]["alias"], "opus", "existing entries are untouched")
+
+    def test_a_source_with_dates_offers_only_what_is_newer(self):
+        """Otherwise a first run against an API drags in the whole back catalogue."""
+        from studio import discover
+        current = [{"provider": "anthropic", "id": "claude-opus-5", "label": "Opus", "note": ""}]
+        listing = [
             {"id": "claude-opus-5", "label": "Claude Opus 5", "created": "2026-04-01"},
-            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5", "created": "2025-10-01"},
             {"id": "claude-new-6", "label": "Claude New 6", "created": "2026-09-01"},
             {"id": "claude-new-6-20260901", "label": "Claude New 6", "created": "2026-09-01"},
             {"id": "claude-old-2", "label": "Claude Old 2", "created": "2024-01-01"},
-        ]}
-        new, added, candidates = discover.plan(current, cli, api, "2026-09-09")
-        self.assertEqual([m["id"] for m in added], ["claude-sonnet-5", "claude-new-6"],
-                         "Claude Code's picker and anything newer than what is listed; a dated "
-                         "snapshot of a bare id is the same model; the back catalogue is not")
-        self.assertIn("added automatically on 2026-09-09", added[0]["note"])
-        self.assertEqual([m["id"] for m in candidates], ["claude-gone-3"], "unknown to every source")
-        self.assertEqual([m["id"] for m in new][:3],
-                         ["claude-opus-5", "claude-haiku-4-5-20251001", "claude-gone-3"],
-                         "the dated haiku is known by its bare id; a candidate is still listed")
-        self.assertEqual(new[0]["alias"], "opus", "existing entries are untouched")
+        ]
+        found = self._source("anthropic", "Anthropic API", complete=True, models=listing,
+                             known={m["id"]: m["label"] for m in listing})
+        _new, added, candidates = discover.plan(current, found, "2026-09-09")
+        self.assertEqual([m["id"] for m in added], ["claude-new-6"],
+                         "newer than what is listed, and a dated snapshot is the same model")
+        self.assertEqual(candidates, [])
 
-        cli_only = discover.plan(current, cli, {"ok": False, "models": []}, "2026-09-09")
-        self.assertEqual([m["id"] for m in cli_only[1]], ["claude-sonnet-5"])
-        self.assertEqual([m["id"] for m in cli_only[2]], ["claude-gone-3"])
-
-        nothing, added, candidates = discover.plan(current, {"ok": False}, {"ok": False}, "2026-09-09")
-        self.assertEqual((nothing, added, candidates), (current, [], []), "no source, no change")
-
-    def test_removals_need_the_api_or_a_refused_probe(self):
-        """An older Claude Code passes an id its table lacks straight to the API and it works
-        (Fable 5.1 on 2.1.252), so the binary's table alone never removes a model."""
+    def test_a_provider_whose_source_failed_keeps_every_model_it_has(self):
         from studio import discover
-        gone = {"id": "claude-gone-3", "label": "Gone", "note": ""}
-        fine = {"id": "claude-fable-5-1", "label": "Fable", "note": ""}
+        current = [{"provider": "claude-code", "id": "claude-x", "label": "X", "note": ""},
+                   {"provider": "anthropic", "id": "claude-y", "label": "Y", "note": ""}]
+        found = self._source(ok=False, error="could not be read")
+        found.update(self._source("anthropic", "Anthropic API", complete=True,
+                                  models=[], known={}))
+        new, added, candidates = discover.plan(current, found, "2026-09-09")
+        self.assertEqual(added, [])
+        self.assertEqual([m["id"] for m in candidates], ["claude-y"],
+                         "only the provider that answered may name a candidate")
+        self.assertEqual(new, current)
+
+    def test_removals_need_a_complete_source_or_a_refused_probe(self):
+        """An older Claude Code passes an id its table lacks straight to the API and it works
+        (Fable 5.1 on 2.1.252), so a binary scan alone never removes a model."""
+        from studio import discover
+        gone = {"provider": "claude-code", "id": "claude-gone-3", "label": "Gone", "note": ""}
+        fine = {"provider": "claude-code", "id": "claude-fable-5-1", "label": "Fable", "note": ""}
         asked = []
 
         def probe(model_id):
             asked.append(model_id)
             return {"ok": model_id == "claude-fable-5-1"}
 
-        removed, checked = discover.removals([gone, fine], api_answered=False, probe=probe, keep_one=False)
+        removed, checked = discover.removals([gone, fine], complete=False, probe=probe,
+                                             keep_one=False)
         self.assertEqual([m["id"] for m in removed], ["claude-gone-3"])
         self.assertEqual(checked, {"claude-gone-3": False, "claude-fable-5-1": True})
         self.assertEqual(asked, ["claude-gone-3", "claude-fable-5-1"])
 
-        removed, checked = discover.removals([gone, fine], api_answered=True, probe=probe, keep_one=False)
+        removed, checked = discover.removals([gone, fine], complete=True, probe=probe,
+                                             keep_one=False)
         self.assertEqual([m["id"] for m in removed], ["claude-gone-3", "claude-fable-5-1"],
-                         "absent from Anthropic's list means gone, no call needed")
+                         "absent from a listing of what the account may use means gone")
         self.assertEqual(checked, {})
 
-        removed, _ = discover.removals([gone], api_answered=True, probe=probe, keep_one=True)
+        removed, _ = discover.removals([gone], complete=True, probe=probe, keep_one=True)
         self.assertEqual(removed, [], "never emptied")
 
     def test_an_account_problem_removes_nothing(self):
@@ -1069,24 +1088,27 @@ class TestModelDiscovery(unittest.TestCase):
         from studio import discover
         rows = [{"id": "claude-a"}, {"id": "claude-b"}]
         out_of_quota = lambda mid: {"ok": False, "why": "quota", "error": "usage limit"}
-        removed, checked = discover.removals(rows, api_answered=False, probe=out_of_quota,
+        removed, checked = discover.removals(rows, complete=False, probe=out_of_quota,
                                              keep_one=False)
         self.assertEqual(removed, [])
         self.assertEqual(checked, {"claude-a": False, "claude-b": False})
         refused = lambda mid: {"ok": False, "why": "model", "error": "unrecognized_model"}
-        removed, _ = discover.removals(rows, api_answered=False, probe=refused, keep_one=False)
+        removed, _ = discover.removals(rows, complete=False, probe=refused, keep_one=False)
         self.assertEqual(removed, rows)
 
-    def test_run_reports_without_saving(self):
+    def test_run_reports_one_row_per_provider_without_saving(self):
         from studio import discover
         report = discover.run(save=False)
-        self.assertIn("cli", report["sources"])
-        self.assertIn("api", report["sources"])
+        self.assertIn("claude-code", report["sources"])
+        for name, row in report["sources"].items():
+            self.assertIn("label", row, name)
+            self.assertIn("complete", row, name)
         self.assertIsInstance(report["added"], list)
         self.assertIn("at", report)
         status = discover.status()
         self.assertIn("hours", status)
-        self.assertIn("apiConfigured", status)
+        self.assertTrue(status["providers"])
+        self.assertIn("ready", status["providers"][0])
 
 
 class TestLog(unittest.TestCase):

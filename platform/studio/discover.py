@@ -1,69 +1,59 @@
 """Where new models come from, so the list keeps itself current.
 
-Nobody should have to type a model id the day it ships, or notice by hand that one has
-gone. Two sources say what exists, and neither needs the owner to do anything:
+Nobody should have to type a model id the day it ships, or notice by hand that one has gone.
+**Every configured provider is asked what it knows** (`Provider.catalog`), and the answers are
+merged into `models.list` per provider - a Claude Code build says nothing about what OpenAI
+offers, and must not be allowed to.
 
-- **Claude Code's own catalog.** Claude Code fetches a published model catalog and caches
-  it under its config directory (`cache/model-catalog/*.json`); the `claude` binary also
-  carries a seed of that catalog - the rows its `/model` picker offers - and a fuller table
-  of the models it knows. Studio reads the cache when there is one and the binary otherwise
-  (`CLI_SELECTOR`, `CLI_CATALOG`: regular expressions over its bytes, a shape that may
-  change between releases, which is why a scan that finds nothing is reported as "could not
-  read", never as "no models"). What the picker offers is what gets added.
-- **Anthropic's model list**, `GET /v1/models`, when an API key is configured
-  (`ANTHROPIC_API_KEY` in `.env` or the environment; `providers.anthropic.apiKey`). It is what a
-  course page in direct mode and the bridge can call, and it carries a creation date per
-  model, so only models newer than the newest one already listed are added - never the
-  whole back catalogue.
+A source answers `{ok, models, known, error}`: `models` is what it would offer someone, and
+`known` is the wider set it recognises, because a picker offers five models and accepts
+twenty. A source that cannot answer says so rather than reporting an empty list; the two mean
+opposite things here, and a build whose shape changed must never be read as "there are no
+models".
 
-`plan()` is the merge rule, a pure function: a model a source offers and the list lacks is
-added; a model the list has that every answering source lacks becomes a candidate for
-removal; a dated snapshot (`...-20251001`) and its bare id count as the same model.
-`removals()` decides the candidates: gone from Anthropic's list means gone; unknown only to
-the binary's table is not enough - an older Claude Code passes an id it has never heard of
-straight to the API and it works - so such a candidate is kept unless one real call with it
-(`claude_cli.probe`) is refused *for being that model*: an account out of quota refuses every
-id there is, and a check that ran at three in the morning must not empty the list because of
-it. The list is never emptied. `run()` applies the result
-through `models.replace`, so it is validated like a hand edit and live everywhere at once,
-and writes a report to `state/models-discovery.json` for the settings page. `schedule()`
-runs it shortly after Studio starts and every `discovery.hours` after that;
-`POST /api/models/discover` runs it on demand.
+`plan()` is the merge rule, a pure function: a model a provider offers and the list lacks is
+added under that provider; a model the list has that its own provider does not recognise
+becomes a candidate for removal; a dated snapshot (`...-20251001`) and its bare id are one
+model. A source whose models carry creation dates - an API listing does, a binary scan does
+not - offers only what is newer than the newest already listed, so a first run does not drag
+in the whole back catalogue.
+
+`removals()` decides the candidates, and the rule is about who may be believed.
+`Provider.catalog_is_complete` says whether a catalogue is the whole picture: an endpoint
+listing what an account may use is, so a model missing from it really is gone; bytes scraped
+out of a binary are not, because an older build passes an id it has never heard of straight
+through and it works. For those, a candidate stays unless one real call (`llm.probe`) is
+refused *for being that model* - an account out of quota refuses every id there is, and a
+check that ran at three in the morning must not empty the list because of it. No provider's
+models are ever all removed.
+
+`run()` applies the result through `models.replace`, so it is validated like a hand edit and
+live everywhere at once, and writes a report to `state/models-discovery.json` for the
+settings page. `schedule()` runs it `discovery.startDelaySeconds` after Studio starts and
+every `discovery.hours` after that; `POST /api/models/discover` runs it on demand.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import threading
 import time
-import urllib.error
-import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
+from coursekit import llm
 from coursekit.failures import MODEL
-from coursekit.llm.anthropic import AnthropicProvider
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, models
+from . import models
 from .files import read_json, write_json
 from .log import log
 
 HOURS = float(SETTINGS.get("discovery.hours") or 0)            # 0 turns the schedule off
 START_DELAY = int(SETTINGS.get("discovery.startDelaySeconds"))
 TIMEOUT = int(SETTINGS.get("discovery.timeout"))
-API_PAGE = int(SETTINGS.get("discovery.apiPage"))
 REPORT_NAME = "models-discovery.json"
 
-# The picker rows in the claude binary: {id:"claude-opus-5",name:"Opus 5",short_name:"Opus",section:"main"}
-# - the fields between name and section vary by release.
-CLI_SELECTOR = re.compile(rb'\{id:"(claude-[a-z0-9.-]+)",name:"([^"]+)"(?:[^{}]|\{[^{}]*\})*?section:"[a-z_]+"\}')
-CATALOG_CACHE = os.path.join("cache", "model-catalog")     # under Claude Code's config directory
-# The catalog rows: {id:"claude-opus-5",family:"opus",display_name:"Opus 5",...
-CLI_CATALOG = re.compile(rb'\{id:"(claude-[a-z0-9.-]+)",family:"[a-z]+",display_name:"([^"]+)"')
-# A path a Windows npm shim runs: "%~dp0\node_modules\@anthropic-ai\claude-code\cli.js"
-SHIM_TARGET = re.compile(r'"?%~dp0\\?([^"\s]+\.(?:js|exe))"?', re.I)
 DATED = re.compile(r"-\d{8}$")
 
 
@@ -72,190 +62,92 @@ def base_id(model_id: str) -> str:
     return DATED.sub("", model_id)
 
 
-def label_for(display_name: str, model_id: str) -> str:
-    name = (display_name or "").strip() or model_id
-    return name if name.lower().startswith("claude") else "Claude " + name
+# ---- what every provider says ----
 
-
-# ---- source 1: the claude binary ----
-
-def cli_binary() -> str:
-    """The file that holds Claude Code's catalog: the native executable, or the cli.js an
-    npm shim runs. "" when there is no CLI or the shim cannot be followed."""
-    cli = claude_cli.find_cli()
-    if not cli:
-        return ""
-    if not cli.lower().endswith((".cmd", ".bat")):
-        return os.path.realpath(cli)
-    try:
-        with open(cli, encoding="utf-8", errors="replace") as fh:
-            shim = fh.read()
-    except OSError:
-        return ""
-    found = SHIM_TARGET.search(shim)
-    if not found:
-        return ""
-    target = os.path.join(os.path.dirname(cli), found.group(1).replace("\\", os.sep))
-    return os.path.realpath(target) if os.path.isfile(target) else ""
-
-
-def claude_config_dir() -> str:
-    """Where Claude Code keeps its state: CLAUDE_CONFIG_DIR, else ~/.claude."""
-    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
-
-
-def read_cached_catalog(config_dir: str = "") -> List[Dict[str, str]]:
-    """The picker rows from the catalog Claude Code last fetched, newest file first; []
-    when it has not fetched one or the shape is not the expected one."""
-    folder = os.path.join(config_dir or claude_config_dir(), CATALOG_CACHE)
-    try:
-        files = sorted((os.path.join(folder, n) for n in os.listdir(folder) if n.endswith(".json")),
-                       key=os.path.getmtime, reverse=True)
-    except OSError:
-        return []
-    for path in files:
-        try:
-            doc = read_json(path)
-        except (OSError, ValueError):
-            continue
-        config = ((doc.get("catalog") or {}).get("config") or {}) if isinstance(doc, dict) else {}
-        rows = config.get("models") if isinstance(config, dict) else None
-        offered = [{"id": str(r["id"]), "label": label_for(str(r.get("name") or ""), str(r["id"]))}
-                   for r in (rows or []) if isinstance(r, dict) and r.get("id")]
-        if offered:
-            return offered
-    return []
-
-
-_cli_cache: Dict[str, Any] = {"key": None, "value": None}
-
-
-def read_cli_catalog(path: str = "") -> Dict[str, Any]:
-    """{ok, path, offered: [{id, label}], known: {id: label}, error}. Cached per file
-    version, so the daily check and the settings page do not re-read 200 MB each time."""
-    path = path or cli_binary()
-    if not path:
-        return {"ok": False, "path": "", "offered": [], "known": {},
-                "error": "Claude Code is not on this PATH."}
-    try:
-        stat = os.stat(path)
-    except OSError as exc:
-        return {"ok": False, "path": path, "offered": [], "known": {}, "error": str(exc)}
-    key = (path, stat.st_mtime, stat.st_size)
-    if _cli_cache["key"] == key:
-        return dict(_cli_cache["value"])
-    try:
-        with open(path, "rb") as fh:
-            data = fh.read()
-    except OSError as exc:
-        return {"ok": False, "path": path, "offered": [], "known": {}, "error": str(exc)}
-    result = parse_cli_catalog(data)
-    result["path"] = path
-    cached = read_cached_catalog()
-    if cached:
-        result["offered"] = cached
-        result["offeredFrom"] = "cache"
-    _cli_cache["key"], _cli_cache["value"] = key, dict(result)
-    return result
-
-
-def parse_cli_catalog(data: bytes) -> Dict[str, Any]:
-    """The two tables out of the binary's bytes. Nothing found means the shape changed."""
-    known: Dict[str, str] = {}
-    for model_id, name in CLI_CATALOG.findall(data):
-        known.setdefault(model_id.decode(), label_for(name.decode(), model_id.decode()))
-    offered: List[Dict[str, str]] = []
-    seen = set()
-    for model_id, name in CLI_SELECTOR.findall(data):
-        mid = model_id.decode()
-        if mid not in seen:
-            seen.add(mid)
-            offered.append({"id": mid, "label": label_for(name.decode(), mid)})
-    if not known:
-        return {"ok": False, "offered": [], "known": {},
-                "error": "no model catalog found in this Claude Code build"}
-    return {"ok": True, "offered": offered, "known": known, "error": "", "offeredFrom": "binary"}
-
-
-# ---- source 2: Anthropic's model list ----
-
-def api_key() -> str:
-    return str(SETTINGS.get("providers.anthropic.apiKey") or "").strip()
-
-
-def read_api_catalog(key: str = "", url: str = "", timeout: int = TIMEOUT) -> Dict[str, Any]:
-    """{ok, models: [{id, label, created}], error}. Every page of `GET /v1/models`.
-
-    The paging and the error handling belong to the provider that speaks that wire format;
-    what is left here is the one thing discovery wants differently - a label tidied for a
-    list a person reads."""
-    provider = AnthropicProvider.from_settings("anthropic", SETTINGS.provider("anthropic"))
-    if key:
-        provider = provider.with_key(key)
-    if url:
-        provider.models_url = url
-    found = provider.catalog(timeout)
-    if found.get("ok"):
-        found["models"] = [dict(m, label=label_for(m["label"], m["id"]))
-                           for m in found["models"]]
+def sources(timeout: int = TIMEOUT) -> Dict[str, Dict[str, Any]]:
+    """Every enabled provider, asked what it knows, keyed by provider name. `known` is filled
+    in from `models` for a source that draws no distinction, and `complete` records whether
+    this one may be believed when it leaves a model out."""
+    found: Dict[str, Dict[str, Any]] = {}
+    for provider in llm.providers():
+        answer = dict(provider.catalog(timeout))
+        answer.setdefault("models", [])
+        answer.setdefault("error", "")
+        if not answer.get("known"):
+            answer["known"] = {m["id"]: m.get("label") or m["id"] for m in answer["models"]}
+        answer["complete"] = bool(provider.catalog_is_complete)
+        answer["label"], answer["kind"] = provider.label, provider.kind
+        answer["ready"] = provider.available()
+        found[provider.name] = answer
     return found
 
 
 # ---- the merge rule ----
 
-def plan(current: List[Dict[str, Any]], cli: Dict[str, Any], api: Dict[str, Any],
-         today: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+def offerable(source: Dict[str, Any], listed: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Which of a source's models are worth offering.
+
+    A source whose models carry creation dates offers only what is newer than the newest one
+    already listed - otherwise the first run against an API drags in the whole back
+    catalogue, dated snapshots and all. A source without dates has no way to say what is new,
+    so everything it offers is on the table and `plan` drops what is already there."""
+    rows = source.get("models") or []
+    if not any(r.get("created") for r in rows):
+        return rows
+    present = {m["id"] for m in listed} | {base_id(m["id"]) for m in listed}
+    dates = [r["created"] for r in rows if r["id"] in present or base_id(r["id"]) in present]
+    newest = max(dates) if dates else ""
+    return [r for r in sorted(rows, key=lambda x: x.get("created", ""))
+            if r.get("created", "") > newest and not DATED.search(r["id"])]
+
+
+def plan(current: List[Dict[str, Any]], found: Dict[str, Dict[str, Any]], today: str
+         ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     """(the list with additions, added entries, candidates for removal). Pure: no I/O, no
-    clock. A candidate is still in the list; `removals()` decides."""
-    present = set()
-    for m in current:
-        present.add(m["id"])
-        present.add(base_id(m["id"]))
+    clock. A candidate is still in the list; `removals()` decides.
 
+    Everything is scoped to one provider: a model is offered by, missing from, and removed on
+    behalf of the provider that reaches it. A provider whose source could not answer keeps
+    every model it has."""
     added: List[Dict[str, Any]] = []
+    candidates: List[Dict[str, Any]] = []
 
-    def offer(model_id: str, label: str, source: str) -> None:
-        if model_id in present or base_id(model_id) in present:
-            return
-        present.add(model_id)
-        present.add(base_id(model_id))
-        added.append({"id": model_id, "label": label,
-                      "note": "added automatically on %s from %s; test it before a long run"
-                              % (today, source)})
+    for name, source in found.items():
+        if not source.get("ok"):
+            continue
+        mine = [m for m in current if m.get("provider") == name]
+        present = set()
+        for m in mine:
+            present.add(m["id"])
+            present.add(base_id(m["id"]))
+        for row in offerable(source, mine):
+            model_id = str(row.get("id") or "")
+            if not model_id or model_id in present or base_id(model_id) in present:
+                continue
+            present.add(model_id)
+            present.add(base_id(model_id))
+            added.append({
+                "provider": name, "id": model_id, "label": row.get("label") or model_id,
+                "note": "added automatically on %s from %s; test it before a long run"
+                        % (today, source.get("label") or name)})
+        known = set(source["known"]) | {base_id(i) for i in source["known"]}
+        candidates += [m for m in mine if not {m["id"], base_id(m["id"])} & known]
 
-    if cli.get("ok"):
-        for m in cli["offered"]:
-            offer(m["id"], m["label"], "Claude Code's catalog")
-    if api.get("ok"):
-        known_dates = [m["created"] for m in api["models"]
-                       if m["id"] in present or base_id(m["id"]) in present]
-        newest = max(known_dates) if known_dates else ""
-        for m in sorted(api["models"], key=lambda x: x["created"]):
-            if m["created"] > newest and not DATED.search(m["id"]):
-                offer(m["id"], m["label"], "Anthropic's model list")
-
-    def names_known_to(source: Dict[str, Any]) -> set:
-        ids = set(source["known"]) if "known" in source else {x["id"] for x in source["models"]}
-        return ids | {base_id(i) for i in ids}
-
-    answered = [names_known_to(s) for s in (cli, api) if s.get("ok")]
-    candidates = [m for m in current
-                  if answered and not any({m["id"], base_id(m["id"])} & known for known in answered)]
     return current + added, added, candidates
 
 
-def removals(candidates: List[Dict[str, Any]], api_answered: bool, probe,
+def removals(candidates: List[Dict[str, Any]], complete: bool, probe,
              keep_one: bool) -> Tuple[List[Dict[str, Any]], Dict[str, bool]]:
-    """Which candidates go: all of them when Anthropic's list answered without them; else
-    only those one real call refuses for being that model. `probe(id)` -> {ok, why, ...};
-    a failure whose `why` is anything but "model" - an exhausted account, a signed-out CLI,
-    a dropped connection - would refuse every id on the list, so it removes nothing. Returns
-    (removed, checked) where checked records each probe. `keep_one` says the list has nothing
-    but candidates, in which case the last one stays."""
+    """Which candidates go: all of them when the source was the whole picture and answered
+    without them; else only those one real call refuses for being that model. `probe(id)` ->
+    {ok, why, ...}; a failure whose `why` is anything but "model" - an exhausted account, a
+    signed-out CLI, a dropped connection - would refuse every id on the list, so it removes
+    nothing. Returns (removed, checked), where checked records each probe. `keep_one` says
+    this provider has nothing but candidates, in which case the last one stays."""
     removed: List[Dict[str, Any]] = []
     checked: Dict[str, bool] = {}
     for m in candidates:
-        if api_answered:
+        if complete:
             removed.append(m)
             continue
         answer = probe(m["id"])
@@ -275,30 +167,28 @@ def report_path() -> str:
 
 
 def run(save: bool = True) -> Dict[str, Any]:
-    """Read every source, apply the plan, save the list and the report."""
+    """Ask every provider, apply the plan, save the list and the report."""
     started = time.time()
-    cli = read_cli_catalog()
-    api = read_api_catalog()
+    found = sources()
     today = time.strftime("%Y-%m-%d")
     current = SETTINGS.models
-    with_additions, added, candidates = plan(current, cli, api, today)
-    removed, checked = removals(candidates, api["ok"], claude_cli.probe,
-                                keep_one=len(candidates) == len(with_additions))
-    gone = {m["id"] for m in removed}
-    new_list = [m for m in with_additions if m["id"] not in gone]
+    with_additions, added, candidates = plan(current, found, today)
+    removed, checked = _removals_per_provider(found, with_additions, candidates)
+
+    gone = {(m["provider"], m["id"]) for m in removed}
+    new_list = [m for m in with_additions if (m.get("provider"), m["id"]) not in gone]
     changed = bool(added or removed)
     report = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "seconds": round(time.time() - started, 1),
-        "sources": {
-            "cli": {"ok": cli["ok"], "path": cli.get("path", ""), "offered": len(cli["offered"]),
-                    "offeredFrom": cli.get("offeredFrom", ""), "known": len(cli["known"]),
-                    "error": cli["error"]},
-            "api": {"ok": api["ok"], "configured": bool(api_key()), "count": len(api["models"]),
-                    "error": api["error"]},
-        },
-        "added": [m["id"] for m in added],
-        "removed": [m["id"] for m in removed],
+        "sources": {name: {"ok": s["ok"], "label": s["label"], "kind": s["kind"],
+                           "ready": s["ready"], "complete": s["complete"],
+                           "offered": len(s["models"]), "known": len(s["known"]),
+                           "from": s.get("from", ""), "path": s.get("path", ""),
+                           "error": s["error"]}
+                    for name, s in found.items()},
+        "added": [{"provider": m["provider"], "id": m["id"]} for m in added],
+        "removed": [{"provider": m["provider"], "id": m["id"]} for m in removed],
         "checked": checked,
         "changed": changed,
     }
@@ -310,17 +200,48 @@ def run(save: bool = True) -> Dict[str, Any]:
                 report["error"] = str(exc)
                 log.error("model discovery: the new list was refused: %s", exc)
         write_json(report_path(), report)
-    if changed:
-        log.info("model discovery: added %s, removed %s", ", ".join(report["added"]) or "none",
-                 ", ".join(report["removed"]) or "none")
-    else:
-        log.info("model discovery: nothing new (cli %s, api %s)",
-                 "ok" if cli["ok"] else cli["error"], "ok" if api["ok"] else api["error"])
+    _log_result(report, found)
     return report
 
 
+def _removals_per_provider(found: Dict[str, Dict[str, Any]],
+                           with_additions: List[Dict[str, Any]],
+                           candidates: List[Dict[str, Any]]
+                           ) -> Tuple[List[Dict[str, Any]], Dict[str, bool]]:
+    """Each provider judges its own models, with its own probe. No provider's models are all
+    removed, whatever its source says."""
+    removed: List[Dict[str, Any]] = []
+    checked: Dict[str, bool] = {}
+    for name, source in found.items():
+        mine = [m for m in candidates if m.get("provider") == name]
+        if not mine:
+            continue
+        listed = [m for m in with_additions if m.get("provider") == name]
+
+        def probe(model_id: str, provider: str = name) -> Dict[str, Any]:
+            return llm.probe(model_id, name=provider)
+
+        theirs, saw = removals(mine, bool(source["complete"] and source["ok"]), probe,
+                               keep_one=len(mine) == len(listed))
+        removed += theirs
+        checked.update(saw)
+    return removed, checked
+
+
+def _log_result(report: Dict[str, Any], found: Dict[str, Dict[str, Any]]) -> None:
+    said = ", ".join("%s %s" % (name, "ok" if s["ok"] else s["error"] or "not read")
+                     for name, s in found.items())
+    if report["changed"]:
+        log.info("model discovery: added %s, removed %s (%s)",
+                 ", ".join(m["id"] for m in report["added"]) or "none",
+                 ", ".join(m["id"] for m in report["removed"]) or "none", said)
+    else:
+        log.info("model discovery: nothing new (%s)", said)
+
+
 def status() -> Dict[str, Any]:
-    """What the settings page shows: the last report, the schedule, the sources."""
+    """What the settings page shows: the last report, the schedule, and every provider that
+    would be asked."""
     last: Optional[Dict[str, Any]] = None
     try:
         loaded = read_json(report_path())
@@ -328,8 +249,10 @@ def status() -> Dict[str, Any]:
             last = loaded
     except (OSError, ValueError):
         pass
-    return {"last": last, "hours": HOURS, "apiConfigured": bool(api_key()),
-            "cliBinary": cli_binary()}
+    return {"last": last, "hours": HOURS,
+            "providers": [{"name": p.name, "label": p.label, "kind": p.kind,
+                           "ready": p.available(), "complete": p.catalog_is_complete}
+                          for p in llm.providers()]}
 
 
 _thread: Optional[threading.Thread] = None

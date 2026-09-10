@@ -26,7 +26,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from ..settings import SETTINGS
-from . import shape
+from . import claude_code, shape
 from .base import Capabilities, LLMFailed, Provider, Reply, Request, failed
 from .failures import TIMEOUT, UNKNOWN, describe
 
@@ -97,6 +97,12 @@ class CliProvider(Provider):
     def describe(self) -> Dict[str, Any]:
         return {"name": self.name, "kind": self.kind, "label": self.label,
                 "available": self.available(), "path": self.find() or "", "hint": self.hint}
+
+    def catalog(self, timeout: int = 0) -> Dict[str, Any]:
+        """What this binary knows about, read out of the binary - there is no endpoint to
+        ask. Only Claude Code is understood (`claude_code.py`), and anything else reads as
+        "could not be read", which is exactly right: nothing here knows what it accepts."""
+        return claude_code.read(claude_code.binary(self.find() or ""))
 
     # ---- one call
 
