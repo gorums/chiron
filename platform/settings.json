@@ -37,7 +37,7 @@
     "probeCacheSeconds": 15
   },
   "providers": {
-    "_": "How a model is reached. `kind` picks the adapter in coursekit/llm/: `cli` runs a headless binary, the rest speak a wire format. `openai` is Chat Completions and therefore also Ollama, LM Studio, vLLM, OpenRouter, Groq and Azure - point `apiUrl` at one and set `maxTokensField` to the name that server takes. A provider with `enabled: false` keeps its configuration but is offered nowhere. A key is a secret: it is masked on the settings page and never reaches a course page.",
+    "_": "How a model is reached. `kind` picks the adapter in coursekit/llm/: `cli` runs a headless binary, the rest speak a wire format. `apiProvider` on a `cli` row names the provider whose API serves the same models: a browser cannot spawn a process, so that is how a course page opened off disk reaches a model whose provider is a local tool. `openai` is Chat Completions and therefore also Ollama, LM Studio, vLLM, OpenRouter, Groq and Azure - point `apiUrl` at one and set `maxTokensField` to the name that server takes. A provider with `enabled: false` keeps its configuration but is offered nowhere. A key is a secret: it is masked on the settings page and never reaches a course page.",
     "claude-code": {
       "kind": "cli",
       "label": "Claude Code",
@@ -45,6 +45,7 @@
       "command": ["claude", "claude.cmd", "claude.exe"],
       "args": ["-p", "--output-format", "text"],
       "modelFlag": "--model",
+      "apiProvider": "anthropic",
       "signinHint": "Run `claude` once in a terminal, sign in, and try again."
     },
     "anthropic": {

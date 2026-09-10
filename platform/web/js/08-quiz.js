@@ -214,7 +214,7 @@ function verdictHtml(it, st) {
   if (t === "short") {
     h += `<div class="why gap-top"><b class="whyttl">Model answer</b>${esc(it.model)}</div>`;
     if (st.ai)
-      h += `<div class="fb ${st.ai.verdict}"><b>${st.ai.verdict === "correct" ? "Claude: that covers it" : st.ai.verdict === "partial" ? "Claude: partly there" : "Claude: not yet"}</b>${mdLite(st.ai.text)}</div>`;
+      h += `<div class="fb ${st.ai.verdict}"><b>${st.ai.verdict === "correct" ? "That covers it" : st.ai.verdict === "partial" ? "Partly there" : "Not yet"}</b>${mdLite(st.ai.text)}</div>`;
     else if (shortGrading) h += `<div class="msg a typing gap-top"><i></i><i></i><i></i></div>`;
     if (st.ok == null && !shortGrading) {
       h += `<div class="conf"><span class="sub">${connMode() === "none" ? "How did yours compare?" : "Or score it yourself:"}</span>

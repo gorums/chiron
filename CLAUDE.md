@@ -91,6 +91,22 @@ on the settings page with the name they came from. Every `providers.*.apiKey` is
 by rule (`settings.is_secret`), so a provider added later is masked without this file being
 edited.
 
+**The page speaks the wire formats too, in `web/js/14b-wire.js`.** A page opened off disk
+has no Python beside it, and a served page must not need the bridge to ask a question the
+reader is paying for themselves — so `WIRE` is the browser's half of `coursekit/llm/`: one
+entry per kind (`anthropic`, `openai`, `gemini`), each about ten lines of `url`, `headers`,
+`body`, `reply`, `problem`. `14-conn.js` chooses a route and never asks which of them
+answered. **A key is per provider** (`STATE.bridge.keys`, migrated from the single
+`bridge.key` in `upgrade()`), stays in the browser, and a key that cannot reach the chosen
+model does not count: a stored OpenAI key must not turn off a Studio that reaches the model
+another way.
+
+**`apiProvider` is how a local tool and an API are known to be the same models.** A browser
+cannot spawn a process, so a model whose provider is a `cli` row would be unreachable from a
+page off disk — even though the same model sits behind an API. The `cli` row names its API
+twin, `page_providers` turns that into `standsInFor`, and `providerForModel` follows it. It
+is a setting because nothing should be inferring which company's API serves which model id.
+
 **The page gets its slice as `CFG.platform`.** `renderer.runtime_config` merges
 `SETTINGS.page()` into the `CFG` the shell receives: the bridge address, the providers a
 browser may call itself (`page_providers` — enabled, not a `cli` kind, **never a key**), the

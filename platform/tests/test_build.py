@@ -802,6 +802,17 @@ class TestSettings(unittest.TestCase):
         self.assertTrue(offered["anthropic"]["needsKey"])
         self.assertNotIn("sk-ant-secret", json.dumps(s.page()))
 
+    def test_a_local_tool_says_which_api_serves_the_same_models(self):
+        """A browser cannot spawn a process, so a model whose provider is a command-line tool
+        would be unreachable from a page opened off disk - though the same model sits behind
+        an API. Which API is a setting, not a guess made from the model's name."""
+        s = settings.SETTINGS
+        offered = {p["name"]: p for p in s.page().get("providers", [])}
+        stands_in = {name: p.get("standsInFor", []) for name, p in offered.items()}
+        self.assertIn("claude-code", stands_in.get("anthropic", []),
+                      "the shipped cli row names its API twin")
+        self.assertEqual(s.provider("claude-code")["apiProvider"], "anthropic")
+
     def test_secrets_are_masked_and_stay_off_the_page(self):
         """A provider key and the Jupyter token show as set or empty on the settings page and
         never reach `page()`. Which settings are secret is a rule - anything called apiKey -
