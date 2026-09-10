@@ -22,6 +22,11 @@ REPO = os.path.dirname(PLATFORM)
 sys.path.insert(0, PLATFORM)
 
 from coursekit import assessments, bundler, config, failures, library, loader, paths, renderer, scaffold, settings, validate  # noqa: E402
+from coursekit import llm  # noqa: E402
+from coursekit.llm import base as llm_base  # noqa: E402
+from coursekit.llm import chain as llm_chain  # noqa: E402
+from coursekit.llm import cli as llm_cli  # noqa: E402
+from coursekit.llm import shape as llm_shape  # noqa: E402
 from coursekit.errors import CourseError, DataError, ManifestError  # noqa: E402
 
 MODULE_MD = """# M{n:02d} — Lesson {n}
@@ -869,6 +874,168 @@ class TestFailureKinds(unittest.TestCase):
         self.assertEqual(failures.from_status(404), failures.MODEL)
         self.assertEqual(failures.from_status(529), failures.TRANSIENT)
         self.assertEqual(failures.from_status(418), failures.UNKNOWN)
+
+
+class Answers(llm_base.Provider):
+    """A provider that says whatever the test tells it to, so the retry policy can be
+    exercised without a subprocess. Each entry of `script` is either the text of a reply or
+    an exception to raise."""
+
+    kind = "test"
+    name = "test"
+    label = "The test provider"
+
+    def __init__(self, *script):
+        self.script = list(script)
+        self.seen = []                  # the model each attempt asked for
+
+    def available(self):
+        return True
+
+    def complete(self, req):
+        self.seen.append(req.model)
+        answer = self.script.pop(0) if self.script else "ok"
+        if isinstance(answer, Exception):
+            raise answer
+        return llm_base.Reply(text=answer, model=req.model, provider=self.name)
+
+
+def refused(detail, kind=""):
+    return llm_base.failed(detail, kind, provider="test")
+
+
+class TestProviderLayer(unittest.TestCase):
+    """`coursekit.llm` is the one place a wire format or a command line appears. What is
+    tested here is the part that is the platform, not any provider: which model is tried
+    next, what is waited out, and what ends a run at once."""
+
+    def setUp(self):
+        self.backoff = llm_chain.BACKOFF
+        llm_chain.BACKOFF = 0           # the waiting is the point, not the wall clock
+
+    def tearDown(self):
+        llm_chain.BACKOFF = self.backoff
+
+    def _ask(self, provider, model="", prompt="hi"):
+        return llm_chain.complete(
+            provider, llm_base.Request(prompt=prompt, model=model, timeout=5)).text
+
+    # ---- the chain
+
+    def test_the_asked_for_model_is_tried_first_then_the_default_then_none(self):
+        """The last resort names no model at all, which is what the default of the provider
+        itself means. Without it a run dies when every listed model is refused."""
+        provider = Answers(refused("unrecognized_model"), refused("unrecognized_model"), "ok")
+        self.assertEqual(self._ask(provider, model="sonnet"), "ok")
+        self.assertEqual(provider.seen, ["sonnet", llm_chain.default_model(), ""])
+
+    def test_weather_is_waited_out_on_the_same_model(self):
+        provider = Answers(refused("529 overloaded_error"), "ok")
+        self.assertEqual(self._ask(provider, model="sonnet"), "ok")
+        self.assertEqual(provider.seen, ["sonnet", "sonnet"], "the same model, not the next")
+
+    def test_weather_that_never_clears_gives_up_after_the_settings_say_so(self):
+        provider = Answers(*[refused("529 overloaded_error")] * 99)
+        with self.assertRaises(llm_base.LLMFailed) as caught:
+            self._ask(provider, model="sonnet")
+        self.assertEqual(caught.exception.kind, failures.TRANSIENT)
+        tried = len(set(provider.seen)) * (llm_chain.RETRIES + 1)
+        self.assertEqual(len(provider.seen), tried)
+
+    def test_an_exhausted_account_stops_at_the_first_model(self):
+        """Every model on the chain draws on the same account, so trying the next one wastes
+        a minute and then tells the reader the wrong story."""
+        for detail, kind in (("Claude usage limit reached.", failures.QUOTA),
+                             ("Invalid API key - please run /login", failures.AUTH)):
+            provider = Answers(*[refused(detail)] * 9)
+            with self.assertRaises(llm_base.LLMFailed) as caught:
+                self._ask(provider, model="sonnet")
+            self.assertEqual(caught.exception.kind, kind)
+            self.assertEqual(len(provider.seen), 1, detail)
+
+    def test_a_spent_timeout_is_not_paid_for_twice(self):
+        provider = Answers(*[refused("no answer within 5s", failures.TIMEOUT)] * 9)
+        with self.assertRaises(llm_base.LLMFailed):
+            self._ask(provider, model="sonnet")
+        self.assertEqual(len(provider.seen), 1)
+
+    def test_a_provider_that_is_not_there_is_not_called(self):
+        class Missing(Answers):
+            def available(self):
+                return False
+
+        with self.assertRaises(llm_base.ProviderUnavailable):
+            self._ask(Missing())
+
+    def test_progress_is_reported_and_the_default_reporter_is_a_noop(self):
+        """The tutor route calls this on a request thread, where nothing is watching."""
+        seen = []
+
+        class Watching(llm_chain.Reporter):
+            def event(self, kind, **fields):
+                seen.append((kind, fields.get("phase"), fields.get("ok")))
+
+        original = llm_chain.REPORTER
+        llm_chain.set_reporter(Watching())
+        try:
+            self._ask(Answers("ok"), model="sonnet")
+        finally:
+            llm_chain.set_reporter(original)
+        self.assertEqual(seen, [("call", "start", None), ("call", "end", True)])
+        llm_chain.REPORTER.event("call", phase="start")      # nothing listens; nothing breaks
+        llm_chain.REPORTER.say("nor to this")
+
+    # ---- shaping
+
+    def test_a_prompt_is_sent_verbatim_and_never_wrapped_in_a_transcript(self):
+        """A module prompt is a document, not a conversation. Wrapping it in "User:" would
+        change what the model is asked."""
+        provider, sent = Answers("ok"), []
+        provider.complete = lambda r: sent.append(r) or llm_base.Reply(text="ok")
+        llm_chain.complete(provider, llm_base.Request(prompt="Write M03.", timeout=5))
+        self.assertEqual(sent[0].prompt, "Write M03.")
+
+    def test_a_conversation_is_flattened_only_when_there_is_no_prompt(self):
+        flat = llm_shape.chat_prompt("SYSTEM", [{"role": "user", "content": "why?"}])
+        self.assertEqual(flat, "SYSTEM\n\nUser: why?\n\nAssistant:")
+
+    def test_json_is_dug_out_of_prose_and_fences(self):
+        self.assertEqual(llm_shape.strip_fence("```markdown\n# T\n```"), "# T")
+        self.assertEqual(json.loads(llm_shape.slice_json('Here:\n{"a": [1, 2]}\nEnjoy.')),
+                         {"a": [1, 2]})
+
+    def test_ask_json_asks_again_with_the_parse_error(self):
+        replies = iter(["not json at all", '```json\n{"a": 1}\n```'])
+        asked = []
+
+        def asker(prompt, **kw):
+            asked.append(prompt)
+            return next(replies)
+
+        self.assertEqual(llm_chain.ask_json("q", asker=asker), {"a": 1})
+        self.assertIn("could not be parsed as JSON", asked[1])
+
+    # ---- the CLI provider
+
+    def test_the_cli_argv_is_what_it_always_was(self):
+        provider = llm_cli.CliProvider()
+        self.assertEqual(provider._args_for("opus"),
+                         ["-p", "--output-format", "text", "--model", "opus"])
+        self.assertEqual(provider._args_for(""), ["-p", "--output-format", "text"],
+                         "no model named means the default of the binary itself")
+
+    def test_a_shim_on_windows_is_run_through_cmd(self):
+        """A .cmd or .bat cannot be executed directly, and every Windows install is one."""
+        if os.name != "nt":
+            self.skipTest("the shim only exists on Windows")
+        self.assertEqual(llm_cli.argv("C:/x/claude.cmd", ["-p"]),
+                         ["cmd", "/c", "C:/x/claude.cmd", "-p"])
+        self.assertEqual(llm_cli.argv("C:/x/claude.exe", ["-p"]), ["C:/x/claude.exe", "-p"])
+
+    def test_the_registry_offers_the_cli_provider(self):
+        self.assertEqual(llm.provider_for().kind, "cli")
+        self.assertEqual(llm.provider_for("nothing-by-that-name").kind, "cli")
+        self.assertIn("available", llm.describe()[0])
 
 
 class TestCodeConventions(unittest.TestCase):

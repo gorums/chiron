@@ -96,6 +96,8 @@ platform/                   the engine — knows nothing about any subject
   build.py                  CLI entry point
   settings.json             every default of the platform; see "Settings" above
   coursekit/                the build package
+    llm/                    reaching a model, whoever makes it: the provider layer
+                            (see "Reaching a model"). The bridge imports it too
   studio/                   the local web app: generate + build from a browser
     ui/                     its front end: index.html + studio.css + js/ (one file per screen)
   web/                      the course page's source: shell.html + css/ + js/ (one file per concern).
@@ -217,6 +219,40 @@ from the same file opened off disk, and every difference goes through one detect
 The bridge remains the route for a page opened off disk (`file://`), where none of this
 applies. It now also passes prompts on stdin from a scratch cwd, like Studio.
 
+## Reaching a model
+
+**`platform/coursekit/llm/` is the one place a wire format or a command line appears.**
+Everything above it — the generator, the editor, the reviewer, the tutor route, the bridge —
+asks for a completion and gets text back, and knows nothing about who answered.
+
+It lives in `coursekit` rather than in `studio` because `tools/bridge/` imports it from
+outside the package, the way it imports `settings`. That is what keeps one implementation
+instead of two. For the same reason it is **standard library only**: `urllib.request` for an
+HTTP provider, `subprocess` for a CLI one. A vendor SDK here would end `markdown` being the
+platform’s only dependency.
+
+| Module | Job |
+|---|---|
+| `failures` | why a call failed, in one word: `quota`, `auth`, `model`, `transient`, `timeout`, `unknown` — the kinds every layer branches on |
+| `base` | what a provider is: `Provider`, `Request`, `Reply`, `Capabilities`, `LLMFailed` |
+| `shape` | flattening a conversation into one prompt; digging JSON out of prose |
+| `cli` | a model reached through a headless binary |
+| `chain` | retries, model fallback, and telling whoever is watching |
+
+- **A provider runs one call and classifies what came back. `chain` decides what to do about
+  it.** The retry policy, the JSON insistence and the progress reporting are the platform’s,
+  not any vendor’s, so they are written once (see "When Claude says no" for the rules).
+- **A prompt is sent verbatim when a caller built one.** `Request.prompt` goes through
+  untouched — a module prompt is a document, not a conversation, and wrapping it in "User:"
+  would change what the model is asked. `system` and `messages` are the chat shape, which a
+  `single_prompt` provider flattens itself.
+- **`coursekit` never imports `studio`.** Progress goes to a `chain.Reporter`, which by
+  default goes nowhere; `studio/claude_cli.py` installs one that forwards to
+  `jobs.current()`. That module is now a shim over this layer and nothing else.
+- `llm.provider_for(name)` is how a caller gets one. Today there is a single provider, the
+  CLI, and the name is ignored; the registry exists so the settings row that selects one has
+  somewhere to arrive.
+
 ## The two-layer rule
 
 **The engine must never mention a subject.** No "marketing", no "marketer", no course title.
@@ -246,7 +282,7 @@ too), nothing else.
 | Module | Job |
 |---|---|
 | `errors` | `CourseError` and its three subclasses |
-| `failures` | why a Claude call failed, in one word — stdlib-only, so the bridge can import it too (see "When Claude says no") |
+| `llm` | the provider layer: one place a wire format or a command line appears (see "Reaching a model"). `llm.failures` names why a call failed, in one word; `coursekit/failures.py` re-exports it for the bridge |
 | `config` | `course.json` → `CourseConfig`; builds the `CFG` the page receives |
 | `markdown_render` | markdown → HTML; HTML → plain text for search and chat context |
 | `figures` | SVG figures: sanitise, check, inline into a section's HTML, count the build-up steps |
@@ -653,7 +689,7 @@ reading validation errors next to the course they belong to.
 
 | Module | Job |
 |---|---|
-| `claude_cli` | talks to Claude through the `claude` CLI; `timeout_for(step)` reads `generation.timeouts`; classifies every failure through `coursekit.failures` |
+| `claude_cli` | Studio’s way in to `coursekit.llm`: the names the rest of Studio calls, and the `Reporter` that forwards every call to the job on the thread |
 | `jobs` | background work with a replayable event log |
 | `prompts` | every prompt Studio sends |
 | `curriculum` | the plan a course is written from: `make_plan`, `normalise_plan`, `plan_from_course`, `load_plan` / `reconstruct_plan` for a resume |
@@ -750,7 +786,7 @@ to be right and Sonnet or Haiku for a cheap patch.
 
 **When Claude says no, the reason decides what happens next.** Claude Code reports an
 exhausted account, an overloaded server and a model it does not recognise the same way — a
-non-zero exit and a line of stderr — so `coursekit/failures.py` names the kind once
+non-zero exit and a line of stderr — so `coursekit/llm/failures.py` names the kind once
 (`quota`, `auth`, `model`, `transient`, `timeout`, `unknown`) and everything above it acts
 on the name rather than reading stderr again. It sits in `coursekit`, stdlib-only, because
 `tools/bridge/claude-bridge.py` imports it from outside the package the way it imports

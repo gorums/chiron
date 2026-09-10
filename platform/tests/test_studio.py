@@ -29,6 +29,8 @@ from coursekit.settings import SETTINGS
 SETTINGS.studio_file = ""
 SETTINGS.reload()
 
+from coursekit.llm import chain as llm_chain  # noqa: E402
+from coursekit.llm import cli as llm_cli  # noqa: E402
 from studio import catalog, claude_cli, coerce, curriculum, editing, files, figures, generator, jobs, reviews  # noqa: E402
 from studio.errors import GenerationError  # noqa: E402
 
@@ -37,28 +39,28 @@ class TestJsonExtraction(unittest.TestCase):
     """Models wrap JSON in fences and prefaces roughly half the time."""
 
     def test_plain(self):
-        self.assertEqual(json.loads(claude_cli._slice_json('{"a": 1}')), {"a": 1})
+        self.assertEqual(json.loads(claude_cli.slice_json('{"a": 1}')), {"a": 1})
 
     def test_code_fence(self):
         text = '```json\n{"a": 1}\n```'
-        self.assertEqual(json.loads(claude_cli._slice_json(text)), {"a": 1})
+        self.assertEqual(json.loads(claude_cli.slice_json(text)), {"a": 1})
 
     def test_preamble_and_trailer(self):
         text = 'Sure! Here is the JSON you asked for:\n\n{"a": [1, 2]}\n\nLet me know.'
-        self.assertEqual(json.loads(claude_cli._slice_json(text)), {"a": [1, 2]})
+        self.assertEqual(json.loads(claude_cli.slice_json(text)), {"a": [1, 2]})
 
     def test_array_at_top_level(self):
-        self.assertEqual(json.loads(claude_cli._slice_json('Here:\n[[1],[2]]')), [[1], [2]])
+        self.assertEqual(json.loads(claude_cli.slice_json('Here:\n[[1],[2]]')), [[1], [2]])
 
     def test_braces_inside_strings_do_not_confuse_it(self):
         text = 'Note:\n{"q": "what is {this} for?", "n": {"deep": "}"}}'
-        parsed = json.loads(claude_cli._slice_json(text))
+        parsed = json.loads(claude_cli.slice_json(text))
         self.assertEqual(parsed["q"], "what is {this} for?")
         self.assertEqual(parsed["n"], {"deep": "}"})
 
     def test_escaped_quote_inside_string(self):
         text = r'{"q": "he said \"no\" firmly", "a": 1}'
-        self.assertEqual(json.loads(claude_cli._slice_json(text))["a"], 1)
+        self.assertEqual(json.loads(claude_cli.slice_json(text))["a"], 1)
 
     def test_strip_fence_on_markdown(self):
         self.assertEqual(claude_cli.strip_fence("```markdown\n# Title\n```"), "# Title")
@@ -398,8 +400,8 @@ class TestJobs(unittest.TestCase):
 
 
 class TestCallEvents(unittest.TestCase):
-    """claude_cli reports every CLI call to the job on its thread, so the screen watching
-    the job can say what Claude is doing while a call runs for minutes."""
+    """The provider layer reports every call to the job on its thread, so the screen watching
+    the job can say what the model is doing while a call runs for minutes."""
 
     def _run(self, fn):
         job = jobs.Job("t").start(fn)
@@ -410,12 +412,12 @@ class TestCallEvents(unittest.TestCase):
         return job
 
     def _with_cli(self, run, fn):
-        original = (claude_cli.find_cli, claude_cli.subprocess.run)
-        claude_cli.find_cli, claude_cli.subprocess.run = (lambda: "claude"), run
+        original = (llm_cli.find_cli, claude_cli.subprocess.run)
+        llm_cli.find_cli, claude_cli.subprocess.run = (lambda *a: "claude"), run
         try:
             return self._run(fn)
         finally:
-            claude_cli.find_cli, claude_cli.subprocess.run = original
+            llm_cli.find_cli, claude_cli.subprocess.run = original
 
     def test_call_start_and_end_are_emitted_with_what_and_model(self):
         import subprocess
@@ -461,8 +463,8 @@ class TestCallEvents(unittest.TestCase):
     def test_reporting_without_a_job_is_a_no_op(self):
         """The tutor route calls ask() on a request thread, where there is no job."""
         self.assertIsNone(jobs.current())
-        claude_cli._tell("call", phase="start")
-        claude_cli._say("nothing listens")
+        llm_chain.REPORTER.event("call", phase="start")
+        llm_chain.REPORTER.say("nothing listens")
 
 
 class TestFailureHandling(unittest.TestCase):
@@ -471,15 +473,15 @@ class TestFailureHandling(unittest.TestCase):
     next model there wastes a minute and then blames the wrong thing."""
 
     def setUp(self):
-        self.backoff = claude_cli.BACKOFF
-        claude_cli.BACKOFF = 0          # the waiting is the point, not the wall clock
+        self.backoff = llm_chain.BACKOFF
+        llm_chain.BACKOFF = 0          # the waiting is the point, not the wall clock
 
     def tearDown(self):
-        claude_cli.BACKOFF = self.backoff
+        llm_chain.BACKOFF = self.backoff
 
     def _with_cli(self, run, fn):
-        original = (claude_cli.find_cli, claude_cli.subprocess.run)
-        claude_cli.find_cli, claude_cli.subprocess.run = (lambda: "claude"), run
+        original = (llm_cli.find_cli, claude_cli.subprocess.run)
+        llm_cli.find_cli, claude_cli.subprocess.run = (lambda *a: "claude"), run
         try:
             job = jobs.Job("t").start(fn)
             end = time.time() + 10
@@ -488,7 +490,7 @@ class TestFailureHandling(unittest.TestCase):
             self.assertTrue(job.finished)
             return job
         finally:
-            claude_cli.find_cli, claude_cli.subprocess.run = original
+            llm_cli.find_cli, claude_cli.subprocess.run = original
 
     @staticmethod
     def _says(stderr, code=1):
@@ -533,7 +535,7 @@ class TestFailureHandling(unittest.TestCase):
         self.assertEqual(job.status, jobs.FAILED)
         self.assertEqual(job.why, "transient")
         # every model on the chain, each tried claude.retries + 1 times
-        self.assertEqual(len(seen), len(set(map(tuple, seen))) * (claude_cli.RETRIES + 1))
+        self.assertEqual(len(seen), len(set(map(tuple, seen))) * (llm_chain.RETRIES + 1))
 
     def test_a_timeout_is_not_paid_for_twice(self):
         """A call that already spent its whole timeout is not worth another model's."""
@@ -555,13 +557,13 @@ class TestFailureHandling(unittest.TestCase):
         """The settings page asks about one model; an out-of-quota account would refuse
         every id on the list, and calling that a bad model sends the reader off editing
         something that was never wrong."""
-        original = (claude_cli.find_cli, claude_cli.subprocess.run)
-        claude_cli.find_cli = lambda: "claude"
+        original = (llm_cli.find_cli, claude_cli.subprocess.run)
+        llm_cli.find_cli = lambda *a: "claude"
         claude_cli.subprocess.run = self._says("Claude usage limit reached, resets at 3pm.")
         try:
             result = claude_cli.probe("claude-x", timeout=1)
         finally:
-            claude_cli.find_cli, claude_cli.subprocess.run = original
+            llm_cli.find_cli, claude_cli.subprocess.run = original
         self.assertFalse(result["ok"])
         self.assertEqual(result["why"], "quota")
         self.assertIn("3pm", result["advice"])
@@ -875,19 +877,19 @@ class TestModelList(unittest.TestCase):
             stdout = "OK"
             stderr = ""
 
-        def fake_run(cli, args, prompt, timeout):
+        def fake_run(self, cli, args, prompt, timeout):
             calls.append(args)
             if "claude-gone-0" in args:
                 raise subprocess.TimeoutExpired("claude", timeout)
             return Done()
 
-        real_run, real_find = claude_cli._run, claude_cli.find_cli
-        claude_cli._run, claude_cli.find_cli = fake_run, lambda: "claude"
+        real_run, real_find = llm_cli.CliProvider._run, llm_cli.find_cli
+        llm_cli.CliProvider._run, llm_cli.find_cli = fake_run, lambda *a: "claude"
         try:
             self.assertTrue(claude_cli.probe("claude-new-1", timeout=5)["ok"])
             slow = claude_cli.probe("claude-gone-0", timeout=5)
         finally:
-            claude_cli._run, claude_cli.find_cli = real_run, real_find
+            llm_cli.CliProvider._run, llm_cli.find_cli = real_run, real_find
         self.assertFalse(slow["ok"])
         self.assertIn("within 5s", slow["error"])
         self.assertEqual([a[a.index("--model") + 1] for a in calls], ["claude-new-1", "claude-gone-0"])
