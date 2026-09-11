@@ -39,6 +39,6 @@ you which of those you missed.
 `references/x.md`. A relative path means two different things to a tool that opened the stub
 and one that opened the skill; from the root it means one. There is a test for that too.
 
-`platform/studio/prompts.py` is the machine-driven twin of `course-author`: Studio generates
+`platform/studio/authoring/prompts/` is the machine-driven twin of `course-author`: Studio generates
 a course unattended from the same contract this skill describes by hand. **When the module
 format or a JSON schema changes, both have to change.**
