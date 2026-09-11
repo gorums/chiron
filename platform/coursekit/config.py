@@ -125,7 +125,7 @@ class CourseConfig:
 
     @property
     def local_file(self) -> str:
-        """Filename of the offline copy — the only one allowed to reach Anthropic."""
+        """Filename of the offline copy — the one whose origin may reach a model's API."""
         return self.output + "-local.html"
 
     @property

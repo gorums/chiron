@@ -1,4 +1,4 @@
-"""Reviews: what Claude, or the owner, thinks of a module as it is.
+"""Reviews: what the model, or the owner, thinks of a module as it is.
 
 A review is an opinion about content, not content, so it lives under `state/reviews/`,
 never in the course. One JSON file per module:
@@ -6,7 +6,7 @@ never in the course. One JSON file per module:
     {module, title, verdict, summary, gaps, errors, quiz, rewriteBrief, at, model,
      accepted?, ownerOnly?}
 
-`at` is when Claude judged the text; `accepted` is when the owner marked it good. A review
+`at` is when the model judged the text; `accepted` is when the owner marked it good. A review
 older than the module file is reported `stale`: a rewrite or a hand edit never changes a
 verdict, only a new review does.
 """
@@ -21,7 +21,7 @@ from coursekit import assessments as ck_assess
 from coursekit import config as ck_config
 from coursekit import loader as ck_loader
 
-from . import claude_cli, overrides, prompts
+from . import modelcall, overrides, prompts
 from .coerce import fix_review
 from .curriculum import plan_from_course
 from .errors import GenerationError
@@ -77,7 +77,7 @@ def load_reviews(state_root: str, course_id: str,
 def accept_module(state_root: str, course_id: str, mid: str, accepted: bool = True) -> Dict[str, Any]:
     """The course owner's own verdict: this module is good as it is.
 
-    It lives in the same file as Claude's review, so the row shows one thing. With a review
+    It lives in the same file as the model's review, so the row shows one thing. With a review
     present the findings are kept underneath for reference; without one the record says so
     (`ownerOnly`), and withdrawing the mark removes the file again.
     """
@@ -122,7 +122,7 @@ def review_prompt(plan: Dict[str, Any], spec: Dict[str, Any], body: str,
 
 def review(job: Job, courses_dir: str, state_root: str, course_id: str, mid: str,
            brief: Dict[str, Any]) -> Dict[str, Any]:
-    """Have Claude read one module critically and store what it found.
+    """Have the model read one module critically and store what it found.
 
     The UI turns the rewrite brief the review ends with into a Rewrite.
     """
@@ -141,9 +141,9 @@ def review(job: Job, courses_dir: str, state_root: str, course_id: str, mid: str
 
     job.progress(1, 2, "Reading %s · %s" % (mid, current.title))
     body = read_text(current.source)
-    result = fix_review(claude_cli.ask_json(
+    result = fix_review(modelcall.ask_json(
         review_prompt(plan, spec, body, assess, root), model=model,
-        timeout=claude_cli.timeout_for("review"), what="a review of %s" % mid))
+        timeout=modelcall.timeout_for("review"), what="a review of %s" % mid))
     result.update(module=mid, title=current.title, at=_now_ms(), model=model or "")
     write_json(_review_path(state_root, course_id, mid), result)
     job.emit("review", id=mid, verdict=result["verdict"], gaps=len(result["gaps"]),

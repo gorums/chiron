@@ -8,7 +8,7 @@ decide without reading stderr again, and what lets a job screen and a chat bubbl
 something the reader can act on instead of quoting a stack of CLI output at them.
 
 It lives in the build package because that is the one place both sides can reach:
-`studio/claude_cli.py` imports it as part of the package, and `tools/bridge/claude-bridge.py`
+`studio/modelcall.py` imports it as part of the package, and `tools/bridge/claude-bridge.py`
 imports it from outside, the way it imports `settings`. Like `settings`, and for the same
 reason, it is standard library only.
 """

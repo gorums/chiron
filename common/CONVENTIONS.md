@@ -71,7 +71,7 @@ Resolution, later layers winning:
 An environment value is coerced to the type of the default it replaces, so `STUDIO_PORT`
 becomes an int. `SETTINGS.reload()` re-reads every layer into the same object, which is how
 a list saved on the settings page reaches every module without a restart; anything derived
-from the model list is therefore a function (`claude_cli.model_aliases()`,
+from the model list is therefore a function (`modelcall.model_aliases()`,
 `prefs.models()`), never a module constant. `SETTINGS.overrides` records which layer supplied each overridden key;
 `build.py where` prints them and the Studio settings page (`#/settings`) lists every
 resolved value with its source. Studio's own preference file, `state/studio.json`, sits on
@@ -233,8 +233,8 @@ session of that tool on the account.
 overridden only in the image. Dropping the `127.0.0.1:` prefix from a `ports:` entry would expose a service that
 writes files and spawns processes to the whole network. Do not.
 
-**Claude Code runs from an empty scratch directory** (`claude_cli._SCRATCH`), not the repo.
-It prompts to trust the directory it starts in, which would hang a headless call — worse in a
+**A `cli` provider runs from an empty scratch directory** (`SETTINGS.scratch_dir`, used by
+`coursekit/llm/cli.py`), not the repo. Such a tool prompts to trust the directory it starts in, which would hang a headless call — worse in a
 container, where the workspace is a bind mount it has never seen. Studio passes everything in
 the prompt and asks the model to read nothing, so it needs no filesystem context.
 
@@ -255,7 +255,7 @@ from the same file opened off disk, and every difference goes through one detect
   browser — `progress.DEVICE_KEYS` strips them again server-side.
 - **The tutor answers on the same origin.** `connMode()` returns `"studio"` when Studio
   reports Claude available and no API key is saved; `askBridge()` then posts to `/api/ask`,
-  which flattens the conversation with `claude_cli.chat_prompt` and runs the CLI on stdin. No
+  which flattens the conversation with `modelcall.chat_prompt` and runs the CLI on stdin. No
   bridge, no key, no CORS. A saved key still wins: it is an explicit choice to pay per question.
 - **The course can grow from inside.** The module footer links to Studio's course page with
   `?tab=add&from=<mid>` or `?rewrite=<mid>`.
@@ -304,7 +304,7 @@ platform’s only dependency.
   would change what the model is asked. `system` and `messages` are the chat shape, which a
   `single_prompt` provider flattens itself.
 - **`coursekit` never imports `studio`.** Progress goes to a `chain.Reporter`, which by
-  default goes nowhere; `studio/claude_cli.py` installs one that forwards to
+  default goes nowhere; `studio/modelcall.py` installs one that forwards to
   `jobs.current()`. That module is now a shim over this layer and nothing else.
 - **A caller names a model, never a provider.** `models.list` already says which provider
   reaches which model, so `llm.ask(prompt, model=…)` resolves it through
@@ -802,7 +802,7 @@ reading validation errors next to the course they belong to.
 
 | Module | Job |
 |---|---|
-| `claude_cli` | Studio’s way in to `coursekit.llm`: the names the rest of Studio calls, and the `Reporter` that forwards every call to the job on the thread |
+| `modelcall` | Studio’s way in to `coursekit.llm`: `ask`, `ask_json`, `probe`, and the `Reporter` that forwards every call to the job on the thread. Named for what it does, not for whoever answers - it was `claude_cli` when one tool was the only way in |
 | `jobs` | background work with a replayable event log |
 | `prompts` | every prompt Studio sends |
 | `curriculum` | the plan a course is written from: `make_plan`, `normalise_plan`, `plan_from_course`, `load_plan` / `reconstruct_plan` for a resume |
@@ -855,7 +855,7 @@ characters, and a module prompt is an order of magnitude larger. stdin removes t
 **Every CLI call names its model.** Without `--model`, Claude Code inherits whatever the
 person last chose interactively, and the headless SDK path rejects some of those (a `[1m]`
 context variant fails with `unrecognized_model`) — which is how a run died at module 8 of 9.
-`claude_cli.model_chain()` tries the requested alias, then Studio's default (`prefs`, env
+`modelcall.model_chain()` tries the requested alias, then Studio's default (`prefs`, env
 `STUDIO_MODEL`, else `models.default` in `settings.json`), then the bare CLI as a last
 resort. `prefs.models()` is the only list the Settings page offers, and it is
 `SETTINGS.models`: `models.list` from `settings.json` under whatever the settings page
@@ -865,7 +865,7 @@ reorders, adds and removes; Save is `PUT /api/models` with the whole list, which
 `studio/models.py` validates (an id `claude --model` would take, no name used twice, never
 empty) and writes to `state/settings.json`, the Studio layer of the settings, then
 `SETTINGS.reload()`. "Back to the platform's list" is `POST /api/models/reset`. A row's
-Test button is `POST /api/models/test`: `claude_cli.probe` asks the CLI once with that
+Test button is `POST /api/models/test`: `modelcall.probe` asks the CLI once with that
 model only, no fallback chain, within `claude.probeTimeout`, so a typo or a retired id is
 refused on the settings page and not at module 8 of a run. A served course page adopts the
 list Studio reports in `/api/state` (`adoptStudioModels` in `14-conn.js`, `claude.models`
@@ -951,7 +951,7 @@ them. The generator, `editing.extend` and `editing.rewrite` honour both; a patch
 touches either.
 
 **What a job is doing is visible while it runs.** `jobs.current()` returns the job on the
-calling thread, so `claude_cli.ask` needs no job in hand: it emits a `call` event when a
+calling thread, so `modelcall.ask` needs no job in hand: it emits a `call` event when a
 CLI call starts (`what`, `model`, prompt size, timeout) and when it ends (seconds, reply
 size, or the error), narrates a model fallback and a JSON retry as `log` events, and every
 generator call site passes `what=` ("the text of M03", "the quiz and flashcards for M03").
@@ -1209,8 +1209,8 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
 
 - Every module in `studio/` has tests in `test_studio.py`; the engine in `test_build.py`.
   A new route gets a line in the server docstring (the test checks it resolves) and, when
-  it does real work, a test through `Handler` with a stub `claude_cli.ask`.
-- Tests stub Claude by replacing `claude_cli.ask`; they never make a network call.
+  it does real work, a test through `Handler` with a stub `modelcall.ask`.
+- Tests stub the model by replacing `modelcall.ask`; they never make a network call.
 - A test that guards a rule of this file names the rule in its docstring.
 
 ## Gotchas

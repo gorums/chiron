@@ -32,7 +32,7 @@ from coursekit import scaffold as ck_scaffold
 from coursekit import validate as ck_validate
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, figures, notebooks, overrides, prompts
+from . import modelcall, figures, notebooks, overrides, prompts
 from .coerce import fix_assessment, fix_suggestions
 from .curriculum import (DEFAULT_SECTIONS, PLAN_FILE, load_plan, make_plan, normalise_plan,
                          plan_to_manifest, wants_notebooks)
@@ -102,9 +102,9 @@ def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
                  model: str = "", path: str = "", notes: str = "") -> str:
     """Ask for the text of one module, repair its head, write it, and return the body."""
     prompt = module_prompt(plan, mod, notes, root)
-    reply = claude_cli.ask(prompt, model=model, timeout=claude_cli.timeout_for("module"),
+    reply = modelcall.ask(prompt, model=model, timeout=modelcall.timeout_for("module"),
                            what="the text of %s" % mod["id"])
-    body = repair_head(claude_cli.strip_fence(reply), mod)
+    body = repair_head(modelcall.strip_fence(reply), mod)
 
     path = path or module_path(root, plan, mod)
     write_text(path, body)
@@ -145,14 +145,14 @@ def write_study_data(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, A
     """The quiz, flashcards and suggested questions for one module, coerced to valid shapes."""
     headings = headings_of(body)
     assess = fix_assessment(
-        claude_cli.ask_json(assessment_prompt(plan, mod, body, root), model=model,
-                            timeout=claude_cli.timeout_for("studyData"),
+        modelcall.ask_json(assessment_prompt(plan, mod, body, root), model=model,
+                            timeout=modelcall.timeout_for("studyData"),
                             what="the quiz and flashcards for %s" % mod["id"]),
         mod["id"],
     )
     suggest = fix_suggestions(
-        claude_cli.ask_json(suggestions_prompt(plan, mod, headings, body, root),
-                            model=model, timeout=claude_cli.timeout_for("studyData"),
+        modelcall.ask_json(suggestions_prompt(plan, mod, headings, body, root),
+                            model=model, timeout=modelcall.timeout_for("studyData"),
                             what="the suggested questions for %s" % mod["id"]),
         headings,
     )
@@ -388,8 +388,8 @@ def _write_reference(job: Job, root: str, plan: Dict[str, Any], bodies: Dict[str
             steps.next("Keeping " + label)
             return
         steps.next(label)
-        reply = claude_cli.ask(prompt, model=model, timeout=claude_cli.timeout_for(step), what=what)
-        write_text(path, claude_cli.strip_fence(reply))
+        reply = modelcall.ask(prompt, model=model, timeout=modelcall.timeout_for(step), what=what)
+        write_text(path, modelcall.strip_fence(reply))
 
     shelf("Glossary", "reference/glossary.md",
           prompts.glossary(plan, modules, corpus), "reference", "the glossary")
@@ -404,9 +404,9 @@ def _write_reference(job: Job, root: str, plan: Dict[str, Any], bodies: Dict[str
         path = os.path.join(root, "plan", filename)
         if resume and is_real_file(path):
             continue
-        reply = claude_cli.ask(prompts.plan_docs(plan, modules, kind), model=model,
-                               timeout=claude_cli.timeout_for("planDocs"), what="plan/" + filename)
-        write_text(path, claude_cli.strip_fence(reply))
+        reply = modelcall.ask(prompts.plan_docs(plan, modules, kind), model=model,
+                               timeout=modelcall.timeout_for("planDocs"), what="plan/" + filename)
+        write_text(path, modelcall.strip_fence(reply))
 
     templates_dir = os.path.join(root, "templates")
     if resume and any(f.endswith(".md") for f in os.listdir(templates_dir)):
@@ -428,8 +428,8 @@ def _write_worksheets(job: Job, root: str, plan: Dict[str, Any],
                       modules: List[Dict[str, Any]], model: str) -> None:
     """Worksheets are optional: a failure here must not lose a finished course."""
     try:
-        wanted = claude_cli.ask_json(prompts.worksheet_plan(plan, modules), model=model,
-                                     timeout=claude_cli.timeout_for("worksheetPlan"),
+        wanted = modelcall.ask_json(prompts.worksheet_plan(plan, modules), model=model,
+                                     timeout=modelcall.timeout_for("worksheetPlan"),
                                      what="the worksheet list")
     except Exception as exc:  # noqa: BLE001
         job.log("Could not plan worksheets (%s); continuing without them." % exc)
@@ -442,9 +442,9 @@ def _write_worksheets(job: Job, root: str, plan: Dict[str, Any],
         job.check_cancelled()
         name = slug(spec.get("slug") or spec["name"])
         try:
-            text = claude_cli.strip_fence(claude_cli.ask(
+            text = modelcall.strip_fence(modelcall.ask(
                 prompts.worksheet(plan, spec["name"], spec.get("purpose", "")), model=model,
-                timeout=claude_cli.timeout_for("worksheet"), what="the worksheet '%s'" % spec["name"]))
+                timeout=modelcall.timeout_for("worksheet"), what="the worksheet '%s'" % spec["name"]))
         except Exception as exc:  # noqa: BLE001
             job.log("Worksheet '%s' failed (%s); skipping." % (name, exc))
             continue

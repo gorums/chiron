@@ -6,9 +6,10 @@ What stays here is the part that is Studio's and could not move - **the job on t
 thread hears about every call.** `coursekit` must not import `studio`, so the provider layer
 narrates to a `Reporter` and this module installs one that forwards to `jobs.current()`.
 
-The names below are the ones the rest of Studio calls, kept as they were so that a hundred
-call sites - and the tests that stub `claude_cli.ask` - did not all have to move at once.
-`ask_json` sends through this module's own `ask` for the same reason: stubbing one stubs both.
+The names below are the ones the rest of Studio calls. They say `model`, never a vendor:
+this module was `claude_cli` when Claude Code was the only way in, and a name that promises
+one company's tool is a lie about every call that now goes somewhere else. `ask_json` sends
+through this module's own `ask`, so a test that stubs one stubs both.
 """
 
 from __future__ import annotations
@@ -23,10 +24,9 @@ from coursekit.llm.base import LLMFailed, Provider, ProviderUnavailable
 
 from . import jobs
 
-# The names Studio has always used for these two. `ClaudeFailed` is caught by name in the
-# server, the job runner and the tests.
-ClaudeFailed = LLMFailed
-ClaudeUnavailable = ProviderUnavailable
+# `LLMFailed` and `ProviderUnavailable` are imported above rather than aliased: a caller
+# needs one import to ask and to catch, and the name of the exception says what it is - one
+# failure kind, whichever provider refused - rather than naming a company.
 
 DEFAULT_TIMEOUT = llm_chain.DEFAULT_TIMEOUT
 JSON_ATTEMPTS = llm_chain.JSON_ATTEMPTS

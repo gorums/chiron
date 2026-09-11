@@ -20,6 +20,16 @@ function promptsOpenFor(mid) {
   return promptEditor.mid === mid;
 }
 
+/* What the reader can actually see. The course page draws its rows from the server and
+   leaves this box empty, so the state alone would say "open" about a box that was wiped by
+   the last render — and the click meant to open it would close it instead. */
+function promptsShowing(mid) {
+  const box = $(`#pr-${mid}`);
+  return (
+    promptsOpenFor(mid) && !!box && !box.classList.contains("hidden") && !!box.innerHTML.trim()
+  );
+}
+
 /* ---------- opening ---------- */
 
 async function openPlanPrompts(mid) {
@@ -32,7 +42,7 @@ async function openPlanPrompts(mid) {
 
 async function openCoursePrompts(courseId, mid) {
   const box = $(`#pr-${mid}`);
-  if (promptsOpenFor(mid)) {
+  if (promptsShowing(mid)) {
     closeModulePrompts();
     if (box) box.classList.add("hidden");
     return;
@@ -175,11 +185,7 @@ async function storePrompt(stage, text) {
     job.plan = plan;
     applyPromptRow(row, text);
     paintJob(true);
-    toast(
-      text.trim()
-        ? `${mid}: your ${row.label.toLowerCase()} prompt will be used`
-        : "Back to the platform's prompt"
-    );
+    toast(promptSaidWhat(mid, row, text, "will be used when the run starts"));
     return;
   }
   const stop = busy($(`#pa-${mid}-${stage}`), "Saving", `#pr-${mid}`);
@@ -192,16 +198,20 @@ async function storePrompt(stage, text) {
     applyPromptRow(row, text);
     stop();
     repaintPrompts();
-    toast(
-      text.trim()
-        ? `${mid}: your ${row.label.toLowerCase()} prompt is saved`
-        : "Back to the platform's prompt"
-    );
+    toast(promptSaidWhat(mid, row, text, "is saved"));
   } catch (err) {
     stop();
     repaintPrompts();
     toast(err.message, { kind: "bad" });
   }
+}
+
+/* A stage's label is a noun phrase of its own ("The module text"), so it is quoted rather
+   than glued into a sentence - "your the module text prompt" is what gluing gets you. */
+function promptSaidWhat(mid, row, text, done) {
+  return text.trim()
+    ? `${mid} · ${row.label}: your prompt ${done}`
+    : `${mid} · ${row.label}: back to the platform's prompt`;
 }
 
 function applyPromptRow(row, text) {

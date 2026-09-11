@@ -10,7 +10,7 @@ long the call took. This module keeps that record in two places:
   reading the file back.
 
 Use the module-level `log` (a standard `logging.Logger`) everywhere in Studio. Nothing here
-knows about courses or Claude; it is plumbing.
+knows about courses or models; it is plumbing.
 """
 
 from __future__ import annotations

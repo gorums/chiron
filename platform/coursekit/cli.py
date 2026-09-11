@@ -116,7 +116,7 @@ def cmd_where(_args) -> int:
 
 
 def cmd_studio(args) -> int:
-    """Studio is imported lazily: the build path must not depend on the server or on Claude."""
+    """Studio is imported lazily: the build path must not depend on the server or on any provider."""
     from studio.server import serve
     return serve(port=args.port or int(SETTINGS.get("studio.port")), open_browser=not args.no_open,
                  host=args.host)

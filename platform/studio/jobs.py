@@ -30,7 +30,7 @@ PENDING, RUNNING, WAITING, DONE, FAILED, CANCELLED = (
 _ids = itertools.count(1)
 _BOOT = format(int(time.time()), "x")     # ids must not collide with jobs stored by an earlier run
 
-# The job running on the current thread, so code that has no Job in hand (claude_cli, which
+# The job running on the current thread, so code that has no Job in hand (modelcall, which
 # is also called by the tutor route with no job at all) can still report what it is doing.
 _current = threading.local()
 
@@ -64,7 +64,7 @@ def _log_event(job: "Job", event: Dict[str, Any]) -> None:
     elif kind in ("module", "studydata", "spec", "worksheet", "built"):
         brief = {k: v for k, v in event.items() if k not in ("kind", "at", "i", "path")}
         log.info("%s: %s %s", head, kind, brief)
-    # "call" events are not logged here: claude_cli already writes one line per CLI call.
+    # "call" events are not logged here: modelcall already writes one line per CLI call.
 
 
 class Job:
@@ -76,13 +76,13 @@ class Job:
         self.meta: Dict[str, Any] = dict(meta or {})
         self.status = PENDING
         self.error = ""
-        self.why = ""        # for a failure Claude caused: its kind, from claude_cli.classify
+        self.why = ""        # for a failure the model caused: its kind, from llm.failures
         self.result: Any = None
         self.events: List[Dict[str, Any]] = []
         self.created = time.time()
         self.started: Optional[float] = None
         self.step: Optional[Dict[str, Any]] = None    # the last progress event
-        self.call: Optional[Dict[str, Any]] = None    # the Claude call in flight, if any
+        self.call: Optional[Dict[str, Any]] = None    # the model call in flight, if any
 
         self._lock = threading.Lock()
         self._cancel = threading.Event()
@@ -101,7 +101,7 @@ class Job:
             event.update(kind=kind, at=time.time(), i=len(self.events))
             self.events.append(event)
             # What the listing shows without replaying the log: where the job is, and
-            # whether it is inside a Claude call right now.
+            # whether it is inside a model call right now.
             if kind == "progress":
                 self.step = event
             elif kind == "call":
@@ -169,7 +169,7 @@ class Job:
             except Exception as exc:  # noqa: BLE001 - the point is to report, not crash
                 self.status = FAILED
                 self.error = str(exc)
-                # A ClaudeFailed carries the kind of trouble; the screen needs it to say
+                # An LLMFailed carries the kind of trouble; the screen needs it to say
                 # whether waiting, signing in or resuming is the thing to do.
                 self.why = str(getattr(exc, "kind", "") or "")
                 self.emit("failed", error=str(exc), why=self.why,

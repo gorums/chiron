@@ -32,7 +32,7 @@ SETTINGS.reload()
 
 from coursekit.llm import chain as llm_chain  # noqa: E402
 from coursekit.llm import cli as llm_cli  # noqa: E402
-from studio import (catalog, claude_cli, coerce, curriculum, editing, files, figures,  # noqa: E402
+from studio import (catalog, modelcall, coerce, curriculum, editing, files, figures,  # noqa: E402
                     generator, jobs, overrides, reviews)
 from studio.errors import GenerationError  # noqa: E402
 
@@ -41,31 +41,31 @@ class TestJsonExtraction(unittest.TestCase):
     """Models wrap JSON in fences and prefaces roughly half the time."""
 
     def test_plain(self):
-        self.assertEqual(json.loads(claude_cli.slice_json('{"a": 1}')), {"a": 1})
+        self.assertEqual(json.loads(modelcall.slice_json('{"a": 1}')), {"a": 1})
 
     def test_code_fence(self):
         text = '```json\n{"a": 1}\n```'
-        self.assertEqual(json.loads(claude_cli.slice_json(text)), {"a": 1})
+        self.assertEqual(json.loads(modelcall.slice_json(text)), {"a": 1})
 
     def test_preamble_and_trailer(self):
         text = 'Sure! Here is the JSON you asked for:\n\n{"a": [1, 2]}\n\nLet me know.'
-        self.assertEqual(json.loads(claude_cli.slice_json(text)), {"a": [1, 2]})
+        self.assertEqual(json.loads(modelcall.slice_json(text)), {"a": [1, 2]})
 
     def test_array_at_top_level(self):
-        self.assertEqual(json.loads(claude_cli.slice_json('Here:\n[[1],[2]]')), [[1], [2]])
+        self.assertEqual(json.loads(modelcall.slice_json('Here:\n[[1],[2]]')), [[1], [2]])
 
     def test_braces_inside_strings_do_not_confuse_it(self):
         text = 'Note:\n{"q": "what is {this} for?", "n": {"deep": "}"}}'
-        parsed = json.loads(claude_cli.slice_json(text))
+        parsed = json.loads(modelcall.slice_json(text))
         self.assertEqual(parsed["q"], "what is {this} for?")
         self.assertEqual(parsed["n"], {"deep": "}"})
 
     def test_escaped_quote_inside_string(self):
         text = r'{"q": "he said \"no\" firmly", "a": 1}'
-        self.assertEqual(json.loads(claude_cli.slice_json(text))["a"], 1)
+        self.assertEqual(json.loads(modelcall.slice_json(text))["a"], 1)
 
     def test_strip_fence_on_markdown(self):
-        self.assertEqual(claude_cli.strip_fence("```markdown\n# Title\n```"), "# Title")
+        self.assertEqual(modelcall.strip_fence("```markdown\n# Title\n```"), "# Title")
 
 
 class TestHeadings(unittest.TestCase):
@@ -436,6 +436,21 @@ class TestPromptOverrides(unittest.TestCase):
                        "not-a-module": {"module": "drop"}}, fh)
         self.assertEqual(overrides.load(self.root), {"M01": {"module": "keep"}})
 
+    def test_an_override_does_not_make_the_course_look_out_of_date(self):
+        """A prompt changes what the next run writes, never the page a reader is reading,
+        so plan/prompts.json must not turn Rebuild into the thing to do."""
+        from studio import catalog
+        os.makedirs(os.path.join(self.root, "modules"), exist_ok=True)
+        module = os.path.join(self.root, "modules", "M01-flour.md")
+        with open(module, "w", encoding="utf-8") as fh:
+            fh.write("# M01\n")
+        before = catalog.newest_source(self.root)
+        os.utime(module, (1, 1))
+        overrides.put(self.root, "M01", "module", "Write it my way.")
+        after = catalog.newest_source(self.root)
+        self.assertEqual(after, os.path.getmtime(module))
+        self.assertNotEqual(before, 0)
+
     def test_the_gates_overrides_are_saved_into_the_course(self):
         overrides.merge(self.root, {"M01": {"figures": "Draw one 2x2."}, "M02": {"module": ""}})
         self.assertEqual(overrides.load(self.root), {"M01": {"figures": "Draw one 2x2."}})
@@ -555,17 +570,17 @@ class TestCallEvents(unittest.TestCase):
         return job
 
     def _with_cli(self, run, fn):
-        original = (llm_cli.find_cli, claude_cli.subprocess.run)
-        llm_cli.find_cli, claude_cli.subprocess.run = (lambda *a: "claude"), run
+        original = (llm_cli.find_cli, modelcall.subprocess.run)
+        llm_cli.find_cli, modelcall.subprocess.run = (lambda *a: "claude"), run
         try:
             return self._run(fn)
         finally:
-            llm_cli.find_cli, claude_cli.subprocess.run = original
+            llm_cli.find_cli, modelcall.subprocess.run = original
 
     def test_call_start_and_end_are_emitted_with_what_and_model(self):
         import subprocess
         ok = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, stdout="hello", stderr="")
-        job = self._with_cli(ok, lambda j: claude_cli.ask("hi", what="the text of M01"))
+        job = self._with_cli(ok, lambda j: modelcall.ask("hi", what="the text of M01"))
         self.assertEqual(job.result, "hello")
         calls = [e for e in job.events if e["kind"] == "call"]
         self.assertEqual([c["phase"] for c in calls], ["start", "end"])
@@ -584,7 +599,7 @@ class TestCallEvents(unittest.TestCase):
             if len(seen) == 1:
                 return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unrecognized_model")
             return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
-        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        job = self._with_cli(run, lambda j: modelcall.ask("hi", what="x"))
         self.assertEqual(job.result, "ok")
         ends = [e for e in job.events if e["kind"] == "call" and e["phase"] == "end"]
         self.assertEqual([e["ok"] for e in ends], [False, True])
@@ -593,12 +608,12 @@ class TestCallEvents(unittest.TestCase):
 
     def test_a_json_retry_is_narrated(self):
         replies = iter(["not json at all", '{"a": 1}'])
-        original = claude_cli.ask
-        claude_cli.ask = lambda prompt, **kw: next(replies)
+        original = modelcall.ask
+        modelcall.ask = lambda prompt, **kw: next(replies)
         try:
-            job = self._run(lambda j: claude_cli.ask_json("q", what="the curriculum"))
+            job = self._run(lambda j: modelcall.ask_json("q", what="the curriculum"))
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
         self.assertEqual(job.result, {"a": 1})
         messages = [e["message"] for e in job.events if e["kind"] == "log"]
         self.assertTrue(any("not valid JSON" in m and "the curriculum" in m for m in messages))
@@ -623,8 +638,8 @@ class TestFailureHandling(unittest.TestCase):
         llm_chain.BACKOFF = self.backoff
 
     def _with_cli(self, run, fn):
-        original = (llm_cli.find_cli, claude_cli.subprocess.run)
-        llm_cli.find_cli, claude_cli.subprocess.run = (lambda *a: "claude"), run
+        original = (llm_cli.find_cli, modelcall.subprocess.run)
+        llm_cli.find_cli, modelcall.subprocess.run = (lambda *a: "claude"), run
         try:
             job = jobs.Job("t").start(fn)
             end = time.time() + 10
@@ -633,7 +648,7 @@ class TestFailureHandling(unittest.TestCase):
             self.assertTrue(job.finished)
             return job
         finally:
-            llm_cli.find_cli, claude_cli.subprocess.run = original
+            llm_cli.find_cli, modelcall.subprocess.run = original
 
     @staticmethod
     def _says(stderr, code=1):
@@ -646,7 +661,7 @@ class TestFailureHandling(unittest.TestCase):
         def run(argv, **kw):
             seen.append(argv)
             return refuse(argv)
-        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        job = self._with_cli(run, lambda j: modelcall.ask("hi", what="x"))
         self.assertEqual(len(seen), 1, "every model draws on the same account")
         self.assertEqual(job.status, jobs.FAILED)
         self.assertEqual(job.why, "quota")
@@ -662,7 +677,7 @@ class TestFailureHandling(unittest.TestCase):
             if len(seen) == 1:
                 return subprocess.CompletedProcess(argv, 1, stdout="", stderr="529 overloaded_error")
             return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
-        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        job = self._with_cli(run, lambda j: modelcall.ask("hi", what="x"))
         self.assertEqual(job.result, "ok")
         self.assertEqual(seen[0], seen[1], "the same model, not the next one on the chain")
         said = [e["message"] for e in job.events if e["kind"] == "log"]
@@ -674,7 +689,7 @@ class TestFailureHandling(unittest.TestCase):
         def run(argv, **kw):
             seen.append(argv)
             return refuse(argv)
-        job = self._with_cli(run, lambda j: claude_cli.ask("hi", what="x"))
+        job = self._with_cli(run, lambda j: modelcall.ask("hi", what="x"))
         self.assertEqual(job.status, jobs.FAILED)
         self.assertEqual(job.why, "transient")
         # every model on the chain, each tried claude.retries + 1 times
@@ -685,14 +700,14 @@ class TestFailureHandling(unittest.TestCase):
         seen = []
         def run(argv, **kw):
             seen.append(argv)
-            raise claude_cli.subprocess.TimeoutExpired(argv, 1)
-        job = self._with_cli(run, lambda j: claude_cli.ask("hi", timeout=1, what="x"))
+            raise modelcall.subprocess.TimeoutExpired(argv, 1)
+        job = self._with_cli(run, lambda j: modelcall.ask("hi", timeout=1, what="x"))
         self.assertEqual(len(seen), 1)
         self.assertEqual(job.why, "timeout")
 
     def test_the_call_event_carries_the_kind(self):
         job = self._with_cli(self._says("Claude usage limit reached."),
-                             lambda j: claude_cli.ask("hi", what="x"))
+                             lambda j: modelcall.ask("hi", what="x"))
         ends = [e for e in job.events if e["kind"] == "call" and e["phase"] == "end"]
         self.assertEqual(ends[0]["why"], "quota")
 
@@ -700,13 +715,13 @@ class TestFailureHandling(unittest.TestCase):
         """The settings page asks about one model; an out-of-quota account would refuse
         every id on the list, and calling that a bad model sends the reader off editing
         something that was never wrong."""
-        original = (llm_cli.find_cli, claude_cli.subprocess.run)
+        original = (llm_cli.find_cli, modelcall.subprocess.run)
         llm_cli.find_cli = lambda *a: "claude"
-        claude_cli.subprocess.run = self._says("Claude usage limit reached, resets at 3pm.")
+        modelcall.subprocess.run = self._says("Claude usage limit reached, resets at 3pm.")
         try:
-            result = claude_cli.probe("claude-x", timeout=1)
+            result = modelcall.probe("claude-x", timeout=1)
         finally:
-            llm_cli.find_cli, claude_cli.subprocess.run = original
+            llm_cli.find_cli, modelcall.subprocess.run = original
         self.assertFalse(result["ok"])
         self.assertEqual(result["why"], "quota")
         self.assertIn("3pm", result["advice"])
@@ -737,18 +752,18 @@ class TestTutorRouteReportsWhy(unittest.TestCase):
 
     def _ask(self, raises=None, text="hello"):
         from studio import server
-        original = (claude_cli.available, claude_cli.ask)
-        claude_cli.available = lambda: True
+        original = (modelcall.available, modelcall.ask)
+        modelcall.available = lambda: True
         def fake(prompt, **kw):
             if raises:
                 raise raises
             return text
-        claude_cli.ask = fake
+        modelcall.ask = fake
         reply = self.Reply({"messages": [{"role": "user", "content": "hi"}]})
         try:
             server.Handler.ask(reply)
         finally:
-            claude_cli.available, claude_cli.ask = original
+            modelcall.available, modelcall.ask = original
         return reply
 
     def test_a_good_answer_is_unchanged(self):
@@ -757,7 +772,7 @@ class TestTutorRouteReportsWhy(unittest.TestCase):
         self.assertEqual(reply.sent["text"], "hello")
 
     def test_an_exhausted_account_is_named_as_one(self):
-        failed = claude_cli.ClaudeFailed("out until 3pm.", kind="quota", detail="usage limit",
+        failed = modelcall.LLMFailed("out until 3pm.", kind="quota", detail="usage limit",
                                          resets_at="3pm")
         reply = self._ask(raises=failed)
         self.assertEqual(reply.code, 502)
@@ -809,7 +824,7 @@ class TestChatPrompt(unittest.TestCase):
     """The tutor over the CLI: one flat transcript, ending in an open Assistant turn."""
 
     def test_shape(self):
-        text = claude_cli.chat_prompt("Be brief.", [
+        text = modelcall.chat_prompt("Be brief.", [
             {"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"},
             {"role": "user", "content": "why?"}])
         self.assertTrue(text.startswith("Be brief."))
@@ -819,7 +834,7 @@ class TestChatPrompt(unittest.TestCase):
 
     def test_only_the_last_twenty_turns_travel(self):
         msgs = [{"role": "user", "content": "m%d" % i} for i in range(40)]
-        text = claude_cli.chat_prompt("", msgs)
+        text = modelcall.chat_prompt("", msgs)
         self.assertNotIn("User: m0\n", text)
         self.assertIn("User: m39", text)
 
@@ -894,13 +909,13 @@ class TestModelChoice(unittest.TestCase):
 
     def test_requested_then_default(self):
         from coursekit.settings import SETTINGS
-        default = claude_cli.default_model()
+        default = modelcall.default_model()
         other = next(m["id"] for m in SETTINGS.models if m.get("alias") != default)
-        alias = claude_cli.model_aliases()[other]
-        self.assertEqual(claude_cli.model_chain(other), [alias, default])
-        self.assertEqual(claude_cli.model_chain(""), [default])
-        self.assertEqual(claude_cli.model_chain("nonsense"), [default])
-        self.assertEqual(claude_cli.model_chain(default), [default])
+        alias = modelcall.model_aliases()[other]
+        self.assertEqual(modelcall.model_chain(other), [alias, default])
+        self.assertEqual(modelcall.model_chain(""), [default])
+        self.assertEqual(modelcall.model_chain("nonsense"), [default])
+        self.assertEqual(modelcall.model_chain(default), [default])
 
     def test_models_come_from_platform_settings(self):
         from coursekit.settings import SETTINGS
@@ -909,7 +924,7 @@ class TestModelChoice(unittest.TestCase):
                          [m["alias"] for m in SETTINGS.models])
         self.assertTrue(all(m["provider"] for m in prefs.models()),
                         "every model says which provider reaches it")
-        self.assertEqual(claude_cli.model_aliases(), SETTINGS.model_aliases)
+        self.assertEqual(modelcall.model_aliases(), SETTINGS.model_aliases)
         view = catalog.settings_view()
         self.assertEqual([m["id"] for m in view["models"]],
                          [m["name"] for m in prefs.models()])
@@ -951,14 +966,14 @@ class TestModelChoice(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="studio-prefs-")
         self.addCleanup(shutil.rmtree, tmp, True)
         store = prefs.Prefs(os.path.join(tmp, "nested", "studio.json"))
-        self.assertEqual(store.model, claude_cli.default_model())
+        self.assertEqual(store.model, modelcall.default_model())
         self.assertEqual(store.save({"model": "opus"})["model"], "opus")
         self.assertEqual(prefs.Prefs(store.path).model, "opus")
         with self.assertRaises(ValueError):
             store.save({"model": "claude-fable-5-1[1m]"})
         with open(store.path, "w") as fh:
             fh.write("{broken")
-        self.assertEqual(store.model, claude_cli.default_model(), "a corrupt file falls back")
+        self.assertEqual(store.model, modelcall.default_model(), "a corrupt file falls back")
 
 
 class TestModelList(unittest.TestCase):
@@ -1017,9 +1032,9 @@ class TestModelList(unittest.TestCase):
                                 {"id": "claude-haiku-4-5-20251001", "alias": "haiku"}])
         self.assertTrue(saved["custom"])
         self.assertEqual([m["id"] for m in self.settings.models], ["claude-new-1", "claude-haiku-4-5-20251001"])
-        self.assertIn("new", claude_cli.model_aliases(), "the CLI alias table follows")
+        self.assertIn("new", modelcall.model_aliases(), "the CLI alias table follows")
         self.assertIn("new", prefs.allowed(), "the default may now be the new model")
-        self.assertEqual(claude_cli.model_chain("opus"), [claude_cli.default_model()],
+        self.assertEqual(modelcall.model_chain("opus"), [modelcall.default_model()],
                          "a model taken off the list is no longer tried")
         self.assertEqual([m["apiId"] for m in catalog.models_view()],
                          ["claude-new-1", "claude-haiku-4-5-20251001"])
@@ -1053,8 +1068,8 @@ class TestModelList(unittest.TestCase):
         real_run, real_find = llm_cli.CliProvider._run, llm_cli.find_cli
         llm_cli.CliProvider._run, llm_cli.find_cli = fake_run, lambda *a: "claude"
         try:
-            self.assertTrue(claude_cli.probe("claude-new-1", timeout=5)["ok"])
-            slow = claude_cli.probe("claude-gone-0", timeout=5)
+            self.assertTrue(modelcall.probe("claude-new-1", timeout=5)["ok"])
+            slow = modelcall.probe("claude-gone-0", timeout=5)
         finally:
             llm_cli.CliProvider._run, llm_cli.find_cli = real_run, real_find
         self.assertFalse(slow["ok"])
@@ -1450,8 +1465,8 @@ class TestCourseEditing(unittest.TestCase):
             return ("# M07 — Reading a failed loaf\n\n**Time:** 45 minutes\n\n"
                     "## Why this matters\n\ntext\n\n## Core concepts\n\ntext\n\n## Exercise\n\ntext\n")
 
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             job = jobs.Job("extend")
             dist = os.path.join(self.tmp, "dist")
@@ -1459,7 +1474,7 @@ class TestCourseEditing(unittest.TestCase):
                                       {"topic": "reading a failed loaf", "part": "p3", "minutes": 45,
                                        "notes": "assume the starter is healthy"})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
 
         self.assertEqual(result["module"], "M07")
         self.assertEqual(result["modules"], 7)
@@ -1502,14 +1517,14 @@ class TestCourseEditing(unittest.TestCase):
                 return after
             raise AssertionError("unexpected call: " + prompt[:80])
 
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             job = jobs.Job("rewrite")
             result = editing.rewrite(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture", "M03",
                                        {"notes": "add one sentence", "mode": "patch"})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
 
         self.assertEqual(result["mode"], "patch")
         self.assertEqual(len(seen), 2, "text and quiz only; the suggestions were kept")
@@ -1662,14 +1677,14 @@ class TestCourseEditing(unittest.TestCase):
         self.assertFalse(os.path.isfile(os.path.join(self.fixture.root, curriculum.PLAN_FILE)))
 
         calls = []
-        original = claude_cli.ask
-        claude_cli.ask = self._stub_claude(calls)
+        original = modelcall.ask
+        modelcall.ask = self._stub_claude(calls)
         try:
             job = jobs.Job("generate")
             result = generator.generate(job, self.tmp, os.path.join(self.tmp, "dist"),
                                         {"id": "fixture", "theme": "bread baking", "hours": 6, "resume": True})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
 
         self.assertEqual(result["modules"], 7)
         written = [c for c in calls if "Write module " in c]
@@ -1993,14 +2008,14 @@ class TestFigureWriting(unittest.TestCase):
             prompts_seen.append(prompt)
             return FIGURE_REPLY
 
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             job = jobs.Job("figures")
             body = figures.write_figures(job, self.fixture.root, plan, spec,
                                          files.read_text(path), path)
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
 
         self.assertFalse(os.path.exists(os.path.join(fig_dir, "M01-7.svg")), "old figures go")
         self.assertEqual(sorted(os.listdir(fig_dir)), ["M01-1.svg", "M01-2.svg"])
@@ -2021,8 +2036,8 @@ class TestFigureWriting(unittest.TestCase):
         self.assertEqual(result.figures, 2)
 
     def test_draw_job_targets_the_modules_without_figures(self):
-        original = claude_cli.ask
-        claude_cli.ask = lambda prompt, **kw: FIGURE_REPLY
+        original = modelcall.ask
+        modelcall.ask = lambda prompt, **kw: FIGURE_REPLY
         try:
             job = jobs.Job("figures")
             result = editing.draw(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture",
@@ -2041,7 +2056,7 @@ class TestFigureWriting(unittest.TestCase):
                 editing.draw(jobs.Job("figures"), self.tmp, os.path.join(self.tmp, "dist"), "fixture",
                              {"module": "M99"})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
         detail = catalog.course_detail("fixture") if catalog.course_root("fixture") == self.fixture.root else None
         if detail:
             self.assertEqual(detail["moduleList"][1]["figures"], 2)
@@ -2086,8 +2101,8 @@ class TestFigureWriting(unittest.TestCase):
         shutil.rmtree(data_dir)
         files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
         files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             # drop M06 so the run has something to write, then resume it
             os.remove(self.modules[-1].source)
@@ -2095,7 +2110,7 @@ class TestFigureWriting(unittest.TestCase):
             result = generator.generate(job, self.tmp, os.path.join(self.tmp, "dist"),
                                         {"id": "fixture", "resume": True})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
         self.assertEqual(result["modules"], 6)
         self.assertEqual(asked.count("the figures for M06"), 1, asked)
         self.assertEqual([w for w in asked if w.startswith("the figures for")],
@@ -2331,14 +2346,14 @@ class TestNotebookWriting(unittest.TestCase):
             prompts_seen.append(prompt)
             return NOTEBOOK_REPLY
 
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             job = jobs.Job("notebooks")
             body = notebooks.write_notebooks(job, self.fixture.root, plan, spec,
                                              files.read_text(path), path)
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
 
         self.assertFalse(os.path.exists(os.path.join(nb_dir, "M01-7.ipynb")), "old notebooks go")
         self.assertEqual(os.listdir(nb_dir), ["M01-1.ipynb"])
@@ -2359,8 +2374,8 @@ class TestNotebookWriting(unittest.TestCase):
         self.assertEqual(result.notebooks, 1)
 
     def test_notebooks_job_needs_the_manifest_and_targets_modules_without_any(self):
-        original = claude_cli.ask
-        claude_cli.ask = lambda prompt, **kw: NOTEBOOK_REPLY
+        original = modelcall.ask
+        modelcall.ask = lambda prompt, **kw: NOTEBOOK_REPLY
         dist = os.path.join(self.tmp, "dist")
         try:
             result = editing.notebooks_job(jobs.Job("notebooks"), self.tmp, dist, "fixture", {"module": "M02"})
@@ -2373,7 +2388,7 @@ class TestNotebookWriting(unittest.TestCase):
             with self.assertRaisesRegex(GenerationError, "declares no notebooks"):
                 editing.notebooks_job(jobs.Job("notebooks"), self.tmp, dist, "fixture", {"module": "M01"})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
 
     def test_settings_form_turns_notebooks_on_and_off(self):
         from studio import manage
@@ -2438,15 +2453,15 @@ class TestNotebookWriting(unittest.TestCase):
         shutil.rmtree(data_dir)
         files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
         files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             os.remove(self.modules[-1].source)
             job = jobs.Job("generate")
             result = generator.generate(job, self.tmp, os.path.join(self.tmp, "dist"),
                                         {"id": "fixture", "resume": True})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
         self.assertEqual(result["modules"], 6)
         self.assertEqual(result["notebooks"], 6)
         self.assertEqual([w for w in asked if w.startswith("the notebooks for")],
@@ -2479,15 +2494,15 @@ class TestNotebookWriting(unittest.TestCase):
         shutil.rmtree(data_dir)
         files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
         files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             os.remove(self.modules[-1].source)
             result = generator.generate(jobs.Job("generate"), self.tmp, os.path.join(self.tmp, "dist"),
                                         {"id": "fixture", "resume": True, "figures": False,
                                          "notebooks": False})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
         self.assertEqual(result["modules"], 6)
         self.assertEqual([w for w in asked if w.startswith(("the figures for", "the notebooks for"))], [])
         self.assertEqual(result["notebooks"], 0)
@@ -2514,15 +2529,15 @@ class TestNotebookWriting(unittest.TestCase):
         shutil.rmtree(data_dir)
         files.write_json(os.path.join(data_dir, "assessments/all.json"), list(assess.values()))
         files.write_json(os.path.join(data_dir, "suggestions/all.json"), sugg)
-        original = claude_cli.ask
-        claude_cli.ask = fake_ask
+        original = modelcall.ask
+        modelcall.ask = fake_ask
         try:
             os.remove(self.modules[-1].source)
             generator.generate(jobs.Job("generate"), self.tmp, os.path.join(self.tmp, "dist"),
                                {"id": "fixture", "resume": True, "figures": False,
                                 "notebooks": False, "model": "haiku"})
         finally:
-            claude_cli.ask = original
+            modelcall.ask = original
         self.assertTrue(models, "the missing module was written")
         self.assertEqual(set(models), {"haiku"})
 

@@ -1,6 +1,6 @@
 """Studio-wide preferences: `state/studio.json`.
 
-Tiny by design. It holds the model every generation and tutor call should ask Claude Code
+Tiny by design. It holds the model every generation and tutor call should ask the provider
 for - the setting whose absence once broke a run - and the reader profile. The list that
 model is chosen from is not here: it is `SETTINGS.models`, the platform's list under
 whatever the settings page saved over it (`studio/models.py`), read live so a model added a
@@ -14,7 +14,7 @@ from typing import Any, Dict
 
 from coursekit.settings import SETTINGS
 
-from . import claude_cli
+from . import modelcall
 from .files import read_json, write_json
 from .ids import DEFAULT_PROFILE, is_profile
 
@@ -45,7 +45,7 @@ class Prefs:
                 data = loaded
         except (OSError, ValueError):
             pass
-        model = data.get("model") if data.get("model") in allowed() else claude_cli.default_model()
+        model = data.get("model") if data.get("model") in allowed() else modelcall.default_model()
         profile = str(data.get("profile") or DEFAULT_PROFILE).strip().lower()
         if not is_profile(profile):
             profile = DEFAULT_PROFILE

@@ -1,4 +1,4 @@
-"""Figures for one module: ask Claude for them, keep the usable ones, put them in the text.
+"""Figures for one module: ask the model for them, keep the usable ones, put them in the text.
 
 A figure is an SVG under `courses/<id>/figures/<mid>-<n>.svg`, referenced from the module
 markdown on a paragraph of its own (`coursekit.figures` explains the contract the build
@@ -22,7 +22,7 @@ from coursekit import figures as ck_figures
 from coursekit import loader as ck_loader
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, overrides, prompts
+from . import modelcall, overrides, prompts
 from .coerce import fix_figures
 from .files import write_text
 from .jobs import Job
@@ -43,7 +43,7 @@ def enabled() -> bool:
 def parse_reply(text: str) -> List[Dict[str, str]]:
     """The raw figures out of a delimited reply: `{section, caption, svg}` each, untrusted."""
     out: List[Dict[str, str]] = []
-    for chunk in _BLOCK.split(claude_cli.strip_fence(text or ""))[1:]:
+    for chunk in _BLOCK.split(modelcall.strip_fence(text or ""))[1:]:
         fig = {"section": "", "caption": "", "svg": ""}
         lines = chunk.strip("\n").split("\n")
         while lines:
@@ -112,8 +112,8 @@ def write_figures(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any]
     mid = mod["id"]
     count = count or FIGURES_PER_MODULE
     headings = [s.heading for s in ck_loader.parse_sections(body)]
-    reply = claude_cli.ask(figures_prompt(plan, mod, body, headings, count, root),
-                           model=model, timeout=claude_cli.timeout_for("figures"),
+    reply = modelcall.ask(figures_prompt(plan, mod, body, headings, count, root),
+                           model=model, timeout=modelcall.timeout_for("figures"),
                            what="the figures for %s" % mid)
     fixed = fix_figures(parse_reply(reply), headings, count)
 

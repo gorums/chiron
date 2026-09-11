@@ -23,7 +23,7 @@ from coursekit import assessments as ck_assess
 from coursekit import config as ck_config
 from coursekit import loader as ck_loader
 
-from . import claude_cli, figures, notebooks, prompts
+from . import modelcall, figures, notebooks, prompts
 from .coerce import fix_assessment, fix_spec, fix_suggestions
 from .curriculum import next_module_id, plan_from_course
 from .errors import GenerationError
@@ -61,9 +61,9 @@ def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,
 
     job.progress(1, total, "Designing %s · %s" % (mid, topic))
     spec = fix_spec(
-        claude_cli.ask_json(prompts.module_spec(plan, plan["modules"], topic, part["name"],
+        modelcall.ask_json(prompts.module_spec(plan, plan["modules"], topic, part["name"],
                                                 minutes, notes), model=model,
-                            timeout=claude_cli.timeout_for("moduleSpec"),
+                            timeout=modelcall.timeout_for("moduleSpec"),
                             what="the design of %s" % mid),
         mid, part["id"], topic, minutes, known_ids=[m["id"] for m in plan["modules"]],
     )
@@ -269,10 +269,10 @@ def _patch(job: Job, root: str, dist_dir: str, cfg, course_id: str, current, pla
     total = 4
 
     job.progress(1, total, "Patching %s · %s" % (mid, current.title))
-    reply = claude_cli.ask(prompts.patch_module(plan, plan["modules"], spec, before, notes),
-                           model=model, timeout=claude_cli.timeout_for("module"),
+    reply = modelcall.ask(prompts.patch_module(plan, plan["modules"], spec, before, notes),
+                           model=model, timeout=modelcall.timeout_for("module"),
                            what="the edited text of %s" % mid)
-    body = repair_head(claude_cli.strip_fence(reply), spec)
+    body = repair_head(modelcall.strip_fence(reply), spec)
     old_headings, new_headings = headings_of(before), headings_of(body)
     if not new_headings:
         raise GenerationError("%s came back with no usable sections." % mid)
@@ -292,16 +292,16 @@ def _patch(job: Job, root: str, dist_dir: str, cfg, course_id: str, current, pla
         job.log("%s had no study data to patch; writing it fresh." % mid)
         prompt = assessment_prompt(plan, spec, body, root)
         what = "the quiz and flashcards for %s" % mid
-    assess = fix_assessment(claude_cli.ask_json(
-        prompt, model=model, timeout=claude_cli.timeout_for("studyData"), what=what), mid)
+    assess = fix_assessment(modelcall.ask_json(
+        prompt, model=model, timeout=modelcall.timeout_for("studyData"), what=what), mid)
 
     headings_moved = (new_headings != old_headings or not isinstance(suggest, list)
                       or len(suggest) != len(new_headings))
     if headings_moved:
         job.log("The section headings changed, so the suggested questions are written again.")
-        suggest = fix_suggestions(claude_cli.ask_json(
+        suggest = fix_suggestions(modelcall.ask_json(
             suggestions_prompt(plan, spec, new_headings, body, root), model=model,
-            timeout=claude_cli.timeout_for("studyData"),
+            timeout=modelcall.timeout_for("studyData"),
             what="the suggested questions for %s" % mid), new_headings)
     else:
         job.log("Section headings unchanged: the suggested questions are kept as they were.")

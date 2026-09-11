@@ -2,8 +2,8 @@
 
 The platform knows nothing about any particular subject. A course is a folder holding a
 `course.json` manifest, module markdown, reference material and authored study data; the
-engine turns it into one HTML file that tracks progress, runs spaced repetition, and talks
-to Claude about whatever the reader is looking at.
+engine turns it into one HTML file that tracks progress, runs spaced repetition, and asks
+the tutor about whatever the reader is looking at.
 
 Module map, in dependency order:
 

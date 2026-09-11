@@ -23,7 +23,7 @@ from coursekit import loader as ck_loader
 from coursekit import scaffold as ck_scaffold
 from coursekit.errors import CourseError
 
-from . import claude_cli, prompts
+from . import modelcall, prompts
 from .errors import GenerationError
 from .files import read_json, slug
 from .jobs import Job
@@ -48,7 +48,7 @@ def make_plan(job: Job, brief: Dict[str, Any], model: str = "") -> Dict[str, Any
     hours = float(brief["hours"])
     hint = ck_scaffold.plan_parts(hours)
     job.log("Designing the curriculum for %s (%g hours)…" % (theme, hours))
-    plan = claude_cli.ask_json(
+    plan = modelcall.ask_json(
         prompts.plan(
             theme, hours,
             brief.get("audience") or "a complete beginner",
@@ -58,7 +58,7 @@ def make_plan(job: Job, brief: Dict[str, Any], model: str = "") -> Dict[str, Any
             wants_notebooks(brief),
         ),
         model=model,
-        timeout=claude_cli.timeout_for("plan"),
+        timeout=modelcall.timeout_for("plan"),
         what="the curriculum",
     )
     return normalise_plan(plan, theme, hours, brief)

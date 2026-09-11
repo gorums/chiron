@@ -1,4 +1,4 @@
-"""Notebooks for one module: ask Claude for them, keep the usable ones, put them in the text.
+"""Notebooks for one module: ask the model for them, keep the usable ones, put them in the text.
 
 A notebook is `courses/<id>/notebooks/<mid>-<n>.ipynb`, referenced from the module
 markdown on a paragraph of its own (`coursekit.notebooks` explains the contract the
@@ -24,7 +24,7 @@ from coursekit import notebooks as ck_notebooks
 from coursekit.config import DEFAULT_KERNEL
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, overrides, prompts
+from . import modelcall, overrides, prompts
 from .coerce import fix_notebooks
 from .figures import insert_reference
 from .files import write_json
@@ -53,7 +53,7 @@ def parse_reply(text: str) -> List[Dict[str, Any]]:
     """The raw notebooks out of a delimited reply: `{section, caption, cells}` each, with
     `cells` as `{type, source}`, untrusted."""
     out: List[Dict[str, Any]] = []
-    for chunk in _BLOCK.split(claude_cli.strip_fence(text or ""))[1:]:
+    for chunk in _BLOCK.split(modelcall.strip_fence(text or ""))[1:]:
         nb: Dict[str, Any] = {"section": "", "caption": "", "cells": []}
         lines = chunk.strip("\n").split("\n")
         while lines:
@@ -137,9 +137,9 @@ def write_notebooks(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, An
     runtime = plan.get("notebooks") or {}
     kernel = str(runtime.get("kernel") or DEFAULT_KERNEL)
     headings = [s.heading for s in ck_loader.parse_sections(body)]
-    reply = claude_cli.ask(
+    reply = modelcall.ask(
         notebooks_prompt(plan, mod, body, headings, count, root),
-        model=model, timeout=claude_cli.timeout_for("notebooks"),
+        model=model, timeout=modelcall.timeout_for("notebooks"),
         what="the notebooks for %s" % mid)
     fixed = fix_notebooks(parse_reply(reply), headings, count, NOTEBOOK_CELLS)
 

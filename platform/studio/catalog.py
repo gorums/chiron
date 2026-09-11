@@ -51,15 +51,23 @@ def module_ids(cfg) -> List[str]:
 # --------------------------------------------------------------------------- one course
 
 
+# In the course but never in the page: the approved curriculum and the prompts the course
+# sends. Editing either changes what the NEXT run writes, not what the reader can see, so
+# neither may make a course look out of date.
+NOT_IN_THE_PAGE = (curriculum.PLAN_FILE, overrides.FILE)
+
+
 def newest_source(root: str) -> float:
     """When the course was last touched. A file newer than the build is what makes a course
     *dirty*, which is the only honest way to tell someone the page they are reading is old."""
+    skip = {os.path.normpath(os.path.join(root, rel)) for rel in NOT_IN_THE_PAGE}
     newest = 0.0
     for folder, dirs, names in os.walk(root):
         dirs[:] = [d for d in dirs if d != ".git"]
         for name in names:
-            if name.endswith(EDITABLE):
-                newest = max(newest, os.path.getmtime(os.path.join(folder, name)))
+            path = os.path.join(folder, name)
+            if name.endswith(EDITABLE) and os.path.normpath(path) not in skip:
+                newest = max(newest, os.path.getmtime(path))
     return newest
 
 

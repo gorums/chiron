@@ -29,7 +29,7 @@ trust both. The table at the bottom of the class lists every route in one place.
     PUT  /api/models                        replace it  {list: [{id, alias, label, note}]}
     POST /api/models/reset                  forget Studio's list; the platform's applies again
     POST /api/models/test                   ask once, this model only, on the provider that reaches it  {model, provider} -> {ok, seconds, error}
-    POST /api/models/discover               look for new or retired models now (Claude Code's catalog, Anthropic's list)
+    POST /api/models/discover               look for new or retired models now (every provider, asked what it knows)
     GET  /api/logs?limit=&level=&q=         the newest log lines, for the Settings page
     POST /api/logs/clear                    empty the in-memory buffer (the file is kept)
     GET  /api/courses/<id>                  one course in detail: parts, modules, files, progress
@@ -50,7 +50,7 @@ trust both. The table at the bottom of the class lists every route in one place.
     POST /api/courses/<id>/modules/<mid>/rewrite   rewrite one module  {notes, mode, model} -> {job}
     POST /api/courses/<id>/modules/<mid>/remove    take one module out (file to state/trash/)
     POST /api/courses/<id>/modules/<mid>/move      reorder, or move to another part  {part, index}
-    POST /api/courses/<id>/modules/<mid>/review    have Claude read it critically  -> {job}
+    POST /api/courses/<id>/modules/<mid>/review    have the model read it critically  -> {job}
     POST /api/courses/<id>/modules/<mid>/figures   draw (or redraw) its figures  -> {job}
     POST /api/courses/<id>/modules/<mid>/notebooks write (or replace) its notebooks  -> {job}
     POST /api/courses/<id>/modules/<mid>/accept    the owner's own verdict  {accepted: bool}
@@ -88,7 +88,7 @@ from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
-from . import (catalog, claude_cli, curriculum, discover, editing, generator, jobs, jupyter, manage, models,
+from . import (catalog, modelcall, curriculum, discover, editing, generator, jobs, jupyter, manage, models,
                overrides, progress, promptview,
                reviews, search, transfer)
 from . import log as logmod
@@ -124,7 +124,8 @@ MIN_HOURS = float(SETTINGS.get("generation.minHours"))
 MAX_HOURS = float(SETTINGS.get("generation.maxHours"))
 
 # What a guard says when the provider a job would run on cannot answer. "%s" is that
-# provider, named, because "install Claude Code" is wrong advice for a missing API key.
+# provider, named, because telling someone to install a command-line tool is wrong advice
+# for a missing API key - and the reverse.
 NOTHING_TO_ASK = "%s cannot answer, so nothing can be %s."
 JOB_RUNNING = "That course already has a job running."
 
@@ -214,7 +215,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _fail(self, message: str, code: int = 400, **extra) -> None:
         """`extra` is for what the browser has to branch on rather than print - `why`, the
-        kind of Claude failure, which decides whether the page offers Try again."""
+        kind of failure, which decides whether the page offers Try again."""
         self._json(dict(extra, error=message), code)
 
     def _raw_body(self) -> bytes:
@@ -270,7 +271,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _provider(self, doing: str = "written") -> bool:
         """False, with the reply sent, when the provider a job would run on cannot answer."""
-        if not claude_cli.available():
+        if not modelcall.available():
             message = NOTHING_TO_ASK % (catalog.llm_view()["providerLabel"], doing)
             self._fail(message)
             return False
@@ -280,7 +281,7 @@ class Handler(BaseHTTPRequestHandler):
         """The model a job should use: the request's, else Studio's default. Every writing
         form offers the list from settings.json; an unknown name falls back to the default."""
         asked = str(brief.get("model") or "").strip()
-        return asked if asked in claude_cli.model_aliases() else PREFS.model
+        return asked if asked in modelcall.model_aliases() else PREFS.model
 
     def _start_job(self, job: jobs.Job, work: Callable[[jobs.Job], Any]) -> None:
         REGISTRY.add(job).start(work)
@@ -391,7 +392,7 @@ class Handler(BaseHTTPRequestHandler):
         model = str(body.get("model") or "").strip()
         if not models.MODEL_ID.match(model):
             return self._fail("Send the model id to test.")
-        self._json(claude_cli.probe(model, provider=str(body.get("provider") or "")))
+        self._json(modelcall.probe(model, provider=str(body.get("provider") or "")))
 
     @route("GET", r"/api/logs")
     def logs(self):
@@ -873,18 +874,28 @@ class Handler(BaseHTTPRequestHandler):
         messages = body.get("messages") or []
         if not isinstance(messages, list) or not messages:
             return self._fail("No messages to send.")
-        if not claude_cli.available():
-            return self._fail("Claude Code is not on this PATH.", 503)
-        prompt = claude_cli.chat_prompt(str(body.get("system") or ""), messages)
+        if not modelcall.available():
+            return self._fail("%s cannot answer, so the tutor is unavailable here."
+                              % catalog.llm_view()["providerLabel"], 503)
+        prompt = modelcall.chat_prompt(str(body.get("system") or ""), messages)
         try:
-            text = claude_cli.ask(prompt, model=self._model(body), timeout=ASK_TIMEOUT)
-        except claude_cli.ClaudeFailed as exc:
+            text = modelcall.ask(prompt, model=self._model(body), timeout=ASK_TIMEOUT)
+        except modelcall.LLMFailed as exc:
             log.warning("ask: %s (%s) %s", exc, exc.kind, exc.detail)
             return self._fail(str(exc), 502, why=exc.kind, resetsAt=exc.resets_at)
         self._json({"text": text, "mode": "studio"})
 
 
 # --------------------------------------------------------------------------- entry point
+
+
+def _writer_line() -> str:
+    """What a generation run would go through, and whether it can answer right now. A path to
+    a binary was the honest answer when one tool was the only way in; now it is a provider."""
+    view = catalog.llm_view()
+    if view["available"]:
+        return "%s · model %s" % (view["providerLabel"], view["model"])
+    return "%s — NOT READY, %s" % (view["providerLabel"], view["hint"] or "nothing can be written")
 
 
 def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = "") -> int:
@@ -895,12 +906,11 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = "") -
 
     print("  Course Studio")
     print("  %s" % url)
-    print("  Claude Code: %s" % (claude_cli.find_cli() or "NOT FOUND — generation disabled"))
+    print("  Writes with: %s" % _writer_line())
     print("  Courses: %s" % COURSES_DIR)
     print("  State: %s" % STATE_ROOT)
     print("  Model: %s   Profile: %s   Log: %s" % (PREFS.model, PREFS.profile, LOG_FILE or "console only"))
-    log.info("studio started on %s, model %s, claude %s", url, PREFS.model,
-             claude_cli.find_cli() or "NOT FOUND")
+    log.info("studio started on %s, model %s, provider %s", url, PREFS.model, _writer_line())
     print("\n  Leave this window open. Ctrl+C to stop.\n")
 
     if open_browser:

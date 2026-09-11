@@ -3,11 +3,11 @@
 Both hold the same application. They differ only in wrapper and therefore in what the
 browser will let them do:
 
-  <name>.html         fragment form, for publishing. A hosted page may not call
-                      api.anthropic.com, so the tutor is unavailable there — reading,
-                      quizzes and flashcards all still work.
-  <name>-local.html   a complete document, for opening off disk. `file://` origins are
-                      allowed to reach Anthropic, so this is the copy that can ask questions.
+  <name>.html         fragment form, for publishing. A hosted page may not call a model's
+                      API from someone else's origin, so the tutor is unavailable there —
+                      reading, quizzes and flashcards all still work.
+  <name>-local.html   a complete document, for opening off disk. A `file://` origin is
+                      allowed to reach one, so this is the copy that can ask questions.
 """
 
 from __future__ import annotations
