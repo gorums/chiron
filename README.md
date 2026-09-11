@@ -10,7 +10,7 @@
  
 ### 🤖 AI
  
-> Yes. You built a local tool that turns "teach me X in N hours" into a complete, rigorous self-study course, and then helps you actually learn it. It isn't just content; the course keeps track of how you're learning.
+> Yes. We built a local tool that turns "teach me X in N hours" into a complete, rigorous self-study course, and then helps you actually learn it. It isn't just content; the course keeps track of how you're learning.
  
 > It has two halves:
  
