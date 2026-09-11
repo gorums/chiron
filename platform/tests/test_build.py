@@ -1714,6 +1714,18 @@ class TestCodeConventions(unittest.TestCase):
                 out += [os.path.join(where, n) for n in sorted(names) if n.endswith(".py")]
         return sorted(out)
 
+    def test_python_modules_stay_one_job_long(self):
+        """A module past ~500 lines is two jobs (CONVENTIONS.md "Code conventions"). The
+        ceiling is set above the prose so a module has room to grow before it has to split;
+        `server.py` and `prompts.py` were 925 and 792 when they became packages."""
+        big = []
+        for path in self._python_files():
+            with open(path, encoding="utf-8") as fh:
+                n = sum(1 for _ in fh)
+            if n > 600:
+                big.append("%s: %d lines" % (os.path.relpath(path, self.PLATFORM), n))
+        self.assertEqual(big, [], "\n".join(big))
+
     def test_every_module_starts_with_a_docstring(self):
         """A module says what it is for before it says anything else."""
         import ast

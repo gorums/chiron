@@ -127,9 +127,20 @@ platform/                   the engine — knows nothing about any subject
   build.py                  CLI entry point
   settings.json             every default of the platform; see "Settings" above
   coursekit/                the build package
+    settings.py paths.py    every default, and where courses/ and dist/ are
+    course/                 reading a course off disk: config · loader · markdown_render
+                            figures · notebooks · assessments · library · validate
+    render/                 turning one into the file the reader opens: bundler · renderer
     llm/                    reaching a model, whoever makes it: the provider layer
                             (see "Reaching a model"). The bridge imports it too
   studio/                   the local web app: generate + build from a browser
+    server/                 HTTP: base · pages · state · settings · courses · modules
+                            writing · jobs · tutor  (__init__ carries the route table)
+    authoring/              writing with a model: curriculum · generator · editing
+                            coerce · figures · notebooks · reviews · overrides
+                            promptview · prompts/
+    store/                  what a running Studio keeps: jobs · progress · prefs · runtime
+    support/                files · ids · errors · log
     ui/                     its front end: index.html (which is also its load order) +
                             studio.css + js/{core,library,job,plan,course/,settings/}.js
   web/                      the course page's source:
@@ -367,7 +378,7 @@ platform’s only dependency.
 
 **The engine must never mention a subject.** No "marketing", no "marketer", no course title.
 Everything subject-specific reaches the browser through the `CFG` object built by
-`CourseConfig.runtime()` in `platform/coursekit/config.py`, sourced from `course.json`.
+`CourseConfig.runtime()` in `platform/coursekit/course/config.py`, sourced from `course.json`.
 
 If you are about to write a course-specific string into `platform/web/js/`, add a `CFG` field
 instead. `CFG.anchor` is the worked example: the one real thing the reader applies every
@@ -402,22 +413,28 @@ too), nothing else.
 
 ## How the build works
 
-`coursekit` modules, in dependency order:
+`coursekit` is grouped by what a module does, not by what it is called. There are only
+three answers: it reads a course, it renders one, or everyone needs it.
 
 | Module | Job |
 |---|---|
+| `settings` | every default the platform has, in layers (see "Settings"). Standard library only — the bridge imports it from outside the package |
+| `paths` | where `courses/` and `dist/` are |
 | `errors` | `CourseError` and its three subclasses |
-| `llm` | the provider layer: one place a wire format or a command line appears (see "Reaching a model"). `llm.failures` names why a call failed, in one word; `coursekit/failures.py` re-exports it for the bridge |
-| `config` | `course.json` → `CourseConfig`; builds the `CFG` the page receives |
-| `markdown_render` | markdown → HTML; HTML → plain text for search and chat context |
-| `figures` | SVG figures: sanitise, check, inline into a section's HTML, count the build-up steps |
-| `notebooks` | Jupyter notebooks: check the `.ipynb`, render its cells read-only into a section's HTML, refuse one in a course without the runtime |
-| `loader` | module markdown → `Module`/`Section` objects; reads the optional `**Requires:**` line; inlines the figures and the notebooks |
-| `assessments` | quizzes, flashcards, suggested questions; merges the per-part files |
-| `library` | glossary, mental models, worksheets, plan pages — all optional. `fillable` turns a worksheet's blanks into numbered inputs |
-| `validate` | every cross-file check, collected into one report |
-| `bundler` | concatenates the CSS and JS named by `web/bundle.json`, in that order |
-| `renderer` | injects `CFG` + `DATA` into `shell.html`; writes both outputs |
+| `failures` | why a model call failed, in one word; re-exported from `llm.failures` for the bridge |
+| **`course/`** | **reading a course off disk — nothing here knows how a page is built** |
+| `course.config` | `course.json` → `CourseConfig`; builds the `CFG` the page receives |
+| `course.markdown_render` | markdown → HTML; HTML → plain text for search and chat context |
+| `course.figures` | SVG figures: sanitise, check, inline into a section's HTML, count the build-up steps |
+| `course.notebooks` | Jupyter notebooks: check the `.ipynb`, render its cells read-only into a section's HTML, refuse one in a course without the runtime |
+| `course.loader` | module markdown → `Module`/`Section` objects; reads the optional `**Requires:**` line; inlines the figures and the notebooks |
+| `course.assessments` | quizzes, flashcards, suggested questions; merges the per-part files |
+| `course.library` | glossary, mental models, worksheets, plan pages — all optional. `fillable` turns a worksheet's blanks into numbered inputs |
+| `course.validate` | every cross-file check, collected into one report |
+| **`render/`** | **turning one into the file the reader opens** |
+| `render.bundler` | the front end: the CSS and JS named by `web/bundle.json`, in that order |
+| `render.renderer` | injects `CFG` + `DATA` into `shell.html`; writes both outputs |
+| **`llm/`** | **the provider layer: one place a wire format or a command line appears** (see "Reaching a model"). The bridge imports it too |
 | `scaffold` | theme + hours → an empty but valid course tree |
 | `cli` | argparse |
 
@@ -449,7 +466,7 @@ Within a group the order is free; two things are not. `core/state.js` defines `S
 
 **The reader and Studio are one product, so they are built from one set of parts.** Three
 files under `platform/web/` are the whole design system; the page inlines them with the rest
-of its source, and Studio links the same files at `/ui/shared/` (`SHARED_UI` in `server.py`,
+of its source, and Studio links the same files at `/ui/shared/` (`SHARED_UI` in `server/pages.py`,
 `GET /ui/shared/<file>`). A copy in the other surface is the bug this replaced: `.btn` used
 to mean *filled* in Studio and *outlined* in the page.
 
@@ -735,7 +752,7 @@ draw a raster anyway - but it can ship **diagrams as SVG**, which is text. A fig
 ![What the reader should notice](figures/M03-1.svg)
 ```
 
-`coursekit/figures.py` owns the contract. `loader.parse_sections(raw, figures_dir)`
+`coursekit/course/figures.py` owns the contract. `loader.parse_sections(raw, figures_dir)`
 replaces the paragraph with `<figure class="figure" data-fig=...>` holding the SVG and a
 `<figcaption>`; the section's `text` excerpt is taken before that, so the tutor and search
 see words, not markup. On the way in the SVG is **sanitised** (`<script>`, `<style>`,
@@ -775,10 +792,10 @@ chunk size and the pause. Browsers refuse speech without a user gesture, so noth
 on its own; the Listen button on the Read step and the speaker button on each section are
 the only ways in. `platform/tests/audio_checks.js` exercises it inside a booted page.
 
-Studio draws them (`studio/figures.py`): `prompts.figures` asks for up to
+Studio draws them (`studio/authoring/figures.py`): `prompts.figures` asks for up to
 `generation.figuresPerModule` diagrams in a delimited text format (an SVG inside a JSON
 string is a parse failure waiting to happen), `coerce.fix_figures` keeps only the ones
-naming a real section that pass `coursekit.figures`, and `write_figures` replaces the
+naming a real section that pass `coursekit.course.figures`, and `write_figures` replaces the
 module's old figure files and reference lines with the new ones. A generation run draws
 them right after each module's text (`brief["figures"]`, on by default; a failure is logged
 and the module ships without); `extend` and a full `rewrite` do the same; a patch keeps
@@ -808,7 +825,7 @@ alone:
 [Try it: fit the line yourself](notebooks/M03-1.ipynb)
 ```
 
-`coursekit/notebooks.py` owns the contract. `loader.parse_sections(raw, figures_dir,
+`coursekit/course/notebooks.py` owns the contract. `loader.parse_sections(raw, figures_dir,
 notebooks_dir, notebooks_on)` replaces the paragraph with `<div class="notebook" data-nb=...>`
 holding a **read-only rendering of every cell**: the markdown through the module's own
 renderer, the code escaped, the outputs saved in the file (text, errors, and a `png` or
@@ -849,7 +866,7 @@ The token reaches the page through `GET /api/jupyter` on Studio's loopback origi
 never in the built HTML (`SETTINGS.page()` does not carry it; a test checks). The published
 loopback port is the boundary, as for Studio: do not drop the `127.0.0.1:` prefix.
 
-Studio writes them (`studio/notebooks.py`), the twin of `figures.py`: `prompts.notebooks`
+Studio writes them (`studio/authoring/notebooks.py`), the twin of `figures.py`: `prompts.notebooks`
 asks for up to `generation.notebooksPerModule` notebooks of at most
 `generation.notebookCells` cells in a delimited text format (`=== NOTEBOOK`, then
 `--- markdown` / `--- code` cells; code inside a JSON string is a parse failure waiting to
@@ -871,39 +888,61 @@ edit an `.ipynb` by hand (the PUT checks it). `TestNotebooks` and `TestJupyterSe
 watching a long generation run, editing a proposed curriculum before committing to it, and
 reading validation errors next to the course they belong to.
 
+Studio does four things — it serves HTTP, it asks a model to write courses, it keeps what
+a run and a reader leave behind, and a few helpers hold the rest together — so it is four
+subpackages and whatever fits none of them.
+
 | Module | Job |
 |---|---|
-| `modelcall` | Studio’s way in to `coursekit.llm`: `ask`, `ask_json`, `probe`, and the `Reporter` that forwards every call to the job on the thread. Named for what it does, not for whoever answers - it was `claude_cli` when one tool was the only way in |
-| `jobs` | background work with a replayable event log |
-| `prompts` | every prompt Studio sends |
-| `curriculum` | the plan a course is written from: `make_plan`, `normalise_plan`, `plan_from_course`, `load_plan` / `reconstruct_plan` for a resume |
-| `coerce` | model output into shapes the validator accepts: `fix_quiz_item`, `fix_assessment`, `fix_suggestions`, `fix_spec`, `fix_review` |
-| `generator` | the pipeline: plan → approve → write → validate → build; the writers (`write_module`, `write_study_data`) and `build_course` / `check_course` |
-| `editing` | one module of an existing course: `extend`, `rewrite`, patch mode, `draw` (figures), `store_module_data` |
-| `overrides` | the prompts a course sends instead of the platform's, per module, per stage - `plan/prompts.json` |
-| `promptview` | every stage's prompt for one module, gathered for reading and editing |
-| `figures` | figures for one module: parse the delimited reply, write `figures/<mid>-<n>.svg`, put the references in the text |
-| `notebooks` | notebooks for one module: parse the delimited cells, write `notebooks/<mid>-<n>.ipynb`, put the references in the text |
-| `jupyter` | the Jupyter server: is it reachable, and what a served page is told (`GET /api/jupyter`); `build.py jupyter` |
-| `models` | the model list Studio offers: validated, saved to `state/settings.json`, live everywhere after `SETTINGS.reload()`; `GET/PUT /api/models`, `/api/models/reset`, `/api/models/test` |
-| `discover` | keeps that list current without anyone typing an id: every provider is asked what it knows (`Provider.catalog`) and the answers merge per provider; `schedule()` runs daily, `POST /api/models/discover` runs now |
-| `reviews` | what Claude or the owner thinks of a module, under `state/reviews/` |
+| **`server/`** | **HTTP in, JSON out** |
+| `server.base` | the registry, the dispatch, and the plumbing every route shares |
+| `server.pages` | the Studio UI itself, and a built course opened from it |
+| `server.state` | `/api/state`, the search, the reader profiles |
+| `server.settings` | Studio's preferences, the model list, the log |
+| `server.courses` | a course in, out, checked, built, deleted; the reader's progress in it |
+| `server.modules` | one module changed without a model: remove, move, accept, its prompts |
+| `server.writing` | every route that sets a model writing, each of them one shape |
+| `server.jobs` | the approval gate's answer, a cancel, and the SSE event stream |
+| `server.tutor` | `/api/ask`: the tutor for a course served from here |
+| **`authoring/`** | **writing a course with a model — nothing here serves HTTP** |
+| `authoring.prompts` | every prompt Studio sends, one module per stage (see "The prompts a module is written from") |
+| `authoring.overrides` | the prompts a course sends instead of the platform's, per module, per stage - `plan/prompts.json` |
+| `authoring.curriculum` | the plan a course is written from: `make_plan`, `normalise_plan`, `plan_from_course`, `load_plan` / `reconstruct_plan` for a resume |
+| `authoring.coerce` | model output into shapes the validator accepts: `fix_quiz_item`, `fix_assessment`, `fix_suggestions`, `fix_spec`, `fix_review` |
+| `authoring.generator` | the pipeline: plan → approve → write → validate → build; the writers (`write_module`, `write_study_data`) and `build_course` / `check_course` |
+| `authoring.editing` | one module of an existing course: `extend`, `rewrite`, patch mode, `draw` (figures), `store_module_data` |
+| `authoring.figures` | figures for one module: parse the delimited reply, write `figures/<mid>-<n>.svg`, put the references in the text |
+| `authoring.notebooks` | notebooks for one module: parse the delimited cells, write `notebooks/<mid>-<n>.ipynb`, put the references in the text |
+| `authoring.reviews` | what the model or the owner thinks of a module, under `state/reviews/` |
+| `authoring.promptview` | every stage's prompt for one module, gathered for reading and editing |
+| **`store/`** | **what one running Studio keeps** |
+| `store.jobs` | background work with a replayable event log |
+| `store.progress` | the platform-side copy of reader state, one JSON file per course |
+| `store.prefs` | Studio-wide preferences in `state/studio.json` — the model, the reader profile |
+| `store.runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |
+| **`support/`** | **one copy of what more than one part needs** |
+| `support.files` | atomic `read_json` / `write_json` / `write_text` |
+| `support.ids` | what a course id, a module id and a profile name may be |
+| `support.errors` | `GenerationError` |
+| `support.log` | the `studio` logger: rotating file + in-memory ring, read by `/api/logs` |
 | `catalog` | what the API reports: `course_summary`, `course_detail`, `state`, `calendar`, `settings_view` |
-| `runtime` | what one running Studio shares: state paths, `REGISTRY`, `PREFS`, `store()` |
-| `progress` | the platform-side copy of reader state, one JSON file per course |
 | `manage` | course operations that need no model: settings form, move or remove a module, trash a course |
 | `transfer` | a course in or out as a zip or a git clone |
 | `search` | every course searched at once, through the build's own loader |
-| `prefs` | Studio-wide preferences in `state/studio.json` — the model, the reader profile |
-| `files`, `ids`, `errors` | shared helpers: atomic `read_json` / `write_json` / `write_text`, the id patterns, `GenerationError` |
-| `log` | the `studio` logger: rotating file + in-memory ring, read by `/api/logs` |
-| `server` | HTTP: the route table, SSE, and the static UI in `ui/` |
+| `jupyter` | the Jupyter server: is it reachable, and what a served page is told (`GET /api/jupyter`); `build.py jupyter` |
+| `modelcall` | Studio’s way in to `coursekit.llm`: `ask`, `ask_json`, `probe`, and the `Reporter` that forwards every call to the job on the thread. Named for what it does, not for whoever answers - it was `claude_cli` when one tool was the only way in |
+| `models` | the model list Studio offers: validated, saved to `state/settings.json`, live everywhere after `SETTINGS.reload()`; `GET/PUT /api/models`, `/api/models/reset`, `/api/models/test` |
+| `discover` | keeps that list current without anyone typing an id: every provider is asked what it knows (`Provider.catalog`) and the answers merge per provider; `schedule()` runs daily, `POST /api/models/discover` runs now |
 
-**Every route is one method on `Handler`, registered with `@route(METHOD, pattern)`.** The
-pattern's named groups become the method's arguments; a `course_id` group is resolved (400
-for a bad id, 404 for a missing course) and a `mid` group checked before the method runs.
-The docstring at the top of `server.py` lists every route and `test_studio.py` checks the
-two agree. To add a route: write the method, decorate it, add the line to the docstring.
+**Every route is one method, registered with `@route(METHOD, pattern)` on the group it
+belongs to.** The pattern's named groups become the method's arguments; a `course_id` group
+is resolved (400 for a bad id, 404 for a missing course) and a `mid` group checked before
+the method runs. The groups are files and nothing more — `Handler` in `server/__init__.py`
+is all of them over the plumbing in `server/base.py`, dispatch calls the function `@route`
+registered rather than going through the class, and the server sees one flat table either
+way. The docstring at the top of `server/__init__.py` lists every route and `test_studio.py`
+checks the two agree. To add a route: write the method in the group it belongs to, decorate
+it, add the line to that docstring.
 
 **It binds to 127.0.0.1, and that is a security boundary, not a default.** Studio writes
 files and spawns processes. Do not make it listen on another interface.
@@ -1046,7 +1085,7 @@ indexes, dropping half-written flashcards, forcing the per-section question coun
 is written to disk as it is produced, so a run that dies at module 14 leaves fourteen real
 modules behind.
 
-**The section count comes from `coursekit.loader.parse_sections`, never a second parser.**
+**The section count comes from `coursekit.course.loader.parse_sections`, never a second parser.**
 Studio has to count sections exactly as the build does or the courses it generates fail
 validation. That function is public for this reason; `test_studio.py` guards the agreement.
 
@@ -1116,7 +1155,7 @@ Without a model (`studio/manage.py`):
 | `GET/POST /api/courses/<id>/settings` | title, tagline, audience, practitioner, tutor persona, the notebooks runtime (off, or a kernel and packages), part names/hours/blurbs, milestones. **`id` is refused**: it is the reader's storage key. |
 | `POST /api/courses/<id>/modules/<mid>/remove` | the file moves to `state/trash/`, its assessment and suggestion entries are dropped from whichever files hold them, its short title and its `order` entry go; the reply carries the check result. |
 | `POST /api/courses/<id>/modules/<mid>/move` | `{part, index}`: reorder within a part or move to another; writes `order`, moves the file, never touches study data. |
-| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/` by `reviews.py`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
+| `POST /api/courses/<id>/modules/<mid>/review` | a job: Claude reads the module against the pedagogy checklist in `prompts.review` and returns a verdict, gaps, errors, quiz issues and a rewrite brief. Stored under `state/reviews/` by `authoring/reviews.py`, not in the course - it is an opinion about content, not content. The module row shows the verdict; "Rewrite with these notes" turns the brief into a rewrite. A review older than the module file comes back with `stale: true` (`load_reviews` compares `at` to the file mtime) and the row shows it greyed as "before edit": a rewrite or a hand edit never changes a verdict, only a new review does. The verdict scale is calibrated in the prompt: "solid" means publishable, minor findings do not lower it. |
 | `POST /api/courses/<id>/modules/<mid>/accept` | `{accepted: bool}`: the owner's own verdict, "this is good". `reviews.accept_module` stores it in the same review file (`accepted`, and `ownerOnly` when there was no review), the row shows "good" over whatever Claude said, and it goes stale like a review when the module changes. |
 | `POST /api/courses/<id>/delete` | needs `{confirm: <id>}`; moves `courses/<id>` and `dist/<id>` to `state/trash/<id>-<stamp>/` and forgets the progress copy. |
 
@@ -1161,7 +1200,7 @@ summary is what turns Rebuild into the one primary button on the course page.
 ## Authoring content
 
 Two routes, same contract. Studio generates unattended from a brief; the `course-author`
-skill guides a model that can read files and iterate. `platform/studio/prompts.py` is the
+skill guides a model that can read files and iterate. `platform/studio/authoring/prompts/` is the
 machine-driven twin of the skill — **when the module format or a JSON schema changes, both
 have to change.** The skill's `references/` stay the human-readable source of truth.
 
@@ -1210,23 +1249,28 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
 
 - **One module, one job, said in its docstring.** Every module starts with a docstring that
   says what it is for and, when it is not obvious, why it is shaped the way it is. A test
-  fails on a module without one. A module past ~500 lines is two jobs; split it the way
-  `generator.py` became `curriculum` + `coerce` + `generator` + `editing` + `reviews`.
+  fails on a module without one, and a second one fails past 600 lines. A module past ~500
+  is already two jobs; split it the way `generator.py` became `curriculum` + `coerce` +
+  `generator` + `editing` + `reviews`, and `server.py` and `prompts.py` became packages.
+- **A package says its own map in its `__init__`.** `coursekit/course/`, `studio/authoring/`
+  and the rest each open with the list of what is in them and why they are one group. The
+  table in this file is the overview; the `__init__` is what the next person reads first,
+  because it is beside the code.
 - **`_name` is private to its module.** Nothing imports or calls another module's
   underscore name (a test checks). Something two modules need is public, named for what it
-  is, and lives in one place: file helpers in `studio/files.py`, id patterns in
-  `studio/ids.py`, the plan in `curriculum.py`. Do not copy a helper into a second module.
+  is, and lives in one place: file helpers in `studio/support/files.py`, id patterns in
+  `studio/support/ids.py`, the plan in `authoring/curriculum.py`. Do not copy a helper into a second module.
 - **Every file write goes through `files.write_json` / `files.write_text`.** They create the
   directory, write beside the target and rename over it, and end the file with one newline.
-  No `open(path, "w")` in Studio outside `files.py`.
+  No `open(path, "w")` in Studio outside `support/files.py`.
 - **Every setting comes from `settings.json`** through `SETTINGS.get(...)`, read once at
   import into a module constant with a name that says what it bounds (`MAX_BODY`,
   `QUIZ_ITEMS`). See "Settings" above.
 - **Model output is trusted for prose and distrusted for structure.** Anything a model
   returns as JSON passes through `coerce.py` before it is written, and the validator in
-  `coursekit.validate` is the authority on what is valid.
+  `coursekit.course.validate` is the authority on what is valid.
 - **A route is a decorated method.** `@route("POST", COURSE + r"/thing")` on `Handler`,
-  a line in the `server.py` docstring, and the guards it needs (`_idle`, `_claude`) at the
+  a line in the `server/__init__.py` docstring, and the guards it needs (`_idle`, `_claude`) at the
   top. No path parsing inside a handler; no `if path ==` chains.
 - **Comments say why, names say what.** A function whose body needs a comment to follow is
   two functions. `# noqa: BLE001` on a bare `except Exception` says why it is broad.
