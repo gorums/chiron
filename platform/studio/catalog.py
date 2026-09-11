@@ -14,19 +14,20 @@ import shutil
 import time
 from typing import Any, Dict, List
 
-from coursekit import config as ck_config
+from coursekit.course import config as ck_config
 from coursekit import llm
-from coursekit import loader as ck_loader
+from coursekit.course import loader as ck_loader
 from coursekit import settings as ck_settings
 from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
 from coursekit.settings import SETTINGS
 
-from . import (curriculum, discover, generator, jupyter, manage, models, overrides, prefs,
-               progress, reviews)
-from . import log as logmod
-from .errors import GenerationError
-from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, store
+from .authoring import curriculum, generator, overrides, reviews
+from .store import prefs, progress
+from . import discover, jupyter, manage, models
+from .support import log as logmod
+from .support.errors import GenerationError
+from .store.runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, store
 
 EDITABLE = (".md", ".json", ".svg", ".ipynb")
 RECENT_JOBS = int(SETTINGS.get("studio.recentJobs"))

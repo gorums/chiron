@@ -1,7 +1,7 @@
 """Figures for one module: ask the model for them, keep the usable ones, put them in the text.
 
 A figure is an SVG under `courses/<id>/figures/<mid>-<n>.svg`, referenced from the module
-markdown on a paragraph of its own (`coursekit.figures` explains the contract the build
+markdown on a paragraph of its own (`coursekit.course.figures` explains the contract the build
 enforces). This module is the writer: it asks for a few diagrams that belong to named
 sections, drops any that would not pass the build, replaces whatever figures the module
 had before, and inserts one reference line at the end of each named section.
@@ -18,14 +18,15 @@ import os
 import re
 from typing import Any, Dict, List
 
-from coursekit import figures as ck_figures
-from coursekit import loader as ck_loader
+from coursekit.course import figures as ck_figures
+from coursekit.course import loader as ck_loader
 from coursekit.settings import SETTINGS
 
-from . import modelcall, overrides, prompts
+from .. import modelcall
+from . import overrides, prompts
 from .coerce import fix_figures
-from .files import write_text
-from .jobs import Job
+from ..support.files import write_text
+from ..store.jobs import Job
 
 FIGURES_PER_MODULE = int(SETTINGS.get("generation.figuresPerModule"))
 FIGURE_STEPS = int(SETTINGS.get("generation.figureSteps"))

@@ -17,16 +17,16 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-from coursekit import assessments as ck_assess
-from coursekit import config as ck_config
-from coursekit import loader as ck_loader
-
-from . import modelcall, overrides, prompts
+from coursekit.course import assessments as ck_assess
+from coursekit.course import config as ck_config
+from coursekit.course import loader as ck_loader
+from .. import modelcall
+from . import overrides, prompts
 from .coerce import fix_review
 from .curriculum import plan_from_course
-from .errors import GenerationError
-from .files import read_json, read_text, write_json
-from .jobs import Job
+from ..support.errors import GenerationError
+from ..support.files import read_json, read_text, write_json
+from ..store.jobs import Job
 
 
 def reviews_dir(state_root: str, course_id: str) -> str:

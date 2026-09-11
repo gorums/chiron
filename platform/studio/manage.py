@@ -18,15 +18,15 @@ import re
 import shutil
 from typing import Any, Dict, List
 
-from coursekit import config as ck_config
-from coursekit import figures as ck_figures
-from coursekit import loader as ck_loader
-from coursekit import notebooks as ck_notebooks
+from coursekit.course import config as ck_config
+from coursekit.course import figures as ck_figures
+from coursekit.course import loader as ck_loader
+from coursekit.course import notebooks as ck_notebooks
 from coursekit.errors import CourseError
 
-from . import overrides
-from .files import read_json, stamp, write_json
-from .ids import is_module_id
+from .authoring import overrides
+from .support.files import read_json, stamp, write_json
+from .support.ids import is_module_id
 
 # The fields the settings form may change, with a small validator for each.
 _TEXT = lambda v, n: str(v or "").strip()[:n]  # noqa: E731

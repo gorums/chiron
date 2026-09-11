@@ -32,7 +32,7 @@ from typing import Any, Dict, Optional
 from coursekit.paths import COURSES_DIR
 from coursekit.settings import REPO_ROOT, SETTINGS
 
-from .log import log
+from .support.log import log
 
 PROBE_TIMEOUT = float(SETTINGS.get("jupyter.probeTimeout"))
 PROBE_CACHE = float(SETTINGS.get("jupyter.probeCacheSeconds"))

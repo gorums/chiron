@@ -26,9 +26,9 @@ from typing import Any, Dict, List
 
 from . import figures, notebooks
 from .config import CourseConfig
-from .errors import ContentError
+from ..errors import ContentError
 from .markdown_render import to_html, to_text
-from .settings import SETTINGS
+from ..settings import SETTINGS
 
 # How much of a section the tutor is handed as context. Long enough to reason about,
 # short enough to keep the prompt cheap on every message.

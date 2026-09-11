@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from . import bundler
-from .config import CourseConfig
-from .settings import SETTINGS
+from ..course.config import CourseConfig
+from ..settings import SETTINGS
 
 DOCTYPE_HEAD = (
     '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'

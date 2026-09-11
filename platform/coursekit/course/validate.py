@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from .errors import DataError
+from ..errors import DataError
 
 ASSESS_KEYS = ("predict", "quiz", "cards", "elaborate", "transfer")
 

@@ -16,9 +16,9 @@ import os
 import re
 from typing import Any, Dict, List
 
-from coursekit import config as ck_config
-from coursekit import library as ck_library
-from coursekit import loader as ck_loader
+from coursekit.course import config as ck_config
+from coursekit.course import library as ck_library
+from coursekit.course import loader as ck_loader
 from coursekit.errors import CourseError
 
 SNIPPET = 160

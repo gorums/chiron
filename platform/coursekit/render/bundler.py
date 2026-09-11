@@ -23,9 +23,10 @@ import json
 import os
 from typing import List
 
-from .errors import CourseError
+from ..errors import CourseError
+from ..settings import PLATFORM_DIR
 
-WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+WEB = os.path.join(PLATFORM_DIR, "web")
 MANIFEST = os.path.join(WEB, "bundle.json")
 CSS_DIR = os.path.join(WEB, "css")
 JS_DIR = os.path.join(WEB, "js")

@@ -30,7 +30,7 @@ def ui_scripts():
         return re.findall(r'<script src="/ui/js/([^"]+)"', fh.read())
 
 
-from coursekit import config  # noqa: E402
+from coursekit.course import config  # noqa: E402
 from coursekit.errors import CourseError  # noqa: E402
 from coursekit.settings import SETTINGS
 
@@ -40,9 +40,12 @@ SETTINGS.reload()
 
 from coursekit.llm import chain as llm_chain  # noqa: E402
 from coursekit.llm import cli as llm_cli  # noqa: E402
-from studio import (catalog, modelcall, coerce, curriculum, editing, files, figures,  # noqa: E402
-                    generator, jobs, overrides, reviews)
-from studio.errors import GenerationError  # noqa: E402
+from studio import catalog, modelcall  # noqa: E402
+from studio.authoring import (coerce, curriculum, editing, figures,  # noqa: E402
+                              generator, overrides, reviews)
+from studio.store import jobs  # noqa: E402
+from studio.support import files  # noqa: E402
+from studio.support.errors import GenerationError  # noqa: E402
 
 
 class TestJsonExtraction(unittest.TestCase):
@@ -94,7 +97,7 @@ class TestHeadings(unittest.TestCase):
     def test_matches_the_build_loader(self):
         """Studio must count sections exactly as the build does, or generated courses
         fail validation. They now share one implementation; this guards that."""
-        from coursekit import loader as ck_loader
+        from coursekit.course import loader as ck_loader
         md = ("# M01 — T\n\n**Time:** 60 minutes\n\n"
               "## A\n\nalpha\n\n---\n\n## B\n\n## C\n\ngamma\n")
         self.assertEqual(generator.headings_of(md),
@@ -141,7 +144,7 @@ class TestQuizItemCoercion(unittest.TestCase):
     """Every type comes out in a shape the validator accepts, or is dropped."""
 
     def ok(self, item):
-        from coursekit import validate as ck_validate
+        from coursekit.course import validate as ck_validate
         out = coerce.fix_quiz_item(item)
         self.assertIsNotNone(out, item)
         self.assertEqual(ck_validate.quiz_item_problems(out, "q"), [], out)
@@ -228,8 +231,7 @@ class TestAssessmentCoercion(unittest.TestCase):
             coerce.fix_assessment("not an object", "M01")
 
     def test_output_passes_the_real_validator(self):
-        from coursekit import validate as ck_validate
-
+        from coursekit.course import validate as ck_validate
         class FakeModule:
             id, source = "M01", "x.md"
             sections = [1, 2]
@@ -298,7 +300,7 @@ class TestPlanNormalisation(unittest.TestCase):
 
     def test_manifest_is_loadable_by_the_build(self):
         import tempfile
-        from coursekit import config as ck_config
+        from coursekit.course import config as ck_config
         plan = curriculum.normalise_plan(self.plan(), "bread", 6, self.BRIEF)
         manifest = curriculum.plan_to_manifest(plan, "bread")
         tmp = tempfile.mkdtemp(prefix="studio-test-")
@@ -798,30 +800,30 @@ class TestPrompts(unittest.TestCase):
              "sections": ["Why this matters", "Core concepts"], "summary": "s"}]
 
     def test_module_prompt_names_the_exact_headings(self):
-        from studio import prompts
+        from studio.authoring import prompts
         text = prompts.module(self.CFG, self.MODS, self.MODS[0])
         self.assertIn("## Why this matters", text)
         self.assertIn("# M01 — Flour", text)
         self.assertIn("**Time:**", text)
 
     def test_suggestion_prompt_states_the_required_count(self):
-        from studio import prompts
+        from studio.authoring import prompts
         text = prompts.suggestions(self.CFG, "M01", ["A", "B", "C", "D"], "body")
         self.assertIn("exactly 4 arrays", text)
         self.assertIn("4 sections", text)
 
     def test_resources_prompt_forbids_inventing_sources(self):
-        from studio import prompts
+        from studio.authoring import prompts
         self.assertIn("Never fabricate", prompts.resources(self.CFG))
 
     def test_direction_is_empty_without_notes_and_quoted_with(self):
-        from studio import prompts
+        from studio.authoring import prompts
         self.assertEqual(prompts.direction(""), "")
         self.assertEqual(prompts.direction("   "), "")
         self.assertIn("go deeper on X", prompts.direction("go deeper on X"))
 
     def test_module_spec_prompt_names_topic_and_part(self):
-        from studio import prompts
+        from studio.authoring import prompts
         text = prompts.module_spec(self.CFG, self.MODS, "reading a failed loaf", "Judgement", 45)
         self.assertIn("reading a failed loaf", text)
         self.assertIn('"Judgement"', text)
@@ -853,7 +855,7 @@ class TestProgressStore(unittest.TestCase):
     def setUp(self):
         import shutil
         import tempfile
-        from studio import progress
+        from studio.store import progress
         self.tmp = tempfile.mkdtemp(prefix="studio-progress-")
         self.store = progress.Store(os.path.join(self.tmp, "nested", "progress"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -888,7 +890,7 @@ class TestProgressStore(unittest.TestCase):
         self.assertIsNone(self.store.load("bread"))
 
     def test_summary_counts_and_next_module(self):
-        from studio import progress
+        from studio.store import progress
         ids = ["M01", "M02", "M03"]
         empty = self.store.summary("bread", ids)
         self.assertEqual((empty["done"], empty["next"], empty["pct"]), (0, "M01", 0.0))
@@ -927,7 +929,8 @@ class TestModelChoice(unittest.TestCase):
 
     def test_models_come_from_platform_settings(self):
         from coursekit.settings import SETTINGS
-        from studio import prefs, server
+        from studio import server
+        from studio.store import prefs
         self.assertEqual([m["name"] for m in prefs.models()],
                          [m["alias"] for m in SETTINGS.models])
         self.assertTrue(all(m["provider"] for m in prefs.models()),
@@ -970,7 +973,7 @@ class TestModelChoice(unittest.TestCase):
     def test_prefs_store(self):
         import shutil
         import tempfile
-        from studio import prefs
+        from studio.store import prefs
         tmp = tempfile.mkdtemp(prefix="studio-prefs-")
         self.addCleanup(shutil.rmtree, tmp, True)
         store = prefs.Prefs(os.path.join(tmp, "nested", "studio.json"))
@@ -1033,7 +1036,8 @@ class TestModelList(unittest.TestCase):
                               {"id": "gpt-5.6", "provider": "local", "alias": "sol"}])
 
     def test_replace_is_live_and_reset_forgets(self):
-        from studio import models, prefs
+        from studio import models
+        from studio.store import prefs
         before = models.platform_list()
         self.assertFalse(models.current()["custom"])
         saved = models.replace([{"id": "claude-new-1", "alias": "new", "label": "New"},
@@ -1305,7 +1309,7 @@ class TestModelDiscovery(unittest.TestCase):
 
 class TestLog(unittest.TestCase):
     def test_ring_buffer_filters(self):
-        from studio import log as logmod
+        from studio.support import log as logmod
         logmod.configure("")
         logmod.clear()
         logmod.log.info("alpha one")
@@ -1394,8 +1398,8 @@ class TestCourseEditing(unittest.TestCase):
         import tempfile
         sys.path.insert(0, HERE)
         from test_build import CourseFixture
-        from coursekit import config as ck_config
-        from coursekit import loader as ck_loader
+        from coursekit.course import config as ck_config
+        from coursekit.course import loader as ck_loader
         self.tmp = tempfile.mkdtemp(prefix="studio-edit-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.fixture = CourseFixture(self.tmp)
@@ -1426,7 +1430,7 @@ class TestCourseEditing(unittest.TestCase):
         self.assertEqual(coerce.fix_spec({"minutes": 9999}, "M07", "p2", "t", 45)["minutes"], 240)
 
     def test_store_module_data_adds_new_files_for_a_new_module(self):
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         assess = coerce.fix_assessment({
             "quiz": [{"q": "Q", "options": ["a", "b"], "answer": 1, "why": "w"}],
             "cards": [{"front": "f", "back": "b"}]}, "M07")
@@ -1436,7 +1440,7 @@ class TestCourseEditing(unittest.TestCase):
         self.assertEqual(ck_assess.load_suggestions(self.cfg)["M07"], [["a", "b", "c"]])
 
     def test_store_module_data_replaces_in_place_for_an_existing_module(self):
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         assess = coerce.fix_assessment({
             "predict": "new", "quiz": [{"q": "Q", "options": ["a", "b"], "answer": 0, "why": "w"}],
             "cards": [{"front": "f", "back": "b"}]}, "M02")
@@ -1492,7 +1496,7 @@ class TestCourseEditing(unittest.TestCase):
         self.assertTrue(any("assume the starter is healthy" in c for c in calls), "direction reached the model")
         self.assertTrue(os.path.isfile(os.path.join(dist, "fixture", "fixture-course-local.html")))
         # And the server's cheap id listing agrees with the loader.
-        from coursekit import config as ck_config
+        from coursekit.course import config as ck_config
         self.assertEqual(catalog.module_ids(ck_config.load(self.fixture.root))[-1], "M07")
 
     # ---- manage: settings, remove, trash ----
@@ -1501,9 +1505,9 @@ class TestCourseEditing(unittest.TestCase):
         """Patch mode: the text comes back with the notes applied and nothing else touched;
         the quiz is patched in place and the suggested questions are kept when the section
         headings did not move."""
-        from coursekit import assessments as ck_assess
-        from coursekit import config as ck_config
-        from coursekit import loader as ck_loader
+        from coursekit.course import assessments as ck_assess
+        from coursekit.course import config as ck_config
+        from coursekit.course import loader as ck_loader
         root = os.path.join(self.tmp, "fixture")
         cfg = ck_config.load(root)
         m3 = next(m for m in ck_loader.load_modules(cfg) if m.id == "M03")
@@ -1575,7 +1579,7 @@ class TestCourseEditing(unittest.TestCase):
 
     def test_remove_module_cleans_every_place_and_keeps_the_file(self):
         from studio import manage
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         trash = os.path.join(self.tmp, "trash")
         removed = manage.remove_module(self.fixture.root, "M03", trash)
         self.assertTrue(removed["assessment"] and removed["suggestions"])
@@ -1668,7 +1672,7 @@ class TestCourseEditing(unittest.TestCase):
 
     def test_resume_keeps_what_exists_and_writes_only_the_rest(self):
         """The fixture has six finished modules; the manifest says there should be an M07."""
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         import shutil
         # Make it look like a run that died: one module listed but never written, and the
         # study data file shaped the way generate() writes it (all.json).
@@ -1743,7 +1747,7 @@ class TestPhase3(unittest.TestCase):
         self.fixture = CourseFixture(self.courses)
 
     def _ids(self):
-        from coursekit import loader as ck_loader
+        from coursekit.course import loader as ck_loader
         return [m.id for m in ck_loader.load_modules(config.load(self.fixture.root))]
 
     # ---- P3.1 order ----
@@ -1767,7 +1771,7 @@ class TestPhase3(unittest.TestCase):
         r = manage.move_module(self.fixture.root, "M01", "p3", 0)
         self.assertTrue(r["moved"])
         cfg = config.load(self.fixture.root)
-        from coursekit import loader as ck_loader
+        from coursekit.course import loader as ck_loader
         mods = ck_loader.load_modules(cfg)
         m01 = next(m for m in mods if m.id == "M01")
         self.assertEqual(m01.part, "p3")
@@ -1784,7 +1788,7 @@ class TestPhase3(unittest.TestCase):
     # ---- P3.3 profiles ----
 
     def test_profile_stores_and_prefs(self):
-        from studio import prefs, progress
+        from studio.store import prefs, progress
         base = os.path.join(self.tmp, "progress")
         default = progress.Store(base)
         alex = progress.Store(base, "alex")
@@ -1809,7 +1813,8 @@ class TestPhase3(unittest.TestCase):
     # ---- P3.4 calendar ----
 
     def test_calendar_across_courses(self):
-        from studio import progress, server
+        from studio import server
+        from studio.store import progress
         today = int(time.time() // 86400)
         summary = progress.summarise({"streak": {"seen": [today, today - 1, today - 5]}}, ["M01"])
         self.assertEqual(summary["seen"], [today - 5, today - 1, today])
@@ -1897,8 +1902,8 @@ class TestPhase3(unittest.TestCase):
     # ---- P3.7 review ----
 
     def test_review_prompt_and_coercion(self):
-        from studio import prompts
-        from coursekit import loader as ck_loader
+        from studio.authoring import prompts
+        from coursekit.course import loader as ck_loader
         cfg = config.load(self.fixture.root)
         mods = ck_loader.load_modules(cfg)
         plan = curriculum.plan_from_course(cfg, mods)
@@ -1962,7 +1967,7 @@ class TestFigureWriting(unittest.TestCase):
         import tempfile
         sys.path.insert(0, HERE)
         from test_build import CourseFixture
-        from coursekit import loader as ck_loader
+        from coursekit.course import loader as ck_loader
         self.tmp = tempfile.mkdtemp(prefix="studio-fig-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.fixture = CourseFixture(self.tmp)
@@ -2002,7 +2007,7 @@ class TestFigureWriting(unittest.TestCase):
         self.assertEqual(figures.strip_references(after, "M02"), after, "another module's figures stay")
 
     def test_write_figures_replaces_files_and_references_then_builds(self):
-        from studio import prompts
+        from studio.authoring import prompts
         plan = curriculum.plan_from_course(self.cfg, self.modules)
         spec = plan["modules"][0]
         path = self.modules[0].source
@@ -2102,7 +2107,7 @@ class TestFigureWriting(unittest.TestCase):
             return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
 
         # the study data shaped the way generate() writes it, so the resume can extend it
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         assess = ck_assess.load_assessments(self.cfg)
         sugg = ck_assess.load_suggestions(self.cfg)
         data_dir = os.path.join(self.fixture.root, "data")
@@ -2317,7 +2322,7 @@ class TestNotebookWriting(unittest.TestCase):
         import tempfile
         sys.path.insert(0, HERE)
         from test_build import CourseFixture
-        from coursekit import loader as ck_loader
+        from coursekit.course import loader as ck_loader
         self.tmp = tempfile.mkdtemp(prefix="studio-nb-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.fixture = CourseFixture(self.tmp)
@@ -2327,8 +2332,8 @@ class TestNotebookWriting(unittest.TestCase):
         self.headings = ["Why this matters", "Core concepts", "Exercise"]
 
     def test_reply_parsing_and_coercion(self):
-        from coursekit import notebooks as ck_notebooks
-        from studio import notebooks
+        from coursekit.course import notebooks as ck_notebooks
+        from studio.authoring import notebooks
         raw = notebooks.parse_reply(NOTEBOOK_REPLY)
         self.assertEqual([nb["section"] for nb in raw], ["core concepts", "Exercise", "No such section"])
         self.assertEqual([c["type"] for c in raw[0]["cells"]], ["markdown", "code", "code"])
@@ -2348,7 +2353,7 @@ class TestNotebookWriting(unittest.TestCase):
         self.assertEqual(ck_notebooks.problems(json.dumps(nb)), [])
 
     def test_write_notebooks_replaces_files_and_references_then_builds(self):
-        from studio import notebooks
+        from studio.authoring import notebooks
         plan = curriculum.plan_from_course(self.cfg, self.modules)
         self.assertEqual(plan["notebooks"], {"kernel": "python3", "packages": ["numpy"]})
         spec = plan["modules"][0]
@@ -2424,7 +2429,7 @@ class TestNotebookWriting(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(nb_dir, "M01-1.ipynb")))
 
     def test_plan_decides_notebooks_and_the_person_can_overrule(self):
-        from studio import prompts
+        from studio.authoring import prompts
         base = {"title": "Data", "parts": [{"id": "p1", "name": "P", "hours": 3, "dir": "d"}],
                 "modules": [{"id": "M01", "part": "p1", "title": "A"}],
                 "notebooks": {"kernel": "python3", "packages": ["pandas", 3, " "]}}
@@ -2461,7 +2466,7 @@ class TestNotebookWriting(unittest.TestCase):
                 return json.dumps([["a", "b", "c"]] * 3)
             return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
 
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         assess = ck_assess.load_assessments(self.cfg)
         sugg = ck_assess.load_suggestions(self.cfg)
         data_dir = os.path.join(self.fixture.root, "data")
@@ -2502,7 +2507,7 @@ class TestNotebookWriting(unittest.TestCase):
                 return json.dumps([["a", "b", "c"]] * 3)
             return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
 
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         assess = ck_assess.load_assessments(self.cfg)
         sugg = ck_assess.load_suggestions(self.cfg)
         data_dir = os.path.join(self.fixture.root, "data")
@@ -2537,7 +2542,7 @@ class TestNotebookWriting(unittest.TestCase):
                 return json.dumps([["a", "b", "c"]] * 3)
             return "# X — Y\n\n**Time:** 60 minutes\n\n## Why this matters\n\nt\n\n## Core concepts\n\nt\n\n## Exercise\n\nt\n"
 
-        from coursekit import assessments as ck_assess
+        from coursekit.course import assessments as ck_assess
         assess = ck_assess.load_assessments(self.cfg)
         sugg = ck_assess.load_suggestions(self.cfg)
         data_dir = os.path.join(self.fixture.root, "data")

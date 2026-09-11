@@ -24,10 +24,10 @@ import tempfile
 import zipfile
 from typing import Any, Dict, Optional
 
-from coursekit import config as ck_config
+from coursekit.course import config as ck_config
 from coursekit.errors import CourseError
 
-from .ids import is_course_id
+from .support.ids import is_course_id
 
 # https://host/path or git@host:path. Nothing else: the URL becomes a subprocess argument.
 GIT_URL = re.compile(r"^(https?://[\w.\-]+(:\d+)?/[\w.\-/~%]+|git@[\w.\-]+:[\w.\-/~]+)$")

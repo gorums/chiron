@@ -42,7 +42,7 @@ import re
 from typing import Any, Dict, List, Tuple
 
 from .markdown_render import to_html, to_text
-from .settings import SETTINGS
+from ..settings import SETTINGS
 
 NOTEBOOKS_DIR = "notebooks"
 MAX_BYTES = int(SETTINGS.get("build.notebookMaxBytes"))

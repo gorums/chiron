@@ -15,7 +15,9 @@ import os
 import sys
 from typing import List
 
-from . import assessments, config, library, loader, renderer, scaffold, validate
+from . import scaffold
+from .course import assessments, config, library, loader, validate
+from .render import renderer
 from .errors import CourseError
 from .paths import COURSES_DIR, DIST_DIR
 from .settings import SETTINGS

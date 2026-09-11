@@ -80,23 +80,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from coursekit import config as ck_config
-from coursekit import figures as ck_figures
-from coursekit import loader as ck_loader
-from coursekit import notebooks as ck_notebooks
+from coursekit.course import config as ck_config
+from coursekit.course import figures as ck_figures
+from coursekit.course import loader as ck_loader
+from coursekit.course import notebooks as ck_notebooks
 from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
-from . import (catalog, modelcall, curriculum, discover, editing, generator, jobs, jupyter, manage, models,
-               overrides, progress, promptview,
-               reviews, search, transfer)
-from . import log as logmod
-from .errors import GenerationError
-from .files import write_text
-from .ids import DEFAULT_PROFILE, is_course_id, is_module_id, is_profile
-from .log import log
-from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, TRASH_DIR, store
+from .authoring import curriculum, editing, generator, overrides, promptview, reviews
+from .store import jobs, progress
+from . import catalog, discover, jupyter, manage, modelcall, models, search, transfer
+from .support import log as logmod
+from .support.errors import GenerationError
+from .support.files import write_text
+from .support.ids import DEFAULT_PROFILE, is_course_id, is_module_id, is_profile
+from .support.log import log
+from .store.runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, TRASH_DIR, store
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI_DIR = os.path.join(HERE, "ui")

@@ -16,7 +16,7 @@ import os
 from typing import Any, Dict, List
 
 from .config import CourseConfig
-from .errors import DataError
+from ..errors import DataError
 
 ASSESS_KEYS = ("predict", "quiz", "cards", "elaborate", "transfer")
 # Present only when the author wrote one: a live conversation the reader practises in.

@@ -33,7 +33,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 from xml.etree import ElementTree
 
-from .settings import SETTINGS
+from ..settings import SETTINGS
 
 FIGURES_DIR = "figures"
 MAX_BYTES = int(SETTINGS.get("build.figureMaxBytes"))

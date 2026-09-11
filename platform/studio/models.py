@@ -24,7 +24,7 @@ from typing import Any, Dict, List
 from coursekit import settings as ck_settings
 from coursekit.settings import SETTINGS
 
-from .files import read_json, write_json
+from .support.files import read_json, write_json
 
 # What a provider will accept as a model: claude-sonnet-5, gpt-5.6, models/gemini-flash-3,
 # llama3.1:70b, us.anthropic.claude-opus-5-v1:0. Lowercase, and never any whitespace or

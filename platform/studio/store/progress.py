@@ -19,8 +19,8 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-from .files import read_json, write_json
-from .ids import DEFAULT_PROFILE, is_course_id, is_profile
+from ..support.files import read_json, write_json
+from ..support.ids import DEFAULT_PROFILE, is_course_id, is_profile
 
 # Keys in the page's state object that describe the browser, not the reader.
 DEVICE_KEYS = ("bridge", "ui", "theme")

@@ -19,19 +19,19 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List
 
-from coursekit import assessments as ck_assess
-from coursekit import config as ck_config
-from coursekit import loader as ck_loader
-
-from . import modelcall, figures, notebooks, prompts
+from coursekit.course import assessments as ck_assess
+from coursekit.course import config as ck_config
+from coursekit.course import loader as ck_loader
+from .. import modelcall
+from . import figures, notebooks, prompts
 from .coerce import fix_assessment, fix_spec, fix_suggestions
 from .curriculum import next_module_id, plan_from_course
-from .errors import GenerationError
-from .files import read_json, read_text, write_json, write_text
+from ..support.errors import GenerationError
+from ..support.files import read_json, read_text, write_json, write_text
 from .generator import (assessment_prompt, build_course, draw_figures, draw_notebooks,
                         headings_of, module_path, repair_head, suggestions_prompt,
                         write_module, write_study_data)
-from .jobs import Job
+from ..store.jobs import Job
 
 
 def extend(job: Job, courses_dir: str, dist_dir: str, course_id: str,

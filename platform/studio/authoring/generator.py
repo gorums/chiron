@@ -23,23 +23,24 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List
 
-from coursekit import assessments as ck_assess
-from coursekit import config as ck_config
-from coursekit import library as ck_library
-from coursekit import loader as ck_loader
-from coursekit import renderer as ck_renderer
+from coursekit.course import assessments as ck_assess
+from coursekit.course import config as ck_config
+from coursekit.course import library as ck_library
+from coursekit.course import loader as ck_loader
+from coursekit.render import renderer as ck_renderer
 from coursekit import scaffold as ck_scaffold
-from coursekit import validate as ck_validate
+from coursekit.course import validate as ck_validate
 from coursekit.settings import SETTINGS
 
-from . import modelcall, figures, notebooks, overrides, prompts
+from .. import modelcall
+from . import figures, notebooks, overrides, prompts
 from .coerce import fix_assessment, fix_suggestions
 from .curriculum import (DEFAULT_SECTIONS, PLAN_FILE, load_plan, make_plan, normalise_plan,
                          plan_to_manifest, wants_notebooks)
-from .errors import GenerationError
-from .files import read_json, read_text, slug, write_json, write_text
-from .ids import is_course_id
-from .jobs import Job
+from ..support.errors import GenerationError
+from ..support.files import read_json, read_text, slug, write_json, write_text
+from ..support.ids import is_course_id
+from ..store.jobs import Job
 
 MAX_CORPUS_CHARS = int(SETTINGS.get("generation.maxCorpusChars"))   # what the glossary and mental-models calls see
 MAX_WORKSHEETS = int(SETTINGS.get("generation.maxWorksheets"))

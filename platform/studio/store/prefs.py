@@ -14,9 +14,9 @@ from typing import Any, Dict
 
 from coursekit.settings import SETTINGS
 
-from . import modelcall
-from .files import read_json, write_json
-from .ids import DEFAULT_PROFILE, is_profile
+from .. import modelcall
+from ..support.files import read_json, write_json
+from ..support.ids import DEFAULT_PROFILE, is_profile
 
 
 

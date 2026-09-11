@@ -571,7 +571,7 @@ caption: <one sentence: what the reader should notice in it>
 
 def figures(cfg: Dict[str, Any], spec: Dict[str, Any], body: str, headings: List[str],
             count: int, max_steps: int) -> str:
-    """Diagrams for a module, as SVG the build can inline (see `coursekit.figures`).
+    """Diagrams for a module, as SVG the build can inline (see `coursekit.course.figures`).
 
     A picture earns its place when it shows a structure the prose can only list: a flow,
     a funnel, a 2x2, a timeline, a before/after, the parts of a thing and how they touch.

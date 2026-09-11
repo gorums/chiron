@@ -18,15 +18,16 @@ import os
 import re
 from typing import Any, Dict, List
 
-from coursekit import config as ck_config
-from coursekit import loader as ck_loader
+from coursekit.course import config as ck_config
+from coursekit.course import loader as ck_loader
 from coursekit import scaffold as ck_scaffold
 from coursekit.errors import CourseError
 
-from . import modelcall, prompts
-from .errors import GenerationError
-from .files import read_json, slug
-from .jobs import Job
+from .. import modelcall
+from . import prompts
+from ..support.errors import GenerationError
+from ..support.files import read_json, slug
+from ..store.jobs import Job
 
 PLAN_FILE = "plan/plan.json"    # the approved curriculum, kept so a dead run can resume
 

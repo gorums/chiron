@@ -6,7 +6,7 @@ type demands or is dropped, a flashcard missing a side is dropped, the suggestio
 padded or trimmed to one entry per section. What cannot be repaired raises
 `GenerationError` so a run fails loudly instead of shipping an empty quiz.
 
-`coursekit.validate` is the authority on what is valid; these functions only coerce
+`coursekit.course.validate` is the authority on what is valid; these functions only coerce
 towards it, and `test_studio.py` checks their output passes the real validator.
 """
 
@@ -15,12 +15,12 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-from coursekit import figures as ck_figures
-from coursekit import validate as ck_validate
+from coursekit.course import figures as ck_figures
+from coursekit.course import validate as ck_validate
 from coursekit.settings import SETTINGS
 
 from .curriculum import DEFAULT_SECTIONS
-from .errors import GenerationError
+from ..support.errors import GenerationError
 
 # All from the `generation` block of settings.json.
 QUIZ_ITEMS = int(SETTINGS.get("generation.quizItems"))
@@ -258,7 +258,7 @@ def fix_figures(raw: Any, headings: List[str], cap: int) -> List[Dict[str, Any]]
 
     Each comes back as `{section, caption, svg, steps}` with the SVG sanitised. A figure
     is dropped when it names no section of the module (matched case-insensitively, so a
-    stray capital does not lose a drawing), when the SVG would fail `coursekit.figures`,
+    stray capital does not lose a drawing), when the SVG would fail `coursekit.course.figures`,
     or when it would be one more than `cap`. Nothing here raises: a module without
     figures is a valid module.
     """

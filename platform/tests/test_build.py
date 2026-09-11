@@ -22,7 +22,10 @@ PLATFORM = os.path.dirname(HERE)
 REPO = os.path.dirname(PLATFORM)
 sys.path.insert(0, PLATFORM)
 
-from coursekit import assessments, bundler, config, failures, library, loader, paths, renderer, scaffold, settings, validate  # noqa: E402
+from coursekit import failures, paths, scaffold, settings  # noqa: E402
+from coursekit.course import validate  # noqa: E402
+from coursekit.course import assessments, config, library, loader
+from coursekit.render import bundler, renderer
 from coursekit import llm  # noqa: E402
 from coursekit.llm import base as llm_base  # noqa: E402
 from coursekit.llm import anthropic as llm_anthropic  # noqa: E402
@@ -403,7 +406,7 @@ class TestFigures(TempCourseTest):
         self.assertIn("figures 1", result.summary())
 
     def test_a_figure_is_sanitised_before_it_reaches_the_page(self):
-        from coursekit import figures
+        from coursekit.course import figures
         clean = figures.sanitize(DIRTY_SVG)
         for gone in ("<?xml", "<style", "<script", "onclick", "https://evil.example", "<image",
                      "width='400'", "height='300'"):
@@ -436,7 +439,7 @@ class TestFigures(TempCourseTest):
         self.assertIn("M01: figure images/photo.png is not a figures/<name>.svg reference", problems[0])
 
     def test_names_for_lists_a_modules_figures_in_order(self):
-        from coursekit import figures
+        from coursekit.course import figures
         fig_dir = os.path.join(self.course.root, "figures")
         os.makedirs(fig_dir)
         for name in ("M01-10.svg", "M01-2.svg", "M01-1.svg", "M010-1.svg", "M01-x.svg", "notes.md"):
@@ -449,7 +452,7 @@ class TestFigures(TempCourseTest):
 class TestFillableWorksheets(unittest.TestCase):
     def test_blanks_cells_checks_and_answer_blocks_become_inputs(self):
         import re
-        from coursekit.markdown_render import to_html
+        from coursekit.course.markdown_render import to_html
         md = ("# Sheet\n\nName: ______\n\n| Field | Value |\n|---|---|\n| Owner | |\n| Date | filled |\n\n"
               "- [ ] first\n- [ ] second\n\n```answer\nWrite here\n```\n\n```\nkeep ____ these\n```\n")
         html, n = library.fillable(to_html(md))
@@ -671,7 +674,7 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
     def test_figure_colours_are_defined_for_both_themes(self):
         """A figure's colour classes come from the page (`fig-1` ... `fig-muted`), so every
         token has a light and a dark value and every class a rule."""
-        from coursekit import figures
+        from coursekit.course import figures
         css = bundler.css()
         for token in ("--fig-1", "--fig-2", "--fig-3", "--fig-4", "--fig-soft", "--fig-line"):
             self.assertGreaterEqual(css.count(token + ":"), 3, "%s in :root, the media block and the explicit dark block" % token)
@@ -1703,11 +1706,13 @@ class TestCodeConventions(unittest.TestCase):
     REPO = os.path.dirname(PLATFORM)
 
     def _python_files(self):
+        """Both packages keep their modules in subpackages now, so this walks."""
         out = []
         for sub in ("coursekit", "studio"):
-            base = os.path.join(self.PLATFORM, sub)
-            out += [os.path.join(base, n) for n in sorted(os.listdir(base)) if n.endswith(".py")]
-        return out
+            for where, dirs, names in os.walk(os.path.join(self.PLATFORM, sub)):
+                dirs[:] = [d for d in dirs if d != "__pycache__"]
+                out += [os.path.join(where, n) for n in sorted(names) if n.endswith(".py")]
+        return sorted(out)
 
     def test_every_module_starts_with_a_docstring(self):
         """A module says what it is for before it says anything else."""
@@ -2081,12 +2086,12 @@ class TestNotebooks(TempCourseTest):
     def test_only_a_notebook_link_survives_as_a_link(self):
         """Relative links lose their anchor in a one-file site; a notebook reference is the
         one exception, because the build replaces it."""
-        from coursekit.markdown_render import to_html
+        from coursekit.course.markdown_render import to_html
         self.assertEqual(to_html("[a](other.md)"), "<p><em>a</em></p>")
         self.assertIn('<a href="notebooks/x.ipynb">a</a>', to_html("[a](notebooks/x.ipynb)"))
 
     def test_names_for_lists_a_modules_notebooks_in_order(self):
-        from coursekit import notebooks
+        from coursekit.course import notebooks
         nb_dir = os.path.join(self.course.root, "notebooks")
         os.makedirs(nb_dir)
         for name in ("M01-2.ipynb", "M01-10.ipynb", "M01-1.ipynb", "M02-1.ipynb", "M01-x.ipynb"):

@@ -1,7 +1,7 @@
 """Notebooks for one module: ask the model for them, keep the usable ones, put them in the text.
 
 A notebook is `courses/<id>/notebooks/<mid>-<n>.ipynb`, referenced from the module
-markdown on a paragraph of its own (`coursekit.notebooks` explains the contract the
+markdown on a paragraph of its own (`coursekit.course.notebooks` explains the contract the
 build enforces). This module is the writer, the twin of `figures.py`: it asks for a
 notebook or two that belong to named sections, drops any that would not pass the build,
 replaces whatever notebooks the module had before, and inserts one reference line at the
@@ -19,17 +19,18 @@ import os
 import re
 from typing import Any, Dict, List
 
-from coursekit import loader as ck_loader
-from coursekit import notebooks as ck_notebooks
-from coursekit.config import DEFAULT_KERNEL
+from coursekit.course import loader as ck_loader
+from coursekit.course import notebooks as ck_notebooks
+from coursekit.course.config import DEFAULT_KERNEL
 from coursekit.settings import SETTINGS
 
-from . import modelcall, overrides, prompts
+from .. import modelcall
+from . import overrides, prompts
 from .coerce import fix_notebooks
 from .figures import insert_reference
-from .files import write_json
-from .files import write_text
-from .jobs import Job
+from ..support.files import write_json
+from ..support.files import write_text
+from ..store.jobs import Job
 
 NOTEBOOKS_PER_MODULE = int(SETTINGS.get("generation.notebooksPerModule"))
 NOTEBOOK_CELLS = int(SETTINGS.get("generation.notebookCells"))

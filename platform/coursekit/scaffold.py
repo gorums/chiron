@@ -21,7 +21,7 @@ import os
 import re
 from typing import Any, Dict, List
 
-from .config import DEFAULT_ANCHOR
+from .course.config import DEFAULT_ANCHOR
 from .errors import CourseError
 from .settings import SETTINGS
 

@@ -22,7 +22,7 @@ import time
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
-from .log import log
+from ..support.log import log
 
 PENDING, RUNNING, WAITING, DONE, FAILED, CANCELLED = (
     "pending", "running", "waiting", "done", "failed", "cancelled"

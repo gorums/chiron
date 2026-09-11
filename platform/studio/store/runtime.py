@@ -14,7 +14,7 @@ import os
 from coursekit.settings import SETTINGS
 
 from . import jobs, prefs, progress
-from . import log as logmod
+from ..support import log as logmod
 
 STATE_ROOT = SETTINGS.state_dir
 PROGRESS_DIR = SETTINGS.progress_dir

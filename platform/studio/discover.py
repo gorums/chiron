@@ -46,8 +46,8 @@ from coursekit.failures import MODEL
 from coursekit.settings import SETTINGS
 
 from . import models
-from .files import read_json, write_json
-from .log import log
+from .support.files import read_json, write_json
+from .support.log import log
 
 HOURS = float(SETTINGS.get("discovery.hours") or 0)            # 0 turns the schedule off
 START_DELAY = int(SETTINGS.get("discovery.startDelaySeconds"))

@@ -22,7 +22,7 @@ from coursekit.llm import chain as llm_chain
 from coursekit.llm import cli as llm_cli
 from coursekit.llm.base import LLMFailed, Provider, ProviderUnavailable
 
-from . import jobs
+from .store import jobs
 
 # `LLMFailed` and `ProviderUnavailable` are imported above rather than aliased: a caller
 # needs one import to ask and to catch, and the name of the exception says what it is - one
