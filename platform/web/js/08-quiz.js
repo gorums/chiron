@@ -15,7 +15,7 @@ let QUIZ = null,
 function scoreBlock(o) {
   const band = o.pct >= 80 ? "ok" : o.pct >= 60 ? "warm" : "bad";
   const calib = o.overconf
-    ? `<div class="hint narrow gap-bottom-lg" title="${esc(help("calibration"))}"><span class="i">Calibration</span>
+    ? `<div class="hint narrow gap-bottom-lg" data-help="${esc(help("calibration"))}"><span class="i">Calibration</span>
        You were "certain" and wrong ${o.overconf} time${o.overconf > 1 ? "s" : ""}. That is the most
        valuable signal on this page: a belief you hold confidently and cannot support is the one that
        will catch you out when it matters.</div>`
@@ -87,10 +87,10 @@ function drawQuiz() {
       h += `<div class="rowline wrapped gap-top">
         ${t !== "single" && t !== "tf" ? `<button class="btn primary" onclick="qCommit()">Lock in answer</button>` : ""}
         ${hints.length && st.hinted < hints.length ? `<button class="btn sm" onclick="qHint()">Hint ${st.hinted + 1} of ${hints.length}</button>` : ""}
-        ${st.hinted ? `<span class="sub" title="${esc(help("mistake card"))}">A question answered after a hint becomes a mistake card either way.</span>` : ""}
+        ${st.hinted ? `<span class="sub" data-help="${esc(help("mistake card"))}">A question answered after a hint becomes a mistake card either way.</span>` : ""}
       </div>`;
     } else {
-      h += `<div class="conf"><span class="sub" title="${esc(help("calibration"))}">How sure are you?</span>
+      h += `<div class="conf"><span class="sub" data-help="${esc(help("calibration"))}">How sure are you?</span>
         ${[
           ["Guessing", 1],
           ["Fairly sure", 2],
@@ -173,7 +173,7 @@ function answerArea(it, st) {
       .map(
         (oi, pos) => `<div class="orow ${st.answered ? (oi === pos ? "right" : "wrong") : ""}">
       <span class="k">${pos + 1}</span><span style="flex:1">${esc(it.options[oi])}</span>
-      ${locked ? "" : `<button class="iconbtn" ${pos === 0 ? "disabled" : ""} onclick="qMove(${pos},-1)" title="Move “${esc(it.options[oi])}” up" aria-label="Move “${esc(it.options[oi])}” up">${ico("up", 15)}</button><button class="iconbtn" ${pos === order.length - 1 ? "disabled" : ""} onclick="qMove(${pos},1)" title="Move “${esc(it.options[oi])}” down" aria-label="Move “${esc(it.options[oi])}” down">${ico("down", 15)}</button>`}
+      ${locked ? "" : `<button class="iconbtn" ${pos === 0 ? "disabled" : ""} onclick="qMove(${pos},-1)" data-help="Move “${esc(it.options[oi])}” up" aria-label="Move “${esc(it.options[oi])}” up">${ico("up", 15)}</button><button class="iconbtn" ${pos === order.length - 1 ? "disabled" : ""} onclick="qMove(${pos},1)" data-help="Move “${esc(it.options[oi])}” down" aria-label="Move “${esc(it.options[oi])}” down">${ico("down", 15)}</button>`}
     </div>`
       )
       .join(
@@ -255,7 +255,7 @@ function verdictHtml(it, st) {
       .join("");
   }
   if (!st.ok || st.hinted)
-    h += `<p class="sub gap-top" title="${esc(help("mistake card"))}">Added to your mistakes — it comes back tomorrow as a card.</p>`;
+    h += `<p class="sub gap-top" data-help="${esc(help("mistake card"))}">Added to your mistakes — it comes back tomorrow as a card.</p>`;
   return h;
 }
 
@@ -419,7 +419,7 @@ function quizResults(m) {
         ? "Reasonable first pass. Re-read the sections behind the ones you missed, then retake in a few days — the retake is where the learning happens."
         : "This is a normal first score and it is useful data. Go back to Read, work through the sections behind the misses, and retake. Nobody learns this in one pass.";
   const queuedLine = queued
-    ? ` · <span title="${esc(help("mistake card"))}">${queued} added to your mistakes</span>`
+    ? ` · <span data-help="${esc(help("mistake card"))}">${queued} added to your mistakes</span>`
     : "";
   let h = scoreBlock({
     eyebrow: "Step 3 · Retrieve",

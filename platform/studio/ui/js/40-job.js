@@ -263,7 +263,7 @@ function paintJob(full) {
       <div class="jobfacts" id="jobfacts"></div>
       <p class="now" id="jobnow"></p>
       <div class="actions gap-top" id="stopbar">
-        <button class="btn danger sm" id="stopbtn" onclick="askStop()">Stop</button>
+        <button class="btn sm danger" id="stopbtn" onclick="askStop()">Stop</button>
         <a class="btn sm" href="#/settings">Full log</a>
       </div>
     </div>`;
@@ -378,14 +378,14 @@ function doneHTML(back) {
       ? `#/course/${encodeURIComponent(id)}?tab=modules&review=${encodeURIComponent(r.module || "")}`
       : "#/";
     return `<div class="card">
-      <h3 class="eyebrow">Verdict <span class="tag ${cls}" title="${esc(help(r.verdict || ""))}">${esc(r.verdict || "")}</span></h3>
+      <h3 class="eyebrow">Verdict <span class="tag ${cls}" data-help="${esc(help(r.verdict || ""))}">${esc(r.verdict || "")}</span></h3>
       <h3>${esc(r.module || "")} · ${esc(r.title || "")}</h3>
       <p class="summary">${esc(r.summary || "")}</p>
       <p class="sub result">${n} finding${n === 1 ? "" : "s"}.</p>
       <div class="actions gap-top">
         <a class="btn primary" href="${findings}">Read the findings</a>
         ${r.rewriteBrief && r.verdict !== "solid" ? `<a class="btn" href="#/course/${encodeURIComponent(id)}?tab=modules&rewrite=${encodeURIComponent(r.module || "")}&q=${encodeURIComponent(r.rewriteBrief)}">Patch with these notes</a>` : ""}
-        ${r.module ? `<button class="btn" onclick="acceptModule('${esc(id)}','${esc(r.module)}',true).then(()=>{location.hash='#/course/${encodeURIComponent(id)}'})" title="Your verdict outranks the review until the module changes">Mark as good</button>` : ""}
+        ${r.module ? `<button class="btn" onclick="acceptModule('${esc(id)}','${esc(r.module)}',true).then(()=>{location.hash='#/course/${encodeURIComponent(id)}'})" data-help="Your verdict outranks the review until the module changes">Mark as good</button>` : ""}
         ${back}</div>
       ${r.verdict !== "solid" ? `<p class="sub result">${esc(help("patch"))} If you have read the module and disagree with the findings, mark it good instead: your verdict is what the course page shows.</p>` : ""}</div>`;
   }

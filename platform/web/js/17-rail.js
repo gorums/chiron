@@ -181,7 +181,7 @@ function attachParaButtons(mid) {
     const b = document.createElement("button");
     b.className = "parask";
     b.type = "button";
-    b.title = "Ask the tutor about this paragraph";
+    b.setAttribute("data-help", "Ask the tutor about this paragraph");
     b.textContent = "?";
     b.addEventListener("click", ev => {
       ev.stopPropagation();
@@ -280,21 +280,24 @@ function renderRail() {
     : placeNow().step === "read"
       ? "Ask about this section…"
       : "Ask about this step…";
+  // the accessible name says what the box is; the placeholder is the same sentence with
+  // the ellipsis a screen reader would otherwise read out as "dot dot dot"
+  const label = placeholder.replace(/…$/, "");
   el.innerHTML = `
-    <div class="railgrip" id="railgrip" title="Drag to resize"></div>
+    <div class="railgrip" id="railgrip" data-help="Drag to resize"></div>
     <div class="railhead" id="railhead"></div>
     <div class="railbody" id="railbody"></div>
     <div class="chatmenu hidden" id="chatmenu"></div>
     <div class="railfoot">
-      <div class="row">
-        <label class="visually-hidden" for="railin">${esc(placeholder)}</label>
-        <textarea id="railin" rows="1" placeholder="${placeholder}"></textarea>
-        <button class="btn primary" id="railsend" onclick="railSend()" title="Send (Ctrl+Enter)" aria-label="Send the message">${ico("up", 15)}</button>
+      <div class="railcompose">
+        <label class="visually-hidden" for="railin">${esc(label)}</label>
+        <textarea id="railin" rows="1" placeholder="${esc(placeholder)}"></textarea>
+        <button class="btn primary" id="railsend" onclick="railSend()" data-help="Send (Ctrl+Enter)" aria-label="Send the message">${ico("up", 15)}</button>
       </div>
       <div class="railmeta">
         ${modelPicker()}
         <span class="hint">${connMode() === "none" ? "not connected" : "Enter for a new line · ⌘/Ctrl+↵ sends"}</span>
-        ${c && c.msgs.length ? `<button class="btn sm" onclick="compactConvo('${c.id}')" title="${esc(help("compact"))}">Compact</button>` : ""}
+        ${c && c.msgs.length ? `<button class="btn sm" onclick="compactConvo('${c.id}')" data-help="${esc(help("compact"))}">Compact</button>` : ""}
       </div>
     </div>`;
   renderRailHead();
@@ -333,19 +336,19 @@ function renderRailHead() {
   const others = convosFor(m.id).length;
   h.innerHTML = `
     <div class="railtop">
-      <span class="dotstat ${connMode() !== "none" ? "on" : ""}" title="${connMode() !== "none" ? "The tutor is connected" : "The tutor is not connected"}"></span>
-      <button class="convobtn" onclick="toggleChatMenu()" aria-haspopup="menu" aria-expanded="${rail.menuOpen ? "true" : "false"}" title="Chats in this module — one per section and per step">
+      <span class="dotstat ${connMode() !== "none" ? "on" : ""}" data-help="${connMode() !== "none" ? "The tutor is connected" : "The tutor is not connected"}"></span>
+      <button class="convobtn" onclick="toggleChatMenu()" aria-haspopup="menu" aria-expanded="${rail.menuOpen ? "true" : "false"}" data-help="Chats in this module — one per section and per step">
         <span class="ct">${secNo != null ? `<span class="secno">§${secNo + 1}</span> ` : ""}${esc(title)}</span><span class="cv">▾</span>
       </button>
-      <button class="iconbtn small" title="New chat here" aria-label="Start a new chat here" onclick="startNew()">${ico("plus", 15)}</button>
-      <button class="iconbtn small" title="Hide the tutor (a)" aria-label="Hide the tutor" onclick="toggleRail()">${ico("close", 14)}</button>
+      <button class="iconbtn small" data-help="New chat here" aria-label="Start a new chat here" onclick="startNew()">${ico("plus", 15)}</button>
+      <button class="iconbtn small" data-help="Hide the tutor (a)" aria-label="Hide the tutor" onclick="toggleRail()">${ico("close", 14)}</button>
     </div>
     <div class="railctx">
       ${isRoleplay(c) ? `<div class="rpbar"><span class="tag warn">role-play</span><span class="grow sub">${c.finished ? "Finished — feedback below" : "The tutor is the other side"}</span>${c.finished ? "" : `<button class="btn sm primary" id="rpfinish" onclick="finishRoleplay('${m.id}')">Finish &amp; get feedback</button>`}</div>` : ""}
       ${
         rail.pinned
           ? `<div class="pinned"><span class="tag acc">selection</span>
-             <button class="iconbtn tiny" title="Unpin the selection" aria-label="Unpin the selection" onclick="unpin()">${ico("close", 12)}</button>
+             <button class="iconbtn tiny" data-help="Unpin the selection" aria-label="Unpin the selection" onclick="unpin()">${ico("close", 12)}</button>
              <div class="ptext">${esc(rail.pinned.text.length > 220 ? rail.pinned.text.slice(0, 220) + "…" : rail.pinned.text)}</div></div>`
           : `<div class="ctxline">${where} · <b>${esc(placeLabel(place))}</b>${others > 1 ? ` · ${others} chats in this module` : ""}</div>`
       }
@@ -366,7 +369,7 @@ function modelOptions() {
    answer; every copy on the page carries data-model-pick and is kept in step by
    syncModelPickers(). */
 function modelPicker() {
-  return `<label class="modelpick" title="Which model answers in this chat">${ico("spark", 13)}
+  return `<label class="modelpick" data-help="Which model answers in this chat">${ico("spark", 13)}
     <select data-model-pick aria-label="Which model answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>`;
 }
 function syncModelPickers() {
@@ -394,13 +397,13 @@ function renderChatMenu() {
     asked(c) ? `${asked(c)} question${asked(c) === 1 ? "" : "s"}` : "no questions yet";
   const del = c =>
     c
-      ? `<button class="iconbtn small" title="Delete this chat" aria-label="Delete this chat" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>`
+      ? `<button class="iconbtn small" data-help="Delete this chat" aria-label="Delete this chat" onclick="deleteConvo('${c.id}')">${ico("trash", 12)}</button>`
       : "";
   const placeRow = (p, label, here) => {
     const c = convoAt(p);
     const on = cur ? c && c.id === cur.id : samePlace(p, place);
     return `<div class="crow ${on ? "on" : ""}">
-      <button class="cmain" onclick="openPlace(${esc(JSON.stringify(p))})" title="Open this and its chat">
+      <button class="cmain" onclick="openPlace(${esc(JSON.stringify(p))})" data-help="Open this and its chat">
         <span class="t">${label}</span>
         <span class="s">${count(c)}${here ? " · in view" : ""}</span>
       </button>${del(c)}</div>`;
@@ -424,7 +427,7 @@ function renderChatMenu() {
         <span class="t">${c.mid !== m.id ? `<span class="secno">${c.mid}</span> ` : ""}${esc(convoTitle(c))}</span>
         <span class="s">${count(c)} · ${new Date(c.updated).toLocaleDateString()}${c.parent ? " · carried over" : ""}</span>
       </button>
-      <button class="iconbtn small" title="Rename this chat" aria-label="Rename this chat" onclick="renameConvo('${c.id}')">${ico("pencil", 12)}</button>
+      <button class="iconbtn small" data-help="Rename this chat" aria-label="Rename this chat" onclick="renameConvo('${c.id}')">${ico("pencil", 12)}</button>
       ${del(c)}</div>`;
   const loose = convosFor(m.id).filter(c => !hasPlace(c));
   const others = allConvos()
@@ -440,7 +443,7 @@ function renderChatMenu() {
       <label class="cmmodel">Answers from
         <select data-model-pick aria-label="Which model answers" onchange="setTutorModel(this.value)">${modelOptions()}</select></label>
       <button class="btn sm" onclick="startNew()">${ico("plus", 13)} New chat here</button>
-      ${cur && cur.msgs.length ? `<button class="btn sm" title="${esc(help("compact"))}" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
+      ${cur && cur.msgs.length ? `<button class="btn sm" data-help="${esc(help("compact"))}" onclick="compactConvo('${cur.id}')">Compact into a new chat</button>` : ""}
       <button class="btn sm" onclick="markFilter='chats';go('#/marks')">All conversations</button>
     </div>`;
 }
@@ -484,7 +487,7 @@ function renderRailBody() {
   (c ? c.msgs : []).forEach((x, i) => {
     const last = i === c.msgs.length - 1;
     h += `<div class="msg ${x.r === "u" ? "u" : x.r === "e" ? "a err" : "a"}">
-      ${x.r === "u" && messageLabel(m, x) ? `<button class="msgctx" onclick="jumpToMessage('${c.id}',${i})" title="Go to this part of the module">${esc(messageLabel(m, x))}${x.quote ? " · selection" : ""} ↗</button>` : ""}
+      ${x.r === "u" && messageLabel(m, x) ? `<button class="msgctx" onclick="jumpToMessage('${c.id}',${i})" data-help="Go to this part of the module">${esc(messageLabel(m, x))}${x.quote ? " · selection" : ""} ↗</button>` : ""}
       ${x.r === "u" ? esc(x.t) : mdLite(x.t)}${x.r === "e" && last ? errorActions(x) : ""}</div>`;
   });
   h += `<div id="railpending"></div></div>`;
@@ -522,8 +525,8 @@ function renderSuggest() {
     c = convoShown();
   if (box) {
     const gaps = rail.pinned ? [] : gapChips(m.id);
-    const chip = (q, cls, title) =>
-      `<button class="chip ${cls}" onclick="askThis(this)" data-q="${esc(q)}" ${title ? `title="${title}"` : ""}>${esc(q)}</button>`;
+    const chip = (q, cls, hint) =>
+      `<button class="chip ${cls}" onclick="askThis(this)" data-q="${esc(q)}" ${hint ? `data-help="${hint}"` : ""}>${esc(q)}</button>`;
     const tools = rail.pinned
       ? `<button class="chip gen" onclick="genQuestions()" ${rail.generating ? "disabled" : ""}>
           ${rail.generating ? "Thinking of better questions…" : ico("spark", 12) + " Ask the tutor for sharper questions"}</button>`

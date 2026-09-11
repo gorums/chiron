@@ -40,7 +40,7 @@ function gapRow(g) {
   const closed = g.status === "closed";
   return `<div class="gaprow ${closed ? "closed" : ""}">
     <div class="gaphead"><b>${esc(g.topic)}</b>
-      ${m ? `<a class="tag acc" href="#/m/${m.id}" title="${esc(m.title)}">${m.id}</a>` : ""}
+      ${m ? `<a class="tag acc" href="#/m/${m.id}" data-help="${esc(m.title)}">${m.id}</a>` : ""}
       ${closed ? `<span class="tag">closed</span>` : ""}</div>
     <p class="gapwhy">${esc(g.why)}</p>
     ${g.ask && !closed ? `<p class="gapask">${esc(g.ask)}</p>` : ""}
@@ -82,7 +82,7 @@ function briefCard() {
 function gapsCard() {
   const open = openGaps(),
     closed = (learner().gaps || []).filter(g => g.status === "closed");
-  let h = `<div class="card gap-bottom"><h3 class="eyebrow" title="${esc(help("gap"))}">Gaps</h3>`;
+  let h = `<div class="card gap-bottom"><h3 class="eyebrow" data-help="${esc(help("gap"))}">Gaps</h3>`;
   if (!open.length)
     h += `<p class="sub">${learner().brief ? "No open gaps. Keep answering; new ones show here as the evidence comes in." : "Gaps appear here once the brief is written. Each one comes with a question the tutor can use to check whether it has closed."}</p>`;
   else
@@ -144,13 +144,13 @@ function renderGapCard() {
         <a class="btn" href="#/learner">See the evidence</a></div></div>`;
   }
   return `<div class="card accented gap-bottom">
-    <h3 class="eyebrow accent-ink" title="${esc(help("gap"))}">Gaps the tutor is working on</h3>
+    <h3 class="eyebrow accent-ink" data-help="${esc(help("gap"))}">Gaps the tutor is working on</h3>
     <p class="lede">From your answers and questions. Ask about one and the tutor picks it up where you left it.</p>
     <div class="rowline wrapped">
     ${open
       .map(
         g =>
-          `<button class="btn sm" onclick="${g.ask ? `askAbout('${g.mid}', this.dataset.q)` : `go('#/m/${g.mid}')`}" data-q="${esc(g.ask || "")}" title="${esc(g.why)}">${esc(g.mid)} · ${esc(g.topic)}</button>`
+          `<button class="btn sm" onclick="${g.ask ? `askAbout('${g.mid}', this.dataset.q)` : `go('#/m/${g.mid}')`}" data-q="${esc(g.ask || "")}" data-help="${esc(g.why)}">${esc(g.mid)} · ${esc(g.topic)}</button>`
       )
       .join("")}
     <a class="btn sm" href="#/learner">All gaps${learnerStale() && connMode() !== "none" ? " · update" : ""}</a>

@@ -24,13 +24,13 @@
     <a href="#/settings" id="nav-settings">Settings &amp; logs</a>
   </nav>
   <form class="search" id="searchform" role="search"><input type="search" id="searchq" placeholder="Search every course" aria-label="Search every course" autocomplete="off"></form>
-  <a class="iconbtn searchjump" href="#/search" aria-label="Search every course" title="Search every course"></a>
+  <a class="iconbtn searchjump" href="#/search" aria-label="Search every course" data-help="Search every course"></a>
   <span class="spacer"></span>
-  <label class="profilepick" title="Whose progress Studio shows"><span>Reading as</span><select id="profilesel" aria-label="Reader profile"></select></label>
-  <a class="iconbtn" href="#/settings" title="Add or remove reader profiles" aria-label="Manage reader profiles" id="profilelink"></a>
-  <a class="pill live hidden" id="jobstate" href="#/jobs" title="What Studio is doing right now"></a>
+  <label class="profilepick" data-help="Whose progress Studio shows"><span>Reading as</span><select id="profilesel" aria-label="Reader profile"></select></label>
+  <a class="iconbtn" href="#/settings" data-help="Add or remove reader profiles" aria-label="Manage reader profiles" id="profilelink"></a>
+  <a class="pill live hidden" id="jobstate" href="#/jobs" data-help="What Studio is doing right now"></a>
   <a class="pill" id="providerstate" href="#/settings">checking…</a>
-  <button class="iconbtn" id="themebtn" title="Theme" aria-label="Theme"></button>
+  <button class="iconbtn" id="themebtn" data-help="Theme" aria-label="Theme"></button>
 </header>
 
 <div class="navmenu hidden" id="navmenu" role="menu" aria-label="Studio">
@@ -43,6 +43,7 @@
 <main id="view"></main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div id="modalhost"></div>
 
 <script src="/ui/shared/00-dom.js"></script>
 <script src="/ui/js/00-core.js"></script>

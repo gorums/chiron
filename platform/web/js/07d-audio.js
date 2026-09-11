@@ -269,13 +269,13 @@ function audioBarHtml(m) {
   const stop = on ? `<button class="btn sm ghost" onclick="audioStop()">Stop</button>` : "";
   return `<button class="btn sm ${on ? "primary" : ""}" onclick="audioToggle('${m.id}')">${ico(icon, 14)} ${label}</button>
     ${stop}
-    <button class="btn sm ghost" onclick="audioCycleRate()" title="Speed">${audioRate()}×</button>
+    <button class="btn sm ghost" onclick="audioCycleRate()" data-help="Speed">${audioRate()}×</button>
     <span class="where">${where}</span>`;
 }
 function sectionSpeakButton(mid, i) {
   if (!audioSupported()) return "";
   const on = audioActive(mid) && audio.sec === i && !audio.paused;
-  return `<button class="askbtn speakbtn ${on ? "has on" : ""}" title="Read this section aloud" aria-label="Read this section aloud" onclick="audioPlay('${mid}',${i})">${ico(on ? "pause" : "speak", 14)}</button>`;
+  return `<button class="askbtn speakbtn ${on ? "has on" : ""}" data-help="Read this section aloud" aria-label="Read this section aloud" onclick="audioPlay('${mid}',${i})">${ico(on ? "pause" : "speak", 14)}</button>`;
 }
 function audioRefresh() {
   const bar = document.getElementById("audiobar");

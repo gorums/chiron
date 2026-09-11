@@ -13,7 +13,7 @@ function openNote(mid, id) {
     <div class="rowline wrapped gap-top">
       <button class="btn primary" onclick="saveNote2('${mid}','${id}')">Save</button>
       <button class="btn" onclick="saveNote2('${mid}','${id}',true)">Ask the tutor about it</button>
-      <button class="btn ghost pushright" style="color:var(--bad)" onclick="delMark('${mid}','${id}')">Delete</button>
+      <button class="btn ghost danger pushright" onclick="delMark('${mid}','${id}')">Delete</button>
     </div>`);
   setTimeout(() => {
     const t = document.getElementById("notein");
@@ -106,7 +106,7 @@ function viewMarks() {
           .join("")}
         <div class="rowline wrapped markacts">
           <button class="btn sm primary" onclick="continueConvo('${c.id}')">Continue this chat</button>
-          ${c.msgs.length && c.kind !== "rp" ? `<button class="btn sm" title="${esc(help("compact"))}" onclick="compactFromList('${c.id}')">Compact into a new chat</button>` : ""}
+          ${c.msgs.length && c.kind !== "rp" ? `<button class="btn sm" data-help="${esc(help("compact"))}" onclick="compactFromList('${c.id}')">Compact into a new chat</button>` : ""}
           <button class="btn sm" onclick="exportChat('${c.id}')">Copy transcript</button>
           <button class="btn sm" onclick="renameConvo('${c.id}')">Rename</button>
           <button class="btn sm danger" onclick="deleteConvo('${c.id}')">Delete</button>

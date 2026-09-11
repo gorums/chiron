@@ -21,7 +21,7 @@
 }
 .nb-title {
   font-weight: 600;
-  font-size: 14.5px;
+  font-size: var(--fs-lg);
 }
 .nb-title::before {
   content: "Notebook · ";
@@ -34,7 +34,7 @@
   gap: 8px;
 }
 .nb-note {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--muted);
 }
 .nb-static {
@@ -71,7 +71,7 @@
   padding: 8px 12px;
   background: transparent;
   border: 1px dashed var(--line-2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   white-space: pre-wrap;
 }
 .prose .nb-out.nb-err {
@@ -82,7 +82,7 @@
   display: block;
   max-width: 100%;
   margin: 6px 0 0;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--img-bg);
 }
 .notebook.live .nb-static {

@@ -20,9 +20,9 @@ function notebooksBar(c) {
   const why = `A Jupyter file written for a section (kernel ${c.notebooks.kernel}): the reader runs and edits it inside the module. ${server}`;
   const action =
     missing > 0
-      ? `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="writeNotebooks('${c.id}',null,false)">Write the missing ${missing}</button>`
-      : `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="writeNotebooks('${c.id}',null,true)">Replace all</button>`;
-  return `<b>Notebooks</b> <span class="sub" title="${esc(why)}">${total} in ${withNotebooks}/${mods.length} modules</span> ${action}`;
+      ? `<button class="btn sm" ${can ? "" : "disabled"} data-help="${esc(why)}" onclick="writeNotebooks('${c.id}',null,false)">Write the missing ${missing}</button>`
+      : `<button class="btn sm" ${can ? "" : "disabled"} data-help="${esc(why)}" onclick="writeNotebooks('${c.id}',null,true)">Replace all</button>`;
+  return `<b>Notebooks</b> <span class="sub" data-help="${esc(why)}">${total} in ${withNotebooks}/${mods.length} modules</span> ${action}`;
 }
 
 /* One row menu entry, only in a course that declares notebooks. */

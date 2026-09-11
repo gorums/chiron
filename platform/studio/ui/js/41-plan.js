@@ -61,8 +61,8 @@ function planModuleHTML(mod) {
         <span class="mid">${esc(mod.id)}</span>
         <input class="mtitle" type="text" value="${esc(mod.title)}" aria-label="Module title" ${off}>
         <input class="mmin" type="number" value="${mod.minutes}" min="15" step="15" aria-label="Minutes" ${off}>
-        <button class="btn sm ${open ? "warm" : ""}" aria-expanded="${open}" title="The brief this module is written from, and the prompts it becomes" onclick="toggleModuleBrief('${esc(mod.id)}')" ${off}>Brief</button>
-        <button class="btn sm ${mod.dropped ? "" : "rm"}" title="${mod.dropped ? "Put it back in the course" : "Leave this module out"}" aria-label="${mod.dropped ? "Restore" : "Skip"} ${esc(mod.id)}" onclick="toggleModuleSkip('${esc(mod.id)}')">${mod.dropped ? "Put back" : ico("close", 13)}</button>
+        <button class="btn sm ${open ? "warm" : ""}" aria-expanded="${open}" data-help="The brief this module is written from, and the prompts it becomes" onclick="toggleModuleBrief('${esc(mod.id)}')" ${off}>Brief</button>
+        <button class="btn sm ${mod.dropped ? "" : "rm"}" data-help="${mod.dropped ? "Put it back in the course" : "Leave this module out"}" aria-label="${mod.dropped ? "Restore" : "Skip"} ${esc(mod.id)}" onclick="toggleModuleSkip('${esc(mod.id)}')">${mod.dropped ? "Put back" : ico("close", 13)}</button>
       </div>`;
   return open ? row + planBriefHTML(mod) : row;
 }

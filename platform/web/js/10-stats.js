@@ -36,14 +36,14 @@ function viewStats() {
     <div class="stat"><div class="n">${qs.total ? Math.round(qs.pct * 100) + "%" : "—"}</div><div class="l">accuracy · ${qs.total} answered</div></div>
   </div>
 
-  <div class="card gap-bottom-lg"><h3 class="eyebrow" title="${esc(help("mastery"))}">Mastery — what you can still do</h3>
+  <div class="card gap-bottom-lg"><h3 class="eyebrow" data-help="${esc(help("mastery"))}">Mastery — what you can still do</h3>
     <p class="sub gap-bottom">Read is a tick. Practised is a quiz score. Proficient means it held up weeks later in a mixed checkpoint. Mastered means the cards have settled too. Levels drop when a checkpoint says so.</p>
-    <div class="mbar">${[4, 3, 2, 1].map(l => (dist[l] ? `<i class="l${l}" style="flex:${dist[l]}" title="${MASTERY[l]}: ${dist[l]}"></i>` : "")).join("")}${dist[0] ? `<i class="l0" style="flex:${dist[0]}" title="Not started: ${dist[0]}"></i>` : ""}</div>
-    <div class="legend flat">${[4, 3, 2, 1, 0].map(l => `<span title="${esc(help(MASTERY[l]))}"><i class="dot l${l}"></i>${MASTERY[l]} · ${dist[l]}</span>`).join("")}</div>
+    <div class="mbar">${[4, 3, 2, 1].map(l => (dist[l] ? `<i class="l${l}" style="flex:${dist[l]}" data-help="${MASTERY[l]}: ${dist[l]}"></i>` : "")).join("")}${dist[0] ? `<i class="l0" style="flex:${dist[0]}" data-help="Not started: ${dist[0]}"></i>` : ""}</div>
+    <div class="legend flat">${[4, 3, 2, 1, 0].map(l => `<span data-help="${esc(help(MASTERY[l]))}"><i class="dot l${l}"></i>${MASTERY[l]} · ${dist[l]}</span>`).join("")}</div>
   </div>
 
   <div class="grid g2 gap-bottom-lg">
-    <div class="card"><h3 class="eyebrow" title="${esc(help("calibration"))}">Calibration — do you know what you know?</h3>
+    <div class="card"><h3 class="eyebrow" data-help="${esc(help("calibration"))}">Calibration — do you know what you know?</h3>
     <p class="sub gap-bottom">The gap between how sure you felt and how right you were, across every quiz and checkpoint. A senior ${esc(CFG.practitioner)}'s real edge is knowing which of their beliefs are load-bearing.</p>`;
   const labels = { 3: "Certain", 2: "Fairly sure", 1: "Guessing" };
   [3, 2, 1].forEach(k => {
@@ -61,14 +61,14 @@ function viewStats() {
     <div class="forecast">`;
   for (let d = 0; d <= 14; d++) {
     const n = fc[d] || 0;
-    h += `<div class="fcol" title="${n} card(s) in ${d} day(s)">
+    h += `<div class="fcol" data-help="${n} card(s) in ${d} day(s)">
       <div class="fbar ${d === 0 ? "today" : ""} ${n ? "" : "none"}" style="height:${n ? Math.max(4, (n / maxF) * 88) : 2}px"></div>
       <span class="flabel">${d % 7 === 0 ? d : ""}</span></div>`;
   }
   h += `</div></div></div>`;
 
   h += `<div class="card gap-bottom-lg"><h3 class="eyebrow">Study days · last 17 weeks</h3>
-    <p class="sub gap-bottom" title="${esc(help("streak freeze"))}">A day counts once you have read a section, answered a question, reviewed a card or asked the tutor. Streak: <b>${STATE.streak.days}</b> day${STATE.streak.days === 1 ? "" : "s"}${STATE.streak.freezes ? ` · ${STATE.streak.freezes} freeze${STATE.streak.freezes === 1 ? "" : "s"} banked (a missed day spends one; finishing a module earns one)` : " · finish a module to bank a streak freeze"}.</p>
+    <p class="sub gap-bottom" data-help="${esc(help("streak freeze"))}">A day counts once you have read a section, answered a question, reviewed a card or asked the tutor. Streak: <b>${STATE.streak.days}</b> day${STATE.streak.days === 1 ? "" : "s"}${STATE.streak.freezes ? ` · ${STATE.streak.freezes} freeze${STATE.streak.freezes === 1 ? "" : "s"} banked (a missed day spends one; finishing a module earns one)` : " · finish a module to bank a streak freeze"}.</p>
     ${heatmapHtml()}</div>`;
 
   h += `<div class="card gap-bottom-lg"><h3 class="eyebrow">Module by module</h3>
@@ -77,10 +77,10 @@ function viewStats() {
     const pc = Math.round(modPct(x.m) * 100),
       ms = mastery(x.m);
     const band = x.pct == null ? "" : x.pct >= 0.8 ? "ok" : x.pct >= 0.6 ? "warm" : "bad";
-    h += `<a class="mrow boxed" href="#/m/${x.m.id}" title="${ms.name} — ${esc(help(ms.name))}">
+    h += `<a class="mrow boxed" href="#/m/${x.m.id}" data-help="${ms.name} — ${esc(help(ms.name))}">
       <span class="dot ${masteryClass(x.m)}"></span>
       <span class="code">${x.m.id}</span><span class="t">${esc(x.m.short)}</span>
-      <span class="tag spaced">${ms.name}</span>
+      <span class="tag">${ms.name}</span>
       <span class="minibar"><span class="bar"><i style="width:${pc}%"></i></span></span>
       <span class="score ${band}">${x.pct == null ? "—" : Math.round(x.pct * 100) + "%"}</span></a>`;
   });
@@ -108,11 +108,11 @@ function heatmapHtml() {
     for (let d = 0; d < 7; d++) {
       const day = start + w * 7 + d;
       const cls = day > t ? "future" : seen.has(day) ? "on" : frozen.has(day) ? "frz" : "";
-      h += `<i class="${cls}" title="${fmtDay(day)}${seen.has(day) ? " · studied" : frozen.has(day) ? " · freeze used" : ""}"></i>`;
+      h += `<i class="${cls}" data-help="${fmtDay(day)}${seen.has(day) ? " · studied" : frozen.has(day) ? " · freeze used" : ""}"></i>`;
     }
     h += `</div>`;
   }
-  h += `</div><div class="legend flat"><span><i class="hk on"></i>studied</span><span title="${esc(help("streak freeze"))}"><i class="hk frz"></i>freeze</span><span><i class="hk"></i>missed</span></div>`;
+  h += `</div><div class="legend flat"><span><i class="hk on"></i>studied</span><span data-help="${esc(help("streak freeze"))}"><i class="hk frz"></i>freeze</span><span><i class="hk"></i>missed</span></div>`;
   return h;
 }
 

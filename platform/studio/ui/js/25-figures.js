@@ -16,9 +16,9 @@ function figuresBar(c) {
     : providerName() + " is not answering.";
   const action =
     missing > 0
-      ? `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="drawFigures('${c.id}',null,false)">Draw the missing ${missing}</button>`
-      : `<button class="btn sm" ${can ? "" : "disabled"} title="${esc(why)}" onclick="drawFigures('${c.id}',null,true)">Redraw all</button>`;
-  return `<b>Figures</b> <span class="sub" title="${esc(why)}">${total} in ${withFigures}/${mods.length} modules</span> ${action}`;
+      ? `<button class="btn sm" ${can ? "" : "disabled"} data-help="${esc(why)}" onclick="drawFigures('${c.id}',null,false)">Draw the missing ${missing}</button>`
+      : `<button class="btn sm" ${can ? "" : "disabled"} data-help="${esc(why)}" onclick="drawFigures('${c.id}',null,true)">Redraw all</button>`;
+  return `<b>Figures</b> <span class="sub" data-help="${esc(why)}">${total} in ${withFigures}/${mods.length} modules</span> ${action}`;
 }
 
 /* One row menu entry: draw, or redraw when the module already has figures. */

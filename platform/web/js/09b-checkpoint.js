@@ -86,7 +86,7 @@ function viewCheck() {
   }
   // the hub
   let h = `<div class="wrap-wide"><h2 class="big">Checkpoints</h2>
-    <p class="lede" title="${esc(help("checkpoint"))}">A module quiz measures recognition ten minutes after reading. A checkpoint asks the same questions weeks later, mixed with everything else, and that is the number that predicts whether you can use it. Take one when a part is done, and again every couple of weeks.</p>
+    <p class="lede" data-help="${esc(help("checkpoint"))}">A module quiz measures recognition ten minutes after reading. A checkpoint asks the same questions weeks later, mixed with everything else, and that is the number that predicts whether you can use it. Take one when a part is done, and again every couple of weeks.</p>
     ${STATE.cp && !STATE.cp.finished ? `<div class="card accented gap-bottom"><h3 class="eyebrow">In progress</h3><p class="sub gap-bottom">${STATE.cp.kind === "course" ? "Course challenge" : "Checkpoint · " + esc(partName(STATE.cp.pid))} · question ${STATE.cp.i + 1} of ${STATE.cp.items.length}</p><div class="rowline wrapped"><button class="btn primary" onclick="go('#/check/run')">Continue</button><button class="btn" onclick="askAbandonCheck()">Abandon</button></div></div>` : ""}
     <div class="grid g2">`;
   DATA.parts.forEach(p => {
@@ -95,15 +95,15 @@ function viewCheck() {
       last = lastCheck("part", p.id);
     h += `<div class="card"><h3 class="eyebrow">${esc(p.name)}</h3>
       <p class="sub gap-bottom">${el.length} of ${ms.length} modules ready${last ? ` · last: ${Math.round((last.score / last.total) * 100)}% on ${fmtDay(last.day)}` : " · never taken"}</p>
-      <div class="rowline wrapped gap-bottom">${ms.map(m => `<span class="chip lvl l${mastery(m).lvl}" title="${mastery(m).name} — ${esc(help(mastery(m).name))}">${m.id}</span>`).join("")}</div>
-      <button class="btn ${el.length >= 2 ? "primary" : ""}" ${el.length >= 2 ? "" : 'disabled title="Two modules have to be Practised before a checkpoint can mix them"'} onclick="startCheckpoint('part','${p.id}')">Start · ${el.length * 2} questions</button></div>`;
+      <div class="rowline wrapped gap-bottom">${ms.map(m => `<span class="chip lvl l${mastery(m).lvl}" data-help="${mastery(m).name} — ${esc(help(mastery(m).name))}">${m.id}</span>`).join("")}</div>
+      <button class="btn ${el.length >= 2 ? "primary" : ""}" ${el.length >= 2 ? "" : 'disabled data-help="Two modules have to be Practised before a checkpoint can mix them"'} onclick="startCheckpoint('part','${p.id}')">Start · ${el.length * 2} questions</button></div>`;
   });
   const elc = eligibleFor("course"),
     lastc = lastCheck("course");
   h += `<div class="card warmcard"><h3 class="eyebrow warnnote">Course challenge</h3>
     <p class="sub gap-bottom">${elc.length} of ${MODS.length} modules ready${lastc ? ` · last: ${Math.round((lastc.score / lastc.total) * 100)}% on ${fmtDay(lastc.day)}` : " · never taken"}</p>
     <p class="sub gap-bottom">One or two questions from every module you have finished, in no order at all. This is the exam the course would set if it could.</p>
-    <button class="btn ${elc.length >= 2 ? "primary" : ""}" ${elc.length >= 2 ? "" : 'disabled title="Two modules have to be Practised before a course challenge can mix them"'} onclick="startCheckpoint('course','')">Start · ${Math.min(40, elc.length * (elc.length > 15 ? 1 : 2))} questions</button></div>`;
+    <button class="btn ${elc.length >= 2 ? "primary" : ""}" ${elc.length >= 2 ? "" : 'disabled data-help="Two modules have to be Practised before a course challenge can mix them"'} onclick="startCheckpoint('course','')">Start · ${Math.min(40, elc.length * (elc.length > 15 ? 1 : 2))} questions</button></div>`;
   h += `</div>`;
   const hist = (STATE.cpHist || []).slice().reverse().slice(0, 12);
   if (hist.length) {
@@ -185,7 +185,7 @@ function cpResults() {
         .map(m => {
           const b = hist.byMod[m.id],
             ms = mastery(m);
-          return `<a class="mrow boxed" href="#/m/${m.id}" title="${ms.name} — ${esc(help(ms.name))}"><span class="dot ${masteryClass(m)}"></span><span class="code">${m.id}</span><span class="t">${esc(m.short)}</span><span class="score ${b.ok === b.n ? "ok" : "bad"}">${b.ok}/${b.n}</span><span class="tag">${ms.name}</span></a>`;
+          return `<a class="mrow boxed" href="#/m/${m.id}" data-help="${ms.name} — ${esc(help(ms.name))}"><span class="dot ${masteryClass(m)}"></span><span class="code">${m.id}</span><span class="t">${esc(m.short)}</span><span class="score ${b.ok === b.n ? "ok" : "bad"}">${b.ok}/${b.n}</span><span class="tag">${ms.name}</span></a>`;
         })
         .join("")}
       ${slipped.length ? `<p class="sub gap-top">Slipped: ${slipped.map(m => m.id).join(", ")}. Re-read just the section behind each miss, not the whole module.</p>` : ""}

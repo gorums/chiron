@@ -77,8 +77,8 @@ function quickModelBar() {
   const options = modelOptions(quickModel());
   const why =
     "Review, Draw figures and Write notebooks run on this, for this session only. Patch or rewrite, Add a module and Resume pick their own on their forms.";
-  return `<label for="quick-model" title="${esc(why)}">Model</label>
-    <select id="quick-model" title="${esc(why)}" aria-label="Model for review, figures and notebooks" onchange="setQuickModel(this.value)">${options}</select>`;
+  return `<label for="quick-model" data-help="${esc(why)}">Model</label>
+    <select id="quick-model" data-help="${esc(why)}" aria-label="Model for review, figures and notebooks" onchange="setQuickModel(this.value)">${options}</select>`;
 }
 
 /* What a one-click action sends. */

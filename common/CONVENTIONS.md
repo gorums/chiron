@@ -429,28 +429,73 @@ to mean *filled* in Studio and *outlined* in the page.
 
 | | |
 |---|---|
-| `web/css/00-tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-base` |
+| `web/css/00-tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--control-line` for a control's own boundary, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-display`, the radius scale `--radius-xxs..--radius-pill`, and the two breakpoint ladders as a comment |
 | `web/css/01-base.css` | the primitives: reset, one `:focus-visible` ring, the `.btn` family, the form block, `.card`, `.tag`, `.pill`, `.badge`, `.bar`, `.chip`, `.note`, `.problems`, `.toast`, `.menu`, `.empty`, `.scrim`, `.spin`/`.pulse`, `.topbar`, and the spacing utilities (`.gap-top`, `.rowline`, `.grow`, …) that keep `style=` out of the markup |
-| `web/js/00-dom.js` | `$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, and `HELP` / `help(term)` |
+| `web/js/00-dom.js` | `$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, `HELP` / `help(term)`, the hint engine behind `data-help`, and the dialog: `showModal`, `confirmModal`, `promptModal`, `closeModal` |
 
 `web/css/01b-shell.css` holds the reader's own frame (the three-column grid, the sidebar) and
 Studio's `studio.css` holds Studio's; neither surface loads the other's.
 
 - **`.btn` is outlined. `.primary` is the filled one, and there is one per region** — the
-  next thing to do. `.ghost`, `.sm`, `.warm`, `.danger` and `.iconbtn` are the rest of the
-  family; a variant outside that list has no rule, and a test says so.
+  next thing to do. `.ghost`, `.sm`, `.warm`, `.danger`, `.rm`, `.kebab` and `.iconbtn` are
+  the rest of the family; a variant outside that list has no rule, and a test says so — of
+  the CSS *and* of the markup, because `.kebab` was written as a bare `.kebab` and used as
+  `class="btn sm kebab"`, which is a sixth variant the rule could not see.
+- **A control's boundary is `--control-line`, not `--line-2`.** A divider may be faint; the
+  edge that says "this is a button" may not — WCAG 1.4.11 asks for 3:1, and `--line-2` on
+  `--surface` is 1.66:1. `.ghost` is the one button with no boundary at all, so its colour
+  and weight have to carry it and it belongs beside another button, never alone.
+- **Nothing cancels the focus ring.** There is no `outline: none` anywhere in the design
+  system, and a test would be the next thing to write if one appeared. A menu item's hover
+  fill is not a focus indicator: `--surface-2` on `--surface` is 1.16:1.
+- **The radius scale is six rungs, named by what a corner belongs to**: `--radius-xxs` a
+  mark in running text, `--radius-xs` a key or an inline chip, `--radius-sm` a control,
+  `--radius` a panel, `--radius-lg` a surface floating over the page, `--radius-pill`. A
+  `50%` is still written where a circle is meant — that is geometry, not a rung — and a
+  `0` is a deliberate square. Everything else was sixteen loose numbers, three of them
+  `--s2`, a *spacing* token standing in for a radius.
+- **The type scale is twelve rungs and nothing else.** `--fs-xxs` (11px) through
+  `--fs-display` (52px): a 1px ramp below the body size where UI text has to stay dense and
+  still be told apart, opening up above it. A raw px `font-size` outside `00-tokens.css`
+  fails the suite. The guard used to be an allowlist of every number already written, which
+  is a ratchet and not a scale — it had grown to twenty-six values across 154 declarations.
 - **`.tag` says what something is** (`ok`, `warn`, `bad`, `acc`, `stale`), **`.pill` says what
   state a thing is in** (`on`, `off`, `live`), **`.badge` is a count**. Studio's verdicts are
   `.tag`, not a family of their own.
 - **`help(term)` is the one glossary.** Mastery levels, freeze, mistake card, calibration,
   checkpoint, compact, the verdict scale, patch versus rewrite, resume, stale, profile,
-  anchor, practitioner, curriculum — each defined once in `00-dom.js` and printed as a
-  `title` where the word appears, instead of on a page the reader has to go and find.
+  anchor, practitioner, curriculum — each defined once in `00-dom.js` and shown where the
+  word appears, instead of on a page the reader has to go and find.
+- **Every hint is `data-help`, and `title` is not used.** A browser tooltip never appears on
+  a touch screen, never appears on keyboard focus, and is announced inconsistently — so the
+  glossary above was invisible to most of the people it was written for. The engine in
+  `00-dom.js` shows a hint on hover, on focus and on tap, wires `aria-describedby`, and
+  gives a tab stop to a carrier nothing can focus *unless* it sits inside something already
+  focusable, which is what keeps a sidebar of badges from becoming a sidebar of tab stops.
+  A disabled `.btn` keeps its pointer events for the same reason: its hint is the one that
+  says what it is waiting for. The exceptions are `<iframe title>`, which is the frame's
+  accessible name, and `document.title`.
+- **The dialog is a primitive, so it is in `00-dom.js`.** `confirmModal` / `promptModal` say
+  what they are, trap Tab, hand the focus back to whatever opened them, and focus *Cancel*
+  when the action is dangerous. Never `confirm()`. It used to live beside the reader's
+  command palette, which left Studio — the surface that writes files — without one.
+- **A panel does not take the focus from its tab.** Selecting a tab leaves the focus on the
+  tab; that is what lets the next arrow key reach the next tab.
 - **One theme key, `platform_theme`.** Studio and a served page read and write it, so a dark
   Studio never opens a light course page; a page off disk falls back to `STATE.theme`.
-- Four guards in `TestCodeConventions` hold this: no colour outside `00-tokens.css`, no font
-  size off the scale, no `.btn` variant without a rule, no class used in a template that no
-  stylesheet defines, and a ceiling on inline `style=` per tree.
+- **Two breakpoint ladders, five rungs and three.** Viewport 1200 · 960 · 860 · 720 · 560;
+  container 900 · 800 · 700, because the reading column follows `#main` and not the window.
+  A media query cannot read a custom property, so they are numbers at the rule and a comment
+  in `00-tokens.css` — the point is that a new rule picks a rung rather than inventing one.
+- **The dark palette is written twice and is one palette.** CSS cannot share a declaration
+  block between a media query and a selector, and the theme is three-state — light, dark, and
+  the attribute being absent. `test_the_dark_palette_is_written_once_in_two_places` keeps the
+  two copies identical, so a token added to one and forgotten in the other fails the suite.
+- Eight guards in `TestCodeConventions` hold this: no colour outside `00-tokens.css`, no raw
+  px font size anywhere, no raw radius anywhere, no `.btn` variant without a rule (in the CSS
+  or the markup), no class used in a template that no stylesheet defines, no `title` where a
+  `data-help` belongs, the two dark blocks identical, and a ceiling on inline `style=` per
+  tree.
 
 ### One vocabulary
 

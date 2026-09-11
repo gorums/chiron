@@ -128,7 +128,7 @@ function ico(name, size) {
 
 /* ---------- one glossary, used wherever a term is printed ----------
    The platform has words of its own — mastery, freeze, patch, curriculum. Each is defined
-   once here and shown as a `title` at the point of use, so no one has to go and find the
+   once here and shown as a hint at the point of use, so no one has to go and find the
    page that explains it. `help(term)` returns the sentence, or "" for a term with none. */
 const HELP = {
   "not started": "You have not opened this module yet.",
@@ -175,3 +175,188 @@ const HELP = {
 function help(term) {
   return HELP[String(term || "").toLowerCase()] || "";
 }
+
+/* ---------- the dialog ----------
+   One dialog host, and both surfaces have it. Whatever is inside it, the rules are the
+   same: it says it is a dialog, the focus goes into it and cannot leave by Tab, and the
+   focus goes back to whatever opened it. Everything that used to be a browser confirm()
+   or prompt() is one of these.
+
+   It lives here rather than beside the reader's palette because a dialog is a primitive,
+   like a button: Studio was the surface without one, and "are you sure" is exactly the
+   question a tool that writes files has to ask. Escape is wired per surface — each one
+   already owns a keydown handler with its own idea of what else Escape closes. */
+let modalReturn = null; // the element to give the focus back to
+function modalOpen() {
+  return !!$("#modalhost").innerHTML;
+}
+function showModal(inner, label) {
+  modalReturn = document.activeElement;
+  $("#modalhost").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()">
+       <div class="modal" role="dialog" aria-modal="true" ${label ? `aria-label="${esc(label)}"` : ""}>${inner}</div></div>`;
+  setTimeout(() => focusFirst($("#modalhost")), 20);
+}
+function closeModal() {
+  $("#modalhost").innerHTML = "";
+  const back = modalReturn;
+  modalReturn = null;
+  if (back && document.body.contains(back)) back.focus();
+}
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea, input:not([type="hidden"]), select, [tabindex]:not([tabindex="-1"])';
+function focusables(host) {
+  return Array.from(host.querySelectorAll(FOCUSABLE)).filter(el => el.offsetParent !== null);
+}
+function focusFirst(host) {
+  const first = focusables(host)[0];
+  if (first) first.focus();
+}
+/* Tab inside an open dialog wraps around instead of walking off into the page behind it. */
+document.addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const host = $("#modalhost");
+  if (!host || !host.innerHTML) return;
+  const items = focusables(host);
+  if (!items.length) return;
+  const first = items[0],
+    last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
+/* In-page stand-ins for confirm() and prompt(): same look as every other dialog, keyboard
+   friendly, and they do not block the page. A dangerous one focuses Cancel, so Enter
+   cannot erase anything by reflex. */
+let modalCb = null;
+function confirmModal(title, body, okLabel, onOk, danger) {
+  modalCb = onOk;
+  showModal(
+    `<h3 class="h-serif">${esc(title)}</h3>
+    <p class="sub gap-bottom-lg">${esc(body)}</p>
+    <div class="rowline end">
+      <button class="btn" id="modalcancel" onclick="closeModal()">Cancel</button>
+      <button class="btn ${danger ? "danger" : "primary"}" id="modalok" onclick="modalOk()">${esc(okLabel || "OK")}</button></div>`,
+    title
+  );
+  setTimeout(() => {
+    const b = document.getElementById(danger ? "modalcancel" : "modalok");
+    if (b) b.focus();
+  }, 20);
+}
+function promptModal(title, value, okLabel, onOk) {
+  modalCb = () => onOk(document.getElementById("modalin").value);
+  showModal(
+    `<h3 class="h-serif">${esc(title)}</h3>
+    <label class="visually-hidden" for="modalin">${esc(title)}</label>
+    <input type="text" id="modalin" value="${esc(value || "")}" onkeydown="if(event.key==='Enter'){event.preventDefault();modalOk()}">
+    <div class="rowline end gap-top">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" onclick="modalOk()">${esc(okLabel || "Save")}</button></div>`,
+    title
+  );
+  setTimeout(() => {
+    const i = document.getElementById("modalin");
+    if (i) {
+      i.focus();
+      i.select();
+    }
+  }, 20);
+}
+function modalOk() {
+  const cb = modalCb;
+  modalCb = null;
+  closeModal();
+  if (cb) cb();
+}
+
+/* ---------- hints ----------
+   `data-help` is this platform's tooltip, and it exists because `title` is not one: a
+   browser tooltip never appears on a touch screen, never appears on keyboard focus, takes
+   a second or two to show and cannot be read at leisure. Every explanation the two
+   surfaces print — the glossary above, what a disabled button is waiting for, what a
+   shortcut is — is a `data-help`, and it shows on hover, on focus and on tap.
+
+   A carrier that nothing can focus (a count, a coloured dot) is given a tab stop, unless
+   it sits inside something already focusable — then that ancestor shows it, which is what
+   keeps a sidebar of badges from becoming a sidebar of tab stops. */
+let hintOn = null;
+function hintHost() {
+  let el = $("#hinthost");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "hinthost";
+    el.className = "helptip";
+    el.setAttribute("role", "tooltip");
+    el.hidden = true;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+/* The hint a focus or a hover should show: the carrier itself, or the one inside it. */
+function hintCarrier(el) {
+  if (!el || !el.closest) return null;
+  const own = el.closest("[data-help]");
+  if (own) return own;
+  return el.querySelector ? el.querySelector("[data-help]") : null;
+}
+function showHint(el) {
+  const text = el && el.getAttribute("data-help");
+  if (!text) return;
+  if (hintOn === el) return;
+  hideHint();
+  const host = hintHost();
+  host.textContent = text;
+  host.hidden = false;
+  const box = el.getBoundingClientRect();
+  const width = host.offsetWidth;
+  const left = Math.min(Math.max(8, box.left), window.innerWidth - width - 8);
+  const below = box.bottom + 8;
+  const fits = below + host.offsetHeight < window.innerHeight - 8;
+  host.style.left = left + "px";
+  host.style.top = (fits ? below : box.top - host.offsetHeight - 8) + "px";
+  el.setAttribute("aria-describedby", "hinthost");
+  hintOn = el;
+}
+function hideHint() {
+  const host = $("#hinthost");
+  if (host) host.hidden = true;
+  if (hintOn) hintOn.removeAttribute("aria-describedby");
+  hintOn = null;
+}
+/* Anything carrying a hint and unable to take the focus is given a tab stop, so the hint
+   is reachable without a mouse. Both surfaces redraw whole screens, so this watches. */
+const HINT_FOCUSABLE = "a[href], button, input, select, textarea, [tabindex], summary";
+function stampHints(root) {
+  (root.querySelectorAll ? root.querySelectorAll("[data-help]") : []).forEach(el => {
+    if (el.matches(HINT_FOCUSABLE)) return;
+    if (el.parentElement && el.parentElement.closest(HINT_FOCUSABLE)) return;
+    el.setAttribute("tabindex", "0");
+  });
+}
+document.addEventListener("mouseover", e => showHint(hintCarrier(e.target)));
+document.addEventListener("mouseout", e => {
+  if (hintOn && !hintOn.contains(e.relatedTarget)) hideHint();
+});
+document.addEventListener("focusin", e => showHint(hintCarrier(e.target)));
+document.addEventListener("focusout", hideHint);
+document.addEventListener("click", e => {
+  const el = hintCarrier(e.target);
+  if (!el) return hideHint();
+  if (hintOn === el) hideHint();
+  else showHint(el);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") hideHint();
+});
+window.addEventListener("scroll", hideHint, true);
+document.addEventListener("DOMContentLoaded", () => {
+  stampHints(document.body);
+  new MutationObserver(records => {
+    records.forEach(r => r.addedNodes.forEach(n => n.nodeType === 1 && stampHints(n)));
+  }).observe(document.body, { childList: true, subtree: true });
+});

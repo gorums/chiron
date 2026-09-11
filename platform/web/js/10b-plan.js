@@ -60,11 +60,11 @@ function renderToday(cont) {
   const rows = [];
   if (due)
     rows.push(
-      `<button class="trow" onclick="go('#/review')" title="${esc(help("practice deck"))}"><span class="ico">${ico("review", 14)}</span><span>Practise <b>${due}</b> card${due > 1 ? "s" : ""}${md ? ` · ${md} mistake${md > 1 ? "s" : ""}` : ""}</span><span class="t">~${Math.max(1, Math.round(due * 0.4))} min</span></button>`
+      `<button class="trow" onclick="go('#/review')" data-help="${esc(help("practice deck"))}"><span class="ico">${ico("review", 14)}</span><span>Practise <b>${due}</b> card${due > 1 ? "s" : ""}${md ? ` · ${md} mistake${md > 1 ? "s" : ""}` : ""}</span><span class="t">~${Math.max(1, Math.round(due * 0.4))} min</span></button>`
     );
   else if (mistakeCount())
     rows.push(
-      `<button class="trow" onclick="go('#/review/mistakes')" title="${esc(help("mistake card"))}"><span class="ico">${ico("close", 13)}</span><span>Fix <b>${mistakeCount()}</b> mistake${mistakeCount() > 1 ? "s" : ""}</span><span class="t">~${Math.max(1, Math.round(mistakeCount() * 0.5))} min</span></button>`
+      `<button class="trow" onclick="go('#/review/mistakes')" data-help="${esc(help("mistake card"))}"><span class="ico">${ico("close", 13)}</span><span>Fix <b>${mistakeCount()}</b> mistake${mistakeCount() > 1 ? "s" : ""}</span><span class="t">~${Math.max(1, Math.round(mistakeCount() * 0.5))} min</span></button>`
     );
   let next = "";
   if (cont) {
@@ -89,7 +89,7 @@ function renderToday(cont) {
     );
   if (openQs())
     rows.push(
-      `<button class="trow" onclick="markFilter='open';go('#/marks')" title="Passages you marked with a question and have not closed"><span class="ico">${ico("ask", 14)}</span><span>Close <b>${openQs()}</b> open question${openQs() > 1 ? "s" : ""}</span><span class="t">~5 min</span></button>`
+      `<button class="trow" onclick="markFilter='open';go('#/marks')" data-help="Passages you marked with a question and have not closed"><span class="ico">${ico("ask", 14)}</span><span>Close <b>${openQs()}</b> open question${openQs() > 1 ? "s" : ""}</span><span class="t">~5 min</span></button>`
     );
   const streakLine =
     STATE.streak.last === todayNum()
@@ -98,7 +98,7 @@ function renderToday(cont) {
         ? `Streak <b>${STATE.streak.days}</b> — nothing yet today`
         : "No streak yet — one section, one card or one question starts it";
   const freezes = STATE.streak.freezes
-    ? ` · <span title="${esc(help("streak freeze"))}">❄ ${STATE.streak.freezes} freeze${STATE.streak.freezes > 1 ? "s" : ""}</span>`
+    ? ` · <span data-help="${esc(help("streak freeze"))}">❄ ${STATE.streak.freezes} freeze${STATE.streak.freezes > 1 ? "s" : ""}</span>`
     : "";
   return `<div class="card today raised"><h3 class="eyebrow">${cont && modPct(cont) > 0 ? "Continue" : "Next"}</h3>
     ${next}
@@ -136,7 +136,7 @@ function renderPlanCard() {
       <label class="visually-hidden" for="plandate">Target date</label>
       <input type="date" id="plandate" value="${pl.target || ""}" min="${iso(todayNum() + 1)}" class="${pl.mode === "date" ? "" : "hidden"}">
       <button class="btn sm primary" onclick="savePlan()">Save</button>
-      ${pl.mode ? `<button class="btn sm" onclick="shiftPlan()" title="Start counting from today">Shift to today</button>` : ""}
+      ${pl.mode ? `<button class="btn sm" onclick="shiftPlan()" data-help="Start counting from today">Shift to today</button>` : ""}
     </div>
     ${pi.weekly && pi.thisWeek.length ? `<p class="sub gap-top">This week: ${pi.thisWeek.map(m => `<a class="chip sm" href="#/m/${m.id}">${m.id} · ${esc(m.short)}</a>`).join(" ")}</p>` : ""}
     ${STUDIO && "Notification" in window ? `<p class="sub gap-top"><label class="radio"><input type="checkbox" id="plannotify" ${STATE.ui && STATE.ui.notify ? "checked" : ""}> Remind me in this browser when cards are due</label></p>` : ""}
@@ -229,9 +229,9 @@ function viewRecord() {
   DATA.parts.forEach(p => {
     const ms = MODS.filter(m => m.part === p.id);
     h += `<div class="partrow"><div class="rowline mapttl"><b>${esc(p.name)}</b><span class="sub">${ms.filter(m => mastery(m).lvl >= 3).length} of ${ms.length} proficient or better</span></div>
-      <div class="rowline wrapped">${ms.map(m => `<a class="chip lvl l${mastery(m).lvl}" href="#/m/${m.id}" title="${mastery(m).name} — ${esc(help(mastery(m).name))}">${m.id}</a>`).join("")}</div></div>`;
+      <div class="rowline wrapped">${ms.map(m => `<a class="chip lvl l${mastery(m).lvl}" href="#/m/${m.id}" data-help="${mastery(m).name} — ${esc(help(mastery(m).name))}">${m.id}</a>`).join("")}</div></div>`;
   });
-  h += `<div class="legend flat">${[4, 3, 2, 1].map(l => `<span title="${esc(help(MASTERY[l]))}"><i class="dot l${l}"></i>${MASTERY[l]} · ${dist[l]}</span>`).join("")}</div></div>`;
+  h += `<div class="legend flat">${[4, 3, 2, 1].map(l => `<span data-help="${esc(help(MASTERY[l]))}"><i class="dot l${l}"></i>${MASTERY[l]} · ${dist[l]}</span>`).join("")}</div></div>`;
   const openByModule = MODS.map(m => ({ m, n: openGapItems(m.id).length })).filter(x => x.n);
   if (openByModule.length)
     h += `<div class="card warmcard gap-bottom"><h3 class="eyebrow warnnote">Gaps still open</h3>
@@ -245,7 +245,7 @@ function viewRecord() {
   if (sheets.length)
     h += `<div class="card gap-bottom"><h3 class="eyebrow">Worksheets you filled in</h3><div class="rowline wrapped">${sheets.map(x => `<button class="btn sm" onclick="go('#/library/t-${x.t.slug}')">${esc(x.t.title)} · ${x.n}/${x.t.fields}</button>`).join("")}</div></div>`;
   const c3 = qs.conf[3];
-  h += `<div class="card gap-bottom"><h3 class="eyebrow" title="${esc(help("calibration"))}">Calibration</h3><p class="lede">${c3[1] >= 5 ? `When certain, right ${Math.round((c3[0] / c3[1]) * 100)}% of the time over ${c3[1]} answers.` : "Not enough confident answers to say yet."}</p></div>
+  h += `<div class="card gap-bottom"><h3 class="eyebrow" data-help="${esc(help("calibration"))}">Calibration</h3><p class="lede">${c3[1] >= 5 ? `When certain, right ${Math.round((c3[0] / c3[1]) * 100)}% of the time over ${c3[1]} answers.` : "Not enough confident answers to say yet."}</p></div>
     <div class="rowline wrapped"><button class="btn primary" onclick="copyRecord()">Copy as text</button><button class="btn" onclick="window.print()">Print</button><button class="btn" onclick="go('#/stats')">Progress</button></div></div>`;
   $("#view").innerHTML = h;
 }

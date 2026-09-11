@@ -103,7 +103,7 @@ function viewSettings() {
 
   <div class="card gap-bottom">
     <h3 class="eyebrow">${esc((CFG.anchor || {}).label || "Your own case")}</h3>
-    <p class="sub gap-bottom" title="${esc(help("anchor"))}">${esc((CFG.anchor || {}).prompt || "")}</p>
+    <p class="sub gap-bottom" data-help="${esc(help("anchor"))}">${esc((CFG.anchor || {}).prompt || "")}</p>
     <label class="visually-hidden" for="bizin">${esc((CFG.anchor || {}).label || "Your own case")}</label>
     <input type="text" id="bizin" value="${esc(STATE.biz || "")}" placeholder="${esc((CFG.anchor || {}).placeholder || "")}" onchange="STATE.biz=this.value.trim();save();toast('Saved')">
   </div>

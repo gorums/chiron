@@ -15,7 +15,7 @@ function courseCard(c) {
   const pct = Math.round((p.pct || 0) * 100);
   const running = c.job && !FINISHED.includes(c.job.status);
   const status = c.error
-    ? `<span class="pill off" title="${esc(help("needs fixing"))}">needs fixing</span>`
+    ? `<span class="pill off" data-help="${esc(help("needs fixing"))}">needs fixing</span>`
     : running || c.built
       ? ""
       : `<span class="pill">not built</span>`;
@@ -80,7 +80,7 @@ function calendarStrip() {
         day: "numeric",
         month: "short",
       });
-      heat += `<i class="${day > t ? "future" : who.length > 1 ? "many" : who.length ? "on" : ""}" title="${esc(label)}${who.length ? " · " + esc(who.join(", ")) : ""}"></i>`;
+      heat += `<i class="${day > t ? "future" : who.length > 1 ? "many" : who.length ? "on" : ""}" data-help="${esc(label)}${who.length ? " · " + esc(who.join(", ")) : ""}"></i>`;
     }
     heat += `</div>`;
   }
@@ -123,7 +123,7 @@ function importCard() {
         <label class="inlinelabel">choose one<input type="file" id="zipfile" accept=".zip,application/zip" class="hidden"></label></div>
       <form class="rowline" id="gitform">
         <label class="visually-hidden" for="giturl">Course repository URL</label>
-        <input type="text" id="giturl" placeholder="https://github.com/you/course-repo" autocomplete="off" ${STATE.git ? "" : 'disabled title="git is not installed on this machine"'}>
+        <input type="text" id="giturl" placeholder="https://github.com/you/course-repo" autocomplete="off" ${STATE.git ? "" : 'disabled data-help="git is not installed on this machine"'}>
         <button class="btn sm" id="clonebtn" ${STATE.git ? "" : "disabled"}>Clone</button>
       </form>
     </div>
@@ -153,7 +153,7 @@ function newCourseButton(kind) {
   const ok = providerReady();
   return ok
     ? `<a class="btn ${kind || ""}" href="#/new">New course</a>`
-    : `<button class="btn ${kind || ""}" disabled title="Studio cannot reach ${esc(providerName())}, which is what writes a course.">New course</button>`;
+    : `<button class="btn ${kind || ""}" disabled data-help="Studio cannot reach ${esc(providerName())}, which is what writes a course.">New course</button>`;
 }
 
 function viewLibrary() {

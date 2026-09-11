@@ -147,7 +147,7 @@ function providerField(row, i) {
     )
     .join("");
   const hint = "Which provider reaches this model";
-  return `<select class="provider" title="${esc(hint)}" aria-label="${esc(hint)}" onchange="editModelRow(${i}, 'provider', this.value)">
+  return `<select class="provider" data-help="${esc(hint)}" aria-label="${esc(hint)}" onchange="editModelRow(${i}, 'provider', this.value)">
     <option value="" ${row.provider ? "" : "selected"}>(default)</option>${options}</select>`;
 }
 
@@ -158,7 +158,7 @@ function modelRow(row, i) {
     provider +
     MODEL_FIELDS.map(
       ([key, hint]) =>
-        `<input type="text" class="${key}" value="${esc(row[key])}" placeholder="${esc(samples[key])}" title="${esc(hint)}" aria-label="${esc(hint)}" oninput="editModelRow(${i}, '${key}', this.value)" spellcheck="false">`
+        `<input type="text" class="${key}" value="${esc(row[key])}" placeholder="${esc(samples[key])}" data-help="${esc(hint)}" aria-label="${esc(hint)}" oninput="editModelRow(${i}, '${key}', this.value)" spellcheck="false">`
     ).join("");
   const testing = modelEditor.testing === row.id;
   const first = i === 0;
@@ -167,10 +167,10 @@ function modelRow(row, i) {
     <div class="fields${provider ? " withprovider" : ""}">${inputs}</div>
     <div class="tools">
       ${modelTestResult(row.id)}
-      <button class="btn sm" onclick="testModelRow(${i})" ${testing ? "disabled" : ""} title="Ask once with this model only, through the provider that reaches it">${testing ? `<span class="spin"></span> Testing…` : "Test"}</button>
-      <button class="btn sm" onclick="moveModelRow(${i}, -1)" ${first ? "disabled" : ""} title="Move up" aria-label="Move up">${ico("up", 13)}</button>
-      <button class="btn sm" onclick="moveModelRow(${i}, 1)" ${last ? "disabled" : ""} title="Move down" aria-label="Move down">${ico("down", 13)}</button>
-      <button class="btn sm rm" onclick="removeModelRow(${i})" title="Remove from the list" aria-label="Remove">${ico("close", 13)}</button>
+      <button class="btn sm" onclick="testModelRow(${i})" ${testing ? "disabled" : ""} data-help="Ask once with this model only, through the provider that reaches it">${testing ? `<span class="spin"></span> Testing…` : "Test"}</button>
+      <button class="btn sm" onclick="moveModelRow(${i}, -1)" ${first ? "disabled" : ""} data-help="Move up" aria-label="Move up">${ico("up", 13)}</button>
+      <button class="btn sm" onclick="moveModelRow(${i}, 1)" ${last ? "disabled" : ""} data-help="Move down" aria-label="Move down">${ico("down", 13)}</button>
+      <button class="btn sm rm" onclick="removeModelRow(${i})" data-help="Remove from the list" aria-label="Remove">${ico("close", 13)}</button>
     </div>
   </div>
   ${modelTestError(row.id)}`;
@@ -270,7 +270,19 @@ async function saveModelList() {
   }
 }
 
-async function resetModelList() {
+/* Throwing away a hand-edited list is the one thing on this page that cannot be undone,
+   so it asks first — through the shared dialog, never a browser confirm(). */
+function resetModelList() {
+  confirmModal(
+    "Back to the built-in list?",
+    "The models you added, renamed or reordered here are dropped and the platform's own list takes over. Nothing else changes.",
+    "Back to the built-in list",
+    doResetModelList,
+    true
+  );
+}
+
+async function doResetModelList() {
   try {
     const { models } = await api("/api/models/reset", {});
     loadModelEditor(models);

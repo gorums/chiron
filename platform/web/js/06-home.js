@@ -40,12 +40,12 @@ function viewHome() {
     : "Cards unlock as you complete modules. They are the single highest-return 5 minutes in this course.";
   h += `<div class="grid ${connMode() === "none" ? "g2" : ""} gap-bottom">
     <div class="card">
-      <h3 class="eyebrow" title="${esc(help("practice deck"))}">Practice</h3>
+      <h3 class="eyebrow" data-help="${esc(help("practice deck"))}">Practice</h3>
       <h3 class="h-serif">${deckTitle}</h3>
       <p class="sub gap-bottom">${deckLine}</p>
       <div class="rowline wrapped">
         <button class="btn ${due ? "primary" : ""}" ${due ? "" : "disabled"} onclick="go('#/review')">Practise now</button>
-        ${mistakeCount() ? `<button class="btn" title="${esc(help("mistake card"))}" onclick="go('#/review/mistakes')">Fix mistakes (${mistakeCount()})</button>` : ""}
+        ${mistakeCount() ? `<button class="btn" data-help="${esc(help("mistake card"))}" onclick="go('#/review/mistakes')">Fix mistakes (${mistakeCount()})</button>` : ""}
       </div>
     </div>
     ${
@@ -60,7 +60,7 @@ function viewHome() {
 
   if (offers.length) {
     h += `<div class="card accented gap-bottom">
-      <h3 class="eyebrow accent-ink" title="${esc(help("checkpoint"))}">Checkpoint ready</h3>
+      <h3 class="eyebrow accent-ink" data-help="${esc(help("checkpoint"))}">Checkpoint ready</h3>
       <p class="lede">A mixed quiz across everything you finished. This is the only score that says whether it stuck — module quizzes measure recognition ten minutes after reading.</p>
       <div class="rowline wrapped">${offers.map(o => `<button class="btn sm" onclick="startCheckpoint('${o.kind}','${o.pid || ""}')">${esc(o.label)}</button>`).join("")}</div>
     </div>`;
@@ -97,7 +97,7 @@ function viewHome() {
       <div class="rowline mapttl"><b>${esc(p.name)}</b><span class="tag">${p.hours}h</span><span class="sub mapcount">${d}/${ms.length}</span></div>
       <div class="bar gap-bottom"><i style="width:${Math.round((d / ms.length) * 100)}%"></i></div>
       <p class="sub gap-bottom">${esc(p.blurb)}</p>
-      ${ms.map(m => `<a class="mrow flat" href="#/m/${m.id}" title="${mastery(m).name} — ${esc(help(mastery(m).name))}"><span class="dot ${masteryClass(m)}"></span><span class="code">${m.id}</span><span class="t">${esc(m.short)}</span>${(m.requires || []).length ? `<span class="req" title="Builds on ${m.requires.join(", ")}">← ${m.requires.join(" ")}</span>` : ""}</a>`).join("")}
+      ${ms.map(m => `<a class="mrow flat" href="#/m/${m.id}" data-help="${mastery(m).name} — ${esc(help(mastery(m).name))}"><span class="dot ${masteryClass(m)}"></span><span class="code">${m.id}</span><span class="t">${esc(m.short)}</span>${(m.requires || []).length ? `<span class="req" data-help="Builds on ${m.requires.join(", ")}">← ${m.requires.join(" ")}</span>` : ""}</a>`).join("")}
     </div>`;
   });
   h += `</div></div>`;

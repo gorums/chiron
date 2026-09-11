@@ -44,7 +44,7 @@ async function viewSettingsPage() {
     ${modelEditorCard()}
 
     <div class="card">
-      <h3 class="eyebrow" title="${esc(help("profile"))}">Reader profiles</h3>
+      <h3 class="eyebrow" data-help="${esc(help("profile"))}">Reader profiles</h3>
       <p class="sub">Each profile has its own progress for every course. Studio shows, and a course opened from Studio syncs to, the profile chosen in the header. The default profile keeps its files where they always were; the others live in a folder of their own under <span class="mono">state/progress/</span>.</p>
       <div id="profilelist" class="gap-top">${(STATE.profiles || ["default"]).map(profileRow).join("")}</div>
       <form class="actions gap-top" id="profileform">
@@ -71,7 +71,7 @@ async function viewSettingsPage() {
       <p class="sub">Every default the platform has — ports, the providers, the model list, timeouts, generation counts, the page's study rules and layout — is in <span class="mono">${esc(s.paths.settings)}</span>. Per-machine overrides go in <span class="mono">.env</span> or the environment under these names: ${Object.entries(
         s.envKeys || {}
       )
-        .map(([k, v]) => `<span class="mono" title="${esc(v)}">${esc(k)}</span>`)
+        .map(([k, v]) => `<span class="mono" data-help="${esc(v)}">${esc(k)}</span>`)
         .join(
           " · "
         )}. A JSON overlay named by <span class="mono">SETTINGS_FILE</span> can override anything. Restart Studio after changing any of them.${s.paths.overlay ? ` Overlay in use: <span class="mono">${esc(s.paths.overlay)}</span>.` : ""}</p>
@@ -100,7 +100,7 @@ async function viewSettingsPage() {
         <input type="text" id="logq" placeholder="filter…" oninput="loadLogs()">
         <label class="radio"><input type="checkbox" id="logfollow" checked onchange="followLogs()"> follow</label>
         <button class="btn sm" onclick="loadLogs()">Refresh</button>
-        <button class="btn sm" onclick="clearLogs()" title="Empties what this page shows. The log file on disk is untouched.">Clear log buffer</button>
+        <button class="btn sm" onclick="clearLogs()" data-help="Empties what this page shows. The log file on disk is untouched.">Clear log buffer</button>
       </div>
       <pre class="logbox" id="logbox" role="log" aria-live="polite" aria-label="Studio log">loading…</pre>
       <p class="sub result">The full file is <span class="mono">${esc(s.paths.log || "console only")}</span>, rotating at ${Math.round((s.logs.maxBytes || 0) / 100000) / 10} MB × ${s.logs.backups}. Every call to a model is one line: model, time taken, prompt and reply size, and what it said when it failed.</p>
@@ -118,7 +118,7 @@ function profileRow(name) {
   return `<div class="profilerow" id="prow-${esc(name)}">
     <span class="name">${esc(name)}</span>
     ${active ? `<span class="pill on">reading as</span>` : `<button class="btn sm" onclick="switchProfile('${esc(name)}')">Read as</button>`}
-    ${name === "default" ? "" : `<button class="btn sm rm" title="Move this profile's progress to the trash" aria-label="Remove the profile ${esc(name)}" onclick="askRemoveProfile('${esc(name)}')">${ico("trash", 14)}</button>`}
+    ${name === "default" ? "" : `<button class="btn sm rm" data-help="Move this profile's progress to the trash" aria-label="Remove the profile ${esc(name)}" onclick="askRemoveProfile('${esc(name)}')">${ico("trash", 14)}</button>`}
     <span class="confirm" id="prm-${esc(name)}"></span>
   </div>`;
 }
@@ -128,7 +128,7 @@ function settingRow(r) {
   const source = r.source === "settings.json" ? "" : r.source;
   const why = SOURCE_HELP[r.source] || "";
   return `<tr><td>${esc(r.key)}</td><td class="mono">${esc(String(r.value))}</td>
-    <td class="sub"${why ? ` title="${esc(why)}"` : ""}>${esc(source || "default")}</td></tr>`;
+    <td class="sub"${why ? ` data-help="${esc(why)}"` : ""}>${esc(source || "default")}</td></tr>`;
 }
 
 /* One provider: what it is, whether it can answer, and how many models it reaches. A key

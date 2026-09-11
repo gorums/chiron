@@ -20,8 +20,9 @@ function applyTheme() {
   else document.documentElement.removeAttribute("data-theme");
   const b = document.getElementById("themebtn");
   if (b) {
-    b.title = "Theme: " + THEME_NAMES[t || ""] + ". Click for the next one (t)";
-    b.setAttribute("aria-label", b.title);
+    const hint = "Theme: " + THEME_NAMES[t || ""] + ". Click for the next one (t)";
+    b.setAttribute("data-help", hint);
+    b.setAttribute("aria-label", hint);
   }
 }
 function cycleTheme() {

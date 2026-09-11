@@ -153,9 +153,12 @@ async function refresh() {
   const who = providerName();
   pill.textContent = ready ? who + " connected" : who + " not answering";
   pill.className = "pill " + (ready ? "on" : "off");
-  pill.title = ready
-    ? who + " is answering. Open Settings & logs."
-    : "Studio cannot reach " + who + ". Open Settings & logs to see what to do.";
+  pill.setAttribute(
+    "data-help",
+    ready
+      ? who + " is answering. Open Settings & logs."
+      : "Studio cannot reach " + who + ". Open Settings & logs to see what to do."
+  );
   paintLiveJobs();
   return STATE;
 }
@@ -173,7 +176,7 @@ function paintLiveJobs() {
       const m = j.meta || {};
       const who = m.course || m.theme || "";
       pill.textContent = jobLabel(j) + (live.length > 1 ? ` (+${live.length - 1} more)` : "");
-      pill.title = (who ? who + " · " : "") + jobLabel(j) + " — click to watch";
+      pill.setAttribute("data-help", (who ? who + " · " : "") + jobLabel(j) + " — click to watch");
       pill.href = "#/job/" + j.id;
       pill.classList.toggle("waiting", j.status === "waiting");
       pill.classList.remove("hidden");
@@ -296,8 +299,9 @@ function paintThemeButton() {
   if (!b) return;
   const now = document.documentElement.getAttribute("data-theme") || "";
   b.innerHTML = ico("theme", 17);
-  b.title = "Theme: " + THEME_NAMES[now] + ". Click for the next one.";
-  b.setAttribute("aria-label", b.title);
+  const hint = "Theme: " + THEME_NAMES[now] + ". Click for the next one.";
+  b.setAttribute("data-help", hint);
+  b.setAttribute("aria-label", hint);
 }
 try {
   const saved = localStorage.getItem(THEME_KEY) || localStorage.getItem("studio_theme");
@@ -323,8 +327,12 @@ function closeNavMenu() {
   menu.classList.add("hidden");
   $("#navmenubtn").setAttribute("aria-expanded", "false");
 }
+/* Escape closes the topmost thing: the dialog from 00-dom.js if one is open, otherwise
+   the nav menu. Each surface wires this itself — the reader's Escape has more to close. */
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") closeNavMenu();
+  if (e.key !== "Escape") return;
+  if (modalOpen()) return closeModal();
+  closeNavMenu();
 });
 document.addEventListener("click", e => {
   if (!e.target.closest("#navmenu") && !e.target.closest("#navmenubtn")) closeNavMenu();

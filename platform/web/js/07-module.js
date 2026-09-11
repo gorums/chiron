@@ -67,23 +67,23 @@ function viewModule() {
     pre = prereqs(m);
 
   let h = `<div class="wrap"><div class="readhead">
-    <div class="crumb">${esc(partName(m.part))} · Module ${m.num} of ${MODS.length} · <span id="clock">${fmtClock(p.time || 0)}</span> spent of ${m.minutes}m planned · <span class="mlvl l${ms.lvl}" title="${esc(help(ms.name))}">${ms.name}${ms.dropped ? " (slipped)" : ""}</span></div>
+    <div class="crumb">${esc(partName(m.part))} · Module ${m.num} of ${MODS.length} · <span id="clock">${fmtClock(p.time || 0)}</span> spent of ${m.minutes}m planned · <span class="mlvl l${ms.lvl}" data-help="${esc(help(ms.name))}">${ms.name}${ms.dropped ? " (slipped)" : ""}</span></div>
     <h2>${esc(m.title)}</h2>
     <p class="sub">${esc(m.meta)}</p>
-    ${pre.length ? `<div class="prereqs">Builds on ${pre.map(x => `<button class="chip ${x.ms.lvl < 2 ? "weak" : ""}" onclick="go('#/m/${x.m.id}')" title="${x.ms.name} — ${esc(help(x.ms.name))}">${x.m.id} · ${esc(x.m.short)}${x.ms.lvl < 2 ? " · " + x.ms.name.toLowerCase() : ""}</button>`).join("")}${weakPrereqs(m).length ? `<span class="sub warnnote">— a weak prerequisite is the usual reason a module feels harder than it is.</span>` : ""}</div>` : ""}
+    ${pre.length ? `<div class="prereqs">Builds on ${pre.map(x => `<button class="chip ${x.ms.lvl < 2 ? "weak" : ""}" onclick="go('#/m/${x.m.id}')" data-help="${x.ms.name} — ${esc(help(x.ms.name))}">${x.m.id} · ${esc(x.m.short)}${x.ms.lvl < 2 ? " · " + x.ms.name.toLowerCase() : ""}</button>`).join("")}${weakPrereqs(m).length ? `<span class="sub warnnote">— a weak prerequisite is the usual reason a module feels harder than it is.</span>` : ""}</div>` : ""}
     <div class="steps">`;
   STEPS.forEach((s, i) => {
     const did = stepDone(m, i);
-    h += `<a class="step ${i === step ? "on" : ""} ${did ? "did" : ""}" href="${stepHash(m.id, i)}" ${i === step ? 'aria-current="step"' : ""} title="${esc(s.d)}${did ? " — done" : ""}"><span class="num">${did && i !== step ? "✓" : i + 1}</span>${s.n}</a>`;
+    h += `<a class="step ${i === step ? "on" : ""} ${did ? "did" : ""}" href="${stepHash(m.id, i)}" ${i === step ? 'aria-current="step"' : ""} data-help="${esc(s.d)}${did ? " — done" : ""}"><span class="num">${did && i !== step ? "✓" : i + 1}</span>${s.n}</a>`;
   });
   h += `</div></div><div id="stepbody"></div>`;
 
   // One primary per region: "Mark module complete" only lights up once every step is done.
   const allSteps = STEPS.every((_, i) => stepDone(m, i));
   h += `<div class="footnav">
-    ${prev ? `<a class="btn" href="#/m/${prev.id}" title="${esc(prev.title)}">← ${prev.id} · ${esc(prev.short)}</a>` : `<a class="btn" href="#/home">← Dashboard</a>`}
+    ${prev ? `<a class="btn" href="#/m/${prev.id}" data-help="${esc(prev.title)}">← ${prev.id} · ${esc(prev.short)}</a>` : `<a class="btn" href="#/home">← Dashboard</a>`}
     <button class="btn ${isDone(m) || !allSteps ? "" : "primary"}" onclick="toggleDone('${m.id}')">${isDone(m) ? "Completed — undo" : "Mark module complete"}</button>
-    ${next ? `<a class="btn" href="#/m/${next.id}" title="${esc(next.title)}">${next.id} · ${esc(next.short)} →</a>` : `<a class="btn" href="#/record">Course record</a>`}
+    ${next ? `<a class="btn" href="#/m/${next.id}" data-help="${esc(next.title)}">${next.id} · ${esc(next.short)} →</a>` : `<a class="btn" href="#/record">Course record</a>`}
   </div>`;
   // Served by Studio: the course can grow from right here. A missing topic becomes a new
   // module; a section that stops short becomes a rewrite with direction.
@@ -163,11 +163,11 @@ function renderStep(m, step) {
       const asked = marksOf(m.id).some(k => k.sec === i);
       s += `<div class="sec ${on ? "done" : ""}" id="sec${i}">
         <div class="sechead">
-          <button class="check ${on ? "on" : ""}" aria-pressed="${on}" onclick="tickSec('${m.id}',${i})" title="${on ? "Read — click to untick" : "Mark this section read"}" aria-label="${on ? "Mark this section unread" : "Mark this section read"}">
+          <button class="check ${on ? "on" : ""}" aria-pressed="${on}" onclick="tickSec('${m.id}',${i})" data-help="${on ? "Read — click to untick" : "Mark this section read"}" aria-label="${on ? "Mark this section unread" : "Mark this section read"}">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 6.2 4.4 9 10.5 2.8"/></svg></button>
           <h3>${esc(sec.h)}</h3>
-          <button class="askbtn ${bk ? "has on" : ""}" aria-pressed="${bk}" title="${bk ? "Remove the bookmark" : "Bookmark this section"}" aria-label="${bk ? "Remove the bookmark on this section" : "Bookmark this section"}" onclick="toggleBookmark('${m.id}',${i})">${ico("flag", 13)}</button>
-          <button class="askbtn ${asked ? "has" : ""}" title="Ask the tutor about this section" aria-label="Ask the tutor about this section" onclick="askSection('${m.id}',${i})">${ico("ask", 14)}</button>
+          <button class="askbtn ${bk ? "has on" : ""}" aria-pressed="${bk}" data-help="${bk ? "Remove the bookmark" : "Bookmark this section"}" aria-label="${bk ? "Remove the bookmark on this section" : "Bookmark this section"}" onclick="toggleBookmark('${m.id}',${i})">${ico("flag", 13)}</button>
+          <button class="askbtn ${asked ? "has" : ""}" data-help="Ask the tutor about this section" aria-label="Ask the tutor about this section" onclick="askSection('${m.id}',${i})">${ico("ask", 14)}</button>
           ${sectionSpeakButton(m.id, i)}
         </div>
         <div class="prose">${sec.html}</div>

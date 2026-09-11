@@ -36,11 +36,11 @@ async function viewCourse() {
 function courseOps(c) {
   const p = c.progress || {};
   const live = c.job && !FINISHED.includes(c.job.status);
-  const exportBtn = `<a class="btn" href="/api/courses/${encodeURIComponent(c.id)}/export" download="${esc(c.id)}.zip" title="The course folder as a zip, without .git">Export .zip</a>`;
+  const exportBtn = `<a class="btn" href="/api/courses/${encodeURIComponent(c.id)}/export" download="${esc(c.id)}.zip" data-help="The course folder as a zip, without .git">Export .zip</a>`;
   if (live)
     return `<a class="btn primary" data-jobof="${esc(c.id)}" href="#/job/${c.job.id}">${esc(jobLabel(c.job))} — view</a>
-      <button class="btn" disabled title="A run is writing this course. Check and Build come back when it finishes.">Check</button>
-      <button class="btn" disabled title="A run is writing this course. Check and Build come back when it finishes.">Rebuild</button>
+      <button class="btn" disabled data-help="A run is writing this course. Check and Build come back when it finishes.">Check</button>
+      <button class="btn" disabled data-help="A run is writing this course. Check and Build come back when it finishes.">Rebuild</button>
       ${exportBtn}`;
   const rebuildPrimary = !c.built || c.dirty;
   const read = c.built
@@ -48,8 +48,8 @@ function courseOps(c) {
        <a class="btn" href="${courseUrl(c)}">Open the course</a>`
     : `<span class="pill">not built yet</span>`;
   return `${read}
-    ${c.resumable ? `<button class="btn warm" onclick="toggleResume('${c.id}')" title="${esc(help("resume"))}">Resume the run…</button>` : ""}
-    <button class="btn" onclick="checkCourse('${c.id}')" title="Validate every module, quiz and suggestion file without writing anything">Check</button>
+    ${c.resumable ? `<button class="btn warm" onclick="toggleResume('${c.id}')" data-help="${esc(help("resume"))}">Resume the run…</button>` : ""}
+    <button class="btn" onclick="checkCourse('${c.id}')" data-help="Validate every module, quiz and suggestion file without writing anything">Check</button>
     <button class="btn ${rebuildPrimary ? "primary" : ""}" onclick="buildCourse('${c.id}')">${c.built ? "Rebuild" : "Build"}</button>
     ${exportBtn}`;
 }
@@ -81,7 +81,7 @@ function paintCourse(c) {
     <div id="resumeout"></div>
     ${c.error ? `<div class="problems">${problemList(c, [c.error])}</div>` : ""}
     ${c.resumable && !live ? `<div class="note gap-top">This course's generation run did not finish — the saved curriculum is still here. <b>Resume the run</b> keeps every module and study-data entry already on disk and writes only what is missing, then builds. See <a href="#/settings">Settings &amp; logs</a> for why it stopped.</div>` : ""}
-    ${c.built && c.dirty ? `<p class="sub result"><span class="tag warn" title="${esc(help("dirty"))}">changed since the build</span> A file has been edited since ${esc(ago(c.builtAt))}. Rebuild to put it in the page.</p>` : ""}
+    ${c.built && c.dirty ? `<p class="sub result"><span class="tag warn" data-help="${esc(help("dirty"))}">changed since the build</span> A file has been edited since ${esc(ago(c.builtAt))}. Rebuild to put it in the page.</p>` : ""}
     ${c.built && !c.dirty ? `<p class="sub result">Built ${esc(ago(c.builtAt))}. A rebuild keeps your progress — it lives with the platform, not the page.</p>` : ""}
     ${providerGate()}
     </div>
@@ -98,9 +98,18 @@ function paintCourse(c) {
   else if (tab === "questions") paintQuestions(c);
   else if (tab === "settings") paintSettings(c);
   else paintModules(c);
+  if (tabByKeyboard === tab) {
+    const btn = $("#tab-" + tab);
+    if (btn) btn.focus();
+  }
 }
 
-/* Left and right move between tabs, as a tablist is expected to. */
+/* Left and right move between tabs, as a tablist is expected to. Selection is a route
+   change, so the button the arrow key chose is gone by the time the screen is redrawn —
+   and a panel that focuses its first field on arrival would take the focus out of the
+   tablist after one press. `tabByKeyboard` is how both are avoided: paintCourse gives the
+   focus back to the tab, and the panel leaves it there. */
+let tabByKeyboard = null;
 function tabKeys(ev, current) {
   const i = TABS.findIndex(t => t[0] === current);
   let next = null;
@@ -110,10 +119,11 @@ function tabKeys(ev, current) {
   else if (ev.key === "End") next = TABS[TABS.length - 1];
   if (!next) return;
   ev.preventDefault();
-  setTab(next[0]);
+  setTab(next[0], true);
 }
 
-function setTab(tab) {
+function setTab(tab, fromKeyboard) {
+  tabByKeyboard = fromKeyboard ? tab : null;
   const q = Object.assign({}, route.query, { tab });
   delete q.rewrite;
   delete q.from;
@@ -206,11 +216,11 @@ function verdictTag(m, rv) {
   const good = !!rv.accepted;
   const shown = good ? "good" : rv.verdict;
   if (rv.stale)
-    return `<button class="tag stale" title="${good ? "Marked good" : "Reviewed"} ${new Date(good ? rv.accepted : rv.at).toLocaleString()}, but the module changed on ${new Date(rv.moduleChangedAt).toLocaleString()}. ${esc(help("stale"))}" onclick="toggleEl('rv-${m.id}')">${esc(shown)} · before edit</button>`;
+    return `<button class="tag stale" data-help="${good ? "Marked good" : "Reviewed"} ${new Date(good ? rv.accepted : rv.at).toLocaleString()}, but the module changed on ${new Date(rv.moduleChangedAt).toLocaleString()}. ${esc(help("stale"))}" onclick="toggleEl('rv-${m.id}')">${esc(shown)} · before edit</button>`;
   if (good)
-    return `<button class="tag ok" title="You marked this good on ${new Date(rv.accepted).toLocaleString()}${rv.ownerOnly ? "" : " — the review's findings are kept underneath"}" onclick="toggleEl('rv-${m.id}')">good ✓</button>`;
+    return `<button class="tag ok" data-help="You marked this good on ${new Date(rv.accepted).toLocaleString()}${rv.ownerOnly ? "" : " — the review's findings are kept underneath"}" onclick="toggleEl('rv-${m.id}')">good ✓</button>`;
   const cls = rv.verdict === "solid" ? "ok" : rv.verdict === "rewrite" ? "bad" : "warn";
-  return `<button class="tag ${cls}" title="Reviewed ${new Date(rv.at).toLocaleDateString()}. ${esc(help(rv.verdict))} Click for the findings." onclick="toggleEl('rv-${m.id}')">${esc(rv.verdict)}</button>`;
+  return `<button class="tag ${cls}" data-help="Reviewed ${new Date(rv.at).toLocaleDateString()}. ${esc(help(rv.verdict))} Click for the findings." onclick="toggleEl('rv-${m.id}')">${esc(rv.verdict)}</button>`;
 }
 
 /* A module whose prompts the owner has rewritten says so where the verdict says so: it is
@@ -219,7 +229,7 @@ function promptTag(m) {
   const own = (m.prompts || []).length;
   if (!own) return "";
   const what = m.prompts.join(", ");
-  return ` <span class="tag acc" title="This module sends ${what} prompt${own === 1 ? "" : "s"} of your own">${own} own prompt${own === 1 ? "" : "s"}</span>`;
+  return ` <span class="tag acc" data-help="This module sends ${what} prompt${own === 1 ? "" : "s"} of your own">${own} own prompt${own === 1 ? "" : "s"}</span>`;
 }
 
 function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
@@ -236,11 +246,11 @@ function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
   const isGood = !!(rv && rv.accepted && !rv.stale);
   const gate = providerReady() ? "" : "disabled";
   return `<div class="modrow" id="mod-${m.id}">
-    <span class="order"><button title="Move ${esc(m.id)} up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">${ico("up", 13)}</button><button title="Move ${esc(m.id)} down" aria-label="Move ${esc(m.id)} down" ${i === total - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">${ico("down", 13)}</button></span>
+    <span class="order"><button data-help="Move ${esc(m.id)} up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">${ico("up", 13)}</button><button data-help="Move ${esc(m.id)} down" aria-label="Move ${esc(m.id)} down" ${i === total - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">${ico("down", 13)}</button></span>
     <span class="mid">${esc(m.id)}</span>
-    <span class="title"><span class="dot ${dot}" title="${esc(state)}"></span>${esc(m.title)} ${verdictTag(m, rv)}${promptTag(m)}<small>${m.minutes} min · ${m.sections} sections${m.figures ? ` · ${m.figures} figure${m.figures === 1 ? "" : "s"}` : ""}${m.notebooks ? ` · ${m.notebooks} notebook${m.notebooks === 1 ? "" : "s"}` : ""}${state ? " · " + esc(state) : ""}</small></span>
+    <span class="title"><span class="dot ${dot}" data-help="${esc(state)}"></span>${esc(m.title)} ${verdictTag(m, rv)}${promptTag(m)}<small>${m.minutes} min · ${m.sections} sections${m.figures ? ` · ${m.figures} figure${m.figures === 1 ? "" : "s"}` : ""}${m.notebooks ? ` · ${m.notebooks} notebook${m.notebooks === 1 ? "" : "s"}` : ""}${state ? " · " + esc(state) : ""}</small></span>
     <span class="rowtools">${open}
-      <button class="btn sm kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" title="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">${ico("more", 15)}</button>
+      <button class="btn sm kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" data-help="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">${ico("more", 15)}</button>
       <div class="menu hidden" id="menu-${m.id}" role="menu" onkeydown="menuKeys(event,'${m.id}')">
         <a role="menuitem" href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(m.path)}">Edit the text<small>the markdown, by hand</small></a>
         <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${gate}>${rv && !rv.ownerOnly ? "Review again" : "Review this module"}<small>a verdict, gaps, errors, quiz issues · ${esc(modelName(quickModel()))}</small></button>
@@ -277,8 +287,8 @@ function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
     <b>Remove ${esc(m.id)} · ${esc(m.title)}?</b>
     <p class="sub">The file moves to <span class="mono">state/trash/</span>, its quiz, cards and questions are dropped, and the id is never reused. Rebuild afterwards.</p>
     <div class="actions gap-top">
-      <button class="btn sm danger" onclick="removeModule('${c.id}','${m.id}','${esc(part.id)}')">Yes, remove it</button>
-      <button class="btn sm" onclick="toggleRemove('${m.id}')">Keep it</button>
+      <button class="btn sm danger" onclick="removeModule('${c.id}','${m.id}','${esc(part.id)}')">Remove</button>
+      <button class="btn sm" onclick="toggleRemove('${m.id}')">Cancel</button>
     </div>
   </div>`;
 }
@@ -301,7 +311,7 @@ function reviewBox(c, m, rv) {
     }
     <div class="actions gap-top">
       ${rv.rewriteBrief && !(rv.accepted && !rv.stale) ? `<a class="btn sm primary" href="#/course/${encodeURIComponent(c.id)}?tab=modules&rewrite=${encodeURIComponent(m.id)}&q=${encodeURIComponent(rv.rewriteBrief)}">Patch with these notes</a>` : ""}
-      ${rv.accepted && !rv.stale ? "" : `<button class="btn sm" onclick="acceptModule('${c.id}','${m.id}',true)" title="Your verdict: it is good as it is">Mark as good</button>`}
+      ${rv.accepted && !rv.stale ? "" : `<button class="btn sm" onclick="acceptModule('${c.id}','${m.id}',true)" data-help="Your verdict: it is good as it is">Mark as good</button>`}
       <button class="btn sm" onclick="toggleEl('rv-${m.id}')">Close</button>
       <span class="sub">${rv.ownerOnly ? "" : `Reviewed ${new Date(rv.at).toLocaleString()}${rv.model ? " · " + esc(rv.model) : ""}`}</span>
     </div></div>`;
@@ -505,7 +515,7 @@ function paintGaps(c) {
     .join("");
   const when = L.at ? new Date(L.at).toLocaleDateString() : "";
   return `<div class="card">
-    <h3 class="eyebrow" title="${esc(help("gap"))}">Knowledge gaps${when ? ` · written ${esc(when)}` : ""}</h3>
+    <h3 class="eyebrow" data-help="${esc(help("gap"))}">Knowledge gaps${when ? ` · written ${esc(when)}` : ""}</h3>
     <p class="sub">${esc(L.brief || "What the page's tutor has learned about this reader.")}</p>
     ${rows || `<p class="sub">No open gaps.</p>`}</div>`;
 }
@@ -610,7 +620,7 @@ function milestoneRow(m, i) {
   return `<div class="row ms" data-ms="${i}">
     <input type="number" class="ms-after" value="${esc(m.after)}" min="0" aria-label="After how many modules">
     <input type="text" class="ms-text" value="${esc(m.text)}" aria-label="Text">
-    <button type="button" class="btn sm" onclick="this.parentNode.remove()" title="Remove this milestone" aria-label="Remove this milestone">${ico("close", 13)}</button>
+    <button type="button" class="btn sm" onclick="this.parentNode.remove()" data-help="Remove this milestone" aria-label="Remove this milestone">${ico("close", 13)}</button>
   </div>`;
 }
 
@@ -813,7 +823,10 @@ function paintAdd(c) {
       <button class="btn primary" id="extendbtn" ${providerReady() ? "" : "disabled"}>Design and write it</button>
     </div>
   </form>`;
-  $("#x-topic").focus();
+  // The panel does not take the focus. Selecting a tab leaves the focus on the tab, which
+  // is what lets the next arrow key reach the next tab — and this screen paints twice per
+  // route change (the cached copy, then the fetched one), so a panel that grabbed the
+  // focus would also grab it back out of whatever the reader had moved on to.
   $("#addform").onsubmit = e => {
     e.preventDefault();
     extendCourse(c.id);
@@ -862,7 +875,7 @@ function paintFiles(c) {
     .sort()
     .map(
       dir => `<div class="filegroup"><h4>${esc(dir)}</h4><div class="filelist">
-    ${groups[dir].map(f => `<a href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(f)}" title="${esc(f)}">${esc(f.slice(f.lastIndexOf("/") + 1))}</a>`).join("")}
+    ${groups[dir].map(f => `<a href="#/course/${encodeURIComponent(c.id)}/edit?path=${encodeURIComponent(f)}" data-help="${esc(f)}">${esc(f.slice(f.lastIndexOf("/") + 1))}</a>`).join("")}
   </div></div>`
     )
     .join("");

@@ -12,6 +12,7 @@
   --muted: #67625b;
   --line: #e2ddd4;
   --line-2: #cfc8bb;
+  --control-line: #8a8580;
   --accent: #0f6b60;
   --accent-2: #0b544b;
   --accent-soft: #dcefec;
@@ -41,26 +42,56 @@
   --fig-soft: #ebe7df;
   --fig-line: #9c958a;
 
-  --radius: 14px;
-  --radius-sm: 9px;
+  /* The radius scale. Six rungs, by what a thing is rather than how big it is: a mark in
+     running text, a key or an inline chip, a control, a panel, a surface that floats over
+     the page, and a pill. `50%` is still written where a circle is meant — that is
+     geometry, not a rung. A raw px radius anywhere else is a seventh rung, and a test
+     says so; there used to be sixteen of them. */
+  --radius-xxs: 3px;
   --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
   --s5: 24px;
   --s6: 32px;
+  /* The type scale. Twelve rungs, strictly ascending, and nothing off it: a 1px ramp
+     below the body size, where UI text has to stay dense and still be told apart, opening
+     up above it, where headings need proportion rather than density. A raw px font-size
+     anywhere else is a thirteenth rung — a test says so. */
   --fs-xxs: 11px;
-  --fs-tiny: 12px;
-  --fs-xs: 11.5px;
-  --fs-sm: 12.5px;
-  --fs-md: 13.5px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 15px;
   --fs-base: 16px;
+  --fs-xl: 18px;
+  --fs-2xl: 20px;
+  --fs-3xl: 24px;
+  --fs-4xl: 28px;
+  --fs-5xl: 32px;
+  --fs-display: 52px;
 
+  /* The two breakpoint ladders. A media query may not read a custom property, so these
+     are documented here and written as numbers at the rule; the point is that there are
+     five rungs and three, not eleven numbers nobody chose.
+       viewport:  1200 · 960 · 860 · 720 · 560
+       container: 900 · 800 · 700   (the reading column follows #main, not the window —
+                  with the rail open a 1200px screen leaves #main about 500px wide) */
   --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --serif: "Fraunces", Georgia, "Times New Roman", serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+/* The dark palette is written twice because CSS has no way to share one declaration
+   block between a media query and a selector, and the theme is three-state: light, dark,
+   and "whatever the system says", which is the attribute being absent. The two blocks are
+   one palette — test_the_dark_palette_is_written_once_in_two_places keeps them identical,
+   so a token added to one and forgotten in the other fails the suite rather than shipping
+   a half-dark page. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #131518;
@@ -72,6 +103,7 @@
     --muted: #9c978f;
     --line: #2b2f35;
     --line-2: #3a4048;
+    --control-line: #737982;
     --accent: #4fd1c0;
     --accent-2: #6fe0d1;
     --accent-soft: #16302d;
@@ -104,6 +136,7 @@
   --muted: #9c978f;
   --line: #2b2f35;
   --line-2: #3a4048;
+  --control-line: #737982;
   --accent: #4fd1c0;
   --accent-2: #6fe0d1;
   --accent-soft: #16302d;

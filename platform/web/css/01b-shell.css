@@ -36,8 +36,8 @@
 /* the reading column keeps its own, slightly smaller, input type */
 textarea,
 input[type="text"] {
-  font-size: 14.5px;
-  border-radius: 10px;
+  font-size: var(--fs-lg);
+  border-radius: var(--radius-sm);
   padding: 11px 13px;
 }
 
@@ -48,7 +48,7 @@ input[type="text"] {
 }
 .brand h1 {
   font-family: var(--serif);
-  font-size: 19px;
+  font-size: var(--fs-2xl);
   margin: 0;
   letter-spacing: -0.2px;
   font-weight: 600;
@@ -87,7 +87,7 @@ input[type="text"] {
 }
 .ringtxt b {
   display: block;
-  font-size: 15px;
+  font-size: var(--fs-lg);
   color: var(--text);
   font-weight: 600;
 }
@@ -116,7 +116,7 @@ input[type="text"] {
   padding: 7px 9px;
   border: 0;
   background: none;
-  border-radius: var(--s2);
+  border-radius: var(--radius-sm);
   font-size: var(--fs-md);
   color: var(--text-2);
   text-align: left;
@@ -187,7 +187,7 @@ input[type="text"] {
 }
 .mrow .code {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xxs);
   color: var(--muted);
   flex: none;
   width: 26px;
@@ -242,7 +242,7 @@ body.locked {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 .searchbtn span {
   white-space: nowrap;

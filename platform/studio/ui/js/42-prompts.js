@@ -112,8 +112,8 @@ function promptStageHTML(row) {
   const open = promptEditor.open === row.stage;
   const id = `${promptEditor.mid}-${row.stage}`;
   const tag = row.overridden
-    ? `<span class="tag acc" title="This course sends its own prompt for this call">yours</span>`
-    : `<span class="tag" title="The platform's own prompt">platform</span>`;
+    ? `<span class="tag acc" data-help="This course sends its own prompt for this call">yours</span>`
+    : `<span class="tag" data-help="The platform's own prompt">platform</span>`;
   const body = open
     ? `<div class="field">
         <label class="visually-hidden" for="pt-${id}">The prompt sent for ${esc(row.label)}</label>
@@ -121,7 +121,7 @@ function promptStageHTML(row) {
       </div>
       <div class="actions" id="pa-${id}">
         <button class="btn sm primary" onclick="savePromptStage('${esc(row.stage)}')">Send this instead</button>
-        <button class="btn sm" onclick="resetPromptStage('${esc(row.stage)}')" ${row.overridden ? "" : "disabled"} title="Take the override away and send the platform's prompt again">Back to the platform's</button>
+        <button class="btn sm" onclick="resetPromptStage('${esc(row.stage)}')" ${row.overridden ? "" : "disabled"} data-help="Take the override away and send the platform's prompt again">Back to the platform's</button>
         <button class="btn sm ghost" onclick="togglePromptStage('${esc(row.stage)}')">Close</button>
         <span class="sub">${row.prompt.length.toLocaleString()} characters</span>
       </div>`

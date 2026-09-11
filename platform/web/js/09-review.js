@@ -77,7 +77,7 @@ function drawCard() {
     <div class="qmeta gap-bottom-lg"><span>${session.mode === "mistakes" ? "Fixing mistakes" : "Practice · interleaved"}</span><span class="bar"><i style="width:${pct}%"></i></span>
       <span class="pushright">${session.queue.length} left</span></div>
     <button class="flash ${cur.mistake ? "mistake" : ""}" onclick="flip()" aria-label="${session.flipped ? "Card answer shown" : "Show the answer"}">
-      <span class="tag ${cur.mistake ? "warn" : "acc"}" style="margin-bottom:16px" title="${cur.mistake ? help("mistake card") : ""}">${cur.mistake ? "mistake · " + wins + "/4 clean · " : ""}${cur.mid} · ${esc(cur.mtitle)}</span>
+      <span class="tag ${cur.mistake ? "warn" : "acc"}" style="margin-bottom:16px" data-help="${cur.mistake ? help("mistake card") : ""}">${cur.mistake ? "mistake · " + wins + "/4 clean · " : ""}${cur.mid} · ${esc(cur.mtitle)}</span>
       <div class="front">${esc(cur.c.front)}</div>
       ${session.flipped ? `<div class="back">${esc(cur.c.back)}</div>` : `<div class="back empty-back">Answer out loud, then click or press <kbd>space</kbd></div>`}
     </button>
