@@ -213,6 +213,15 @@ function verdictTag(m, rv) {
   return `<button class="tag ${cls}" title="Reviewed ${new Date(rv.at).toLocaleDateString()}. ${esc(help(rv.verdict))} Click for the findings." onclick="toggleEl('rv-${m.id}')">${esc(rv.verdict)}</button>`;
 }
 
+/* A module whose prompts the owner has rewritten says so where the verdict says so: it is
+   the first thing to know when its text reads unlike the rest of the course. */
+function promptTag(m) {
+  const own = (m.prompts || []).length;
+  if (!own) return "";
+  const what = m.prompts.join(", ");
+  return ` <span class="tag acc" title="This module sends ${what} prompt${own === 1 ? "" : "s"} of your own">${own} own prompt${own === 1 ? "" : "s"}</span>`;
+}
+
 function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
   const st = mp[m.id] || {};
   const dot = st.done ? "done" : st.read || st.minutes || st.quiz ? "part" : "";
@@ -229,7 +238,7 @@ function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
   return `<div class="modrow" id="mod-${m.id}">
     <span class="order"><button title="Move ${esc(m.id)} up" aria-label="Move ${esc(m.id)} up" ${i === 0 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i - 1})">${ico("up", 13)}</button><button title="Move ${esc(m.id)} down" aria-label="Move ${esc(m.id)} down" ${i === total - 1 ? "disabled" : ""} onclick="moveModule('${c.id}','${m.id}','${part.id}',${i + 1})">${ico("down", 13)}</button></span>
     <span class="mid">${esc(m.id)}</span>
-    <span class="title"><span class="dot ${dot}" title="${esc(state)}"></span>${esc(m.title)} ${verdictTag(m, rv)}<small>${m.minutes} min · ${m.sections} sections${m.figures ? ` · ${m.figures} figure${m.figures === 1 ? "" : "s"}` : ""}${m.notebooks ? ` · ${m.notebooks} notebook${m.notebooks === 1 ? "" : "s"}` : ""}${state ? " · " + esc(state) : ""}</small></span>
+    <span class="title"><span class="dot ${dot}" title="${esc(state)}"></span>${esc(m.title)} ${verdictTag(m, rv)}${promptTag(m)}<small>${m.minutes} min · ${m.sections} sections${m.figures ? ` · ${m.figures} figure${m.figures === 1 ? "" : "s"}` : ""}${m.notebooks ? ` · ${m.notebooks} notebook${m.notebooks === 1 ? "" : "s"}` : ""}${state ? " · " + esc(state) : ""}</small></span>
     <span class="rowtools">${open}
       <button class="btn sm kebab" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(m.id)}" title="Edit, review, patch, move, remove" onclick="toggleMenu(event,'${m.id}')">${ico("more", 15)}</button>
       <div class="menu hidden" id="menu-${m.id}" role="menu" onkeydown="menuKeys(event,'${m.id}')">
@@ -237,6 +246,7 @@ function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
         <button role="menuitem" onclick="closeMenus();reviewModule('${c.id}','${m.id}')" ${gate}>${rv && !rv.ownerOnly ? "Review again" : "Review this module"}<small>a verdict, gaps, errors, quiz issues · ${esc(modelName(quickModel()))}</small></button>
         <button role="menuitem" onclick="closeMenus();acceptModule('${c.id}','${m.id}',${isGood ? "false" : "true"})">${isGood ? "Unmark" : "Mark as good"}<small>${isGood ? "back to the review's verdict" : "your verdict outranks the review"}</small></button>
         <button role="menuitem" onclick="closeMenus();toggleRewrite('${m.id}')" ${gate}>Patch or rewrite…<small>with notes, by the model</small></button>
+        <button role="menuitem" onclick="closeMenus();openCoursePrompts('${c.id}','${m.id}')">Prompts…<small>every call this module makes, and your own wording for any of them</small></button>
         ${figuresMenuItem(c, m)}
         ${notebooksMenuItem(c, m)}
         ${manyParts ? `<div class="sep"></div><label class="label" for="part-${m.id}">Move to part</label><select id="part-${m.id}" onchange="moveModule('${c.id}','${m.id}',this.value,-1)">${(c.parts || []).map(p => `<option value="${esc(p.id)}" ${p.id === part.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>` : ""}
@@ -245,6 +255,7 @@ function moduleRow(c, part, m, i, total, mp, reviews, manyParts) {
       </div></span>
   </div>
   ${rv ? reviewBox(c, m, rv) : ""}
+  <div class="inlineform hidden" id="pr-${m.id}"></div>
   <div class="inlineform ${rewriting ? "" : "hidden"}" id="rw-${m.id}">
     <label for="rwn-${m.id}">What should change in ${esc(m.id)}?</label>
     <textarea id="rwn-${m.id}" rows="3" placeholder="Go much deeper on the worked example in Core concepts; the current version stops before the arithmetic. Keep the exercise.">${esc(route.query.rewrite === m.id && route.query.q ? route.query.q : "")}</textarea>

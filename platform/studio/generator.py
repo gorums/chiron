@@ -32,10 +32,10 @@ from coursekit import scaffold as ck_scaffold
 from coursekit import validate as ck_validate
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, figures, notebooks, prompts
+from . import claude_cli, figures, notebooks, overrides, prompts
 from .coerce import fix_assessment, fix_suggestions
-from .curriculum import (PLAN_FILE, load_plan, make_plan, normalise_plan, plan_to_manifest,
-                         wants_notebooks)
+from .curriculum import (DEFAULT_SECTIONS, PLAN_FILE, load_plan, make_plan, normalise_plan,
+                         plan_to_manifest, wants_notebooks)
 from .errors import GenerationError
 from .files import read_json, read_text, slug, write_json, write_text
 from .ids import is_course_id
@@ -66,13 +66,42 @@ def module_path(root: str, plan: Dict[str, Any], mod: Dict[str, Any]) -> str:
     return os.path.join(root, "modules", directory, "%s-%s.md" % (mod["id"], slug(mod["title"])))
 
 
+def module_prompt(plan: Dict[str, Any], mod: Dict[str, Any], notes: str = "",
+                  root: str = "") -> str:
+    """The whole prompt one module is written from.
+
+    It is a function of its own because both the approval gate and the course page show it:
+    what a person is asked to approve is a curriculum, and a curriculum is only worth editing
+    if you can read what each line of it turns into - and change it (`overrides`). A prompt
+    assembled anywhere else would drift from the one the run sends.
+    """
+    spec = dict(mod)
+    spec["sections"] = [s for s in (spec.get("sections") or []) if str(s).strip()] or list(
+        DEFAULT_SECTIONS)
+    prompt = prompts.module(plan, plan["modules"], spec)
+    if spec["id"] == "M01":
+        prompt += prompts.module_first(plan)
+    return overrides.apply(root, spec["id"], "module", prompt + prompts.direction(notes))
+
+
+def assessment_prompt(plan: Dict[str, Any], mod: Dict[str, Any], body: str,
+                      root: str = "") -> str:
+    """The prompt the quiz and flashcards are written from."""
+    return overrides.apply(root, mod["id"], "assessment", prompts.assessment(plan, mod, body),
+                           body=body)
+
+
+def suggestions_prompt(plan: Dict[str, Any], mod: Dict[str, Any], headings: List[str],
+                       body: str, root: str = "") -> str:
+    """The prompt the chat rail's suggested questions are written from."""
+    return overrides.apply(root, mod["id"], "suggestions",
+                           prompts.suggestions(plan, mod["id"], headings, body), body=body)
+
+
 def write_module(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any],
                  model: str = "", path: str = "", notes: str = "") -> str:
     """Ask for the text of one module, repair its head, write it, and return the body."""
-    prompt = prompts.module(plan, plan["modules"], mod)
-    if mod["id"] == "M01":
-        prompt += prompts.module_first(plan)
-    prompt += prompts.direction(notes)
+    prompt = module_prompt(plan, mod, notes, root)
     reply = claude_cli.ask(prompt, model=model, timeout=claude_cli.timeout_for("module"),
                            what="the text of %s" % mod["id"])
     body = repair_head(claude_cli.strip_fence(reply), mod)
@@ -116,13 +145,13 @@ def write_study_data(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, A
     """The quiz, flashcards and suggested questions for one module, coerced to valid shapes."""
     headings = headings_of(body)
     assess = fix_assessment(
-        claude_cli.ask_json(prompts.assessment(plan, mod, body), model=model,
+        claude_cli.ask_json(assessment_prompt(plan, mod, body, root), model=model,
                             timeout=claude_cli.timeout_for("studyData"),
                             what="the quiz and flashcards for %s" % mod["id"]),
         mod["id"],
     )
     suggest = fix_suggestions(
-        claude_cli.ask_json(prompts.suggestions(plan, mod["id"], headings, body),
+        claude_cli.ask_json(suggestions_prompt(plan, mod, headings, body, root),
                             model=model, timeout=claude_cli.timeout_for("studyData"),
                             what="the suggested questions for %s" % mod["id"]),
         headings,
@@ -262,10 +291,22 @@ def _approved_plan(job: Job, root: str, course_id: str, brief: Dict[str, Any],
     job.emit("plan", plan=plan)
     approved = job.await_input("approve-plan", {"plan": plan, "id": course_id})
     if isinstance(approved, dict) and approved.get("plan"):
-        plan = normalise_plan(approved["plan"], brief["theme"], float(brief["hours"]), brief)
+        # The gate is where the length is really decided: a curriculum trimmed there is a
+        # shorter course, and the manifest and every module prompt should say so.
+        plan = normalise_plan(approved["plan"], brief["theme"],
+                              _approved_hours(approved["plan"], float(brief["hours"])), brief)
     job.log("Curriculum approved: %d modules across %d parts."
             % (len(plan["modules"]), len(plan["parts"])))
     return plan
+
+
+def _approved_hours(plan: Dict[str, Any], asked: float) -> float:
+    """The hours the approved curriculum claims, or what was asked for if it says nothing."""
+    try:
+        hours = float(plan.get("hours") or 0)
+    except (TypeError, ValueError):
+        hours = 0
+    return hours if hours > 0 else asked
 
 
 def _lay_down_tree(root: str, course_id: str, plan: Dict[str, Any], resume: bool) -> None:
@@ -279,6 +320,9 @@ def _lay_down_tree(root: str, course_id: str, plan: Dict[str, Any], resume: bool
     if not resume:
         write_json(os.path.join(root, "course.json"), plan_to_manifest(plan, course_id))
     ck_scaffold.write_readme(root, course_id, plan["title"])
+    # Prompts edited at the gate were written before the course existed; they belong to the
+    # course from here on, and every later rewrite reads them from there.
+    overrides.merge(root, plan.get("prompts"))
     write_json(os.path.join(root, PLAN_FILE), plan)
 
 

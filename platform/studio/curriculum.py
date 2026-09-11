@@ -160,6 +160,39 @@ def _normalise_modules(modules: List[Dict[str, Any]], part_ids: List[str]) -> No
         mod["requires"] = wanted[:3]
 
 
+def plan_for_prompt(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """A plan edited in the browser, safe to hand to a prompt.
+
+    The gate previews a curriculum the person is still editing, so a field can be missing or
+    half-typed. Nothing is repaired here that `normalise_plan` will repair at approval - the
+    ids are left exactly as they are, because the preview is asked for by id.
+    """
+    ready = dict(plan)
+    ready["title"] = str(plan.get("title") or "this course")
+    ready["subject"] = str(plan.get("subject") or ready["title"]).lower()
+    ready["audience"] = str(plan.get("audience") or "a complete beginner")
+    ready["practitioner"] = str(plan.get("practitioner") or "practitioner")
+    try:
+        ready["hours"] = float(plan.get("hours") or 0) or 0
+    except (TypeError, ValueError):
+        ready["hours"] = 0
+    modules = []
+    for mod in plan.get("modules") or []:
+        if not isinstance(mod, dict) or mod.get("dropped"):
+            continue
+        one = dict(mod)
+        one["id"] = str(one.get("id") or "M??")
+        one["title"] = str(one.get("title") or "").strip() or "(untitled)"
+        one["part"] = str(one.get("part") or "")
+        try:
+            one["minutes"] = max(15, int(one.get("minutes") or 60))
+        except (TypeError, ValueError):
+            one["minutes"] = 60
+        modules.append(one)
+    ready["modules"] = modules
+    return ready
+
+
 def plan_to_manifest(plan: Dict[str, Any], course_id: str) -> Dict[str, Any]:
     """The `course.json` an approved plan describes."""
     manifest = ck_scaffold.manifest(plan["subject"], plan["hours"], course_id=course_id,

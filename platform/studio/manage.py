@@ -24,6 +24,7 @@ from coursekit import loader as ck_loader
 from coursekit import notebooks as ck_notebooks
 from coursekit.errors import CourseError
 
+from . import overrides
 from .files import read_json, stamp, write_json
 from .ids import is_module_id
 
@@ -177,6 +178,8 @@ def move_module(root: str, mid: str, part_id: str = "", index: int = -1) -> Dict
             pos = len(ids) if index is None or index < 0 or index > len(ids) else int(index)
             ids.insert(pos, mid)
         order.extend(ids)
+
+    overrides.forget(root, mid)
 
     manifest_path = os.path.join(root, "course.json")
     manifest = read_json(manifest_path)

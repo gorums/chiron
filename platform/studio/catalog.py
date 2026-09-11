@@ -22,7 +22,8 @@ from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR, REPO_ROOT
 from coursekit.settings import SETTINGS
 
-from . import curriculum, discover, generator, jupyter, manage, models, prefs, progress, reviews
+from . import (curriculum, discover, generator, jupyter, manage, models, overrides, prefs,
+               progress, reviews)
 from . import log as logmod
 from .errors import GenerationError
 from .runtime import LOG_FILE, PREFS, PROGRESS_DIR, REGISTRY, STATE_ROOT, store
@@ -99,6 +100,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
     info["audience"] = cfg.audience
     info["practitioner"] = cfg.practitioner
     info["moduleList"] = []
+    own_prompts = overrides.load(root)      # which modules send prompts of the owner's own
     sources: Dict[str, str] = {}
     try:
         for m in ck_loader.load_modules(cfg):
@@ -108,6 +110,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
                 "minutes": m.minutes, "sections": len(m.sections), "figures": len(m.figures),
                 "notebooks": len(m.notebooks),
                 "path": os.path.relpath(m.source, root).replace(os.sep, "/"),
+                "prompts": sorted(own_prompts.get(m.id, {})),
             })
     except CourseError as exc:
         info["error"] = str(exc)

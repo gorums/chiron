@@ -22,7 +22,7 @@ from coursekit import figures as ck_figures
 from coursekit import loader as ck_loader
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, prompts
+from . import claude_cli, overrides, prompts
 from .coerce import fix_figures
 from .files import write_text
 from .jobs import Job
@@ -92,6 +92,15 @@ def references_in(body: str, mid: str) -> List[str]:
     return [m.group("name") for m in _REFERENCE.finditer(body) if m.group("name").startswith(prefix)]
 
 
+def figures_prompt(plan: Dict[str, Any], mod: Dict[str, Any], body: str,
+                   headings: List[str], count: int = 0, root: str = "") -> str:
+    """The prompt this module's figures are drawn from - the course's own where it has one."""
+    count = count or FIGURES_PER_MODULE
+    return overrides.apply(root, mod["id"], "figures",
+                           prompts.figures(plan, mod, body, headings, count, FIGURE_STEPS),
+                           body=body)
+
+
 def write_figures(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any], body: str,
                   path: str, model: str = "", count: int = 0) -> str:
     """Ask for this module's figures, write the files, put the references in, save the text.
@@ -103,7 +112,7 @@ def write_figures(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any]
     mid = mod["id"]
     count = count or FIGURES_PER_MODULE
     headings = [s.heading for s in ck_loader.parse_sections(body)]
-    reply = claude_cli.ask(prompts.figures(plan, mod, body, headings, count, FIGURE_STEPS),
+    reply = claude_cli.ask(figures_prompt(plan, mod, body, headings, count, root),
                            model=model, timeout=claude_cli.timeout_for("figures"),
                            what="the figures for %s" % mid)
     fixed = fix_figures(parse_reply(reply), headings, count)

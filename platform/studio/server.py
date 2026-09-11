@@ -54,6 +54,9 @@ trust both. The table at the bottom of the class lists every route in one place.
     POST /api/courses/<id>/modules/<mid>/figures   draw (or redraw) its figures  -> {job}
     POST /api/courses/<id>/modules/<mid>/notebooks write (or replace) its notebooks  -> {job}
     POST /api/courses/<id>/modules/<mid>/accept    the owner's own verdict  {accepted: bool}
+    GET  /api/courses/<id>/modules/<mid>/prompts   every prompt this module is written from -> {stages}
+    PUT  /api/courses/<id>/modules/<mid>/prompts   replace one, or take the override away  {stage, text}
+    POST /api/plan/prompt                   the prompts one module of a plan would be written from  {plan, mid} -> {stages}
     POST /api/generate                      start a generation job  {theme, hours, ..., model} -> {job}
     POST /api/jobs/<id>/answer              supply the approved curriculum
     POST /api/jobs/<id>/cancel              stop a job
@@ -86,7 +89,7 @@ from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
 from . import (catalog, claude_cli, curriculum, discover, editing, generator, jobs, jupyter, manage, models,
-               progress,
+               overrides, progress, promptview,
                reviews, search, transfer)
 from . import log as logmod
 from .errors import GenerationError
@@ -617,6 +620,35 @@ class Handler(BaseHTTPRequestHandler):
         log.info("move %s/%s -> part %s index %s", course_id, mid, moved["part"], index)
         self._json(dict(moved, ok=True, problems=generator.check_course(root)))
 
+    @route("GET", MODULE + r"/prompts")
+    def module_prompts(self, course_id: str, mid: str):
+        """Every prompt this module is written from, as it would be sent."""
+        root = catalog.course_root(course_id)
+        cfg = ck_config.load(root)
+        modules = ck_loader.load_modules(cfg)
+        plan = curriculum.plan_from_course(cfg, modules)
+        try:
+            stages = promptview.rows(plan, mid, root)
+        except KeyError:
+            return self._fail("No module '%s' in this course." % mid, 404)
+        self._json({"module": mid, "stages": stages, "tokens": overrides.TOKENS})
+
+    @route("PUT", MODULE + r"/prompts")
+    def set_module_prompt(self, course_id: str, mid: str):
+        """Store one stage's prompt, or take the override away with empty text."""
+        root = catalog.course_root(course_id)
+        body = self._body()
+        stage = str(body.get("stage") or "")
+        if stage not in overrides.STAGE_IDS:
+            return self._fail("There is no %r stage." % stage)
+        text = body.get("text")
+        if text is not None and not isinstance(text, str):
+            return self._fail("A prompt is text.")
+        kept = overrides.put(root, mid, stage, text or "")
+        log.info("prompt %s/%s stage=%s %s", course_id, mid, stage,
+                 "overridden" if stage in kept else "back to the platform's")
+        self._json({"ok": True, "overridden": sorted(kept)})
+
     @route("POST", MODULE + r"/accept")
     def accept_module(self, course_id: str, mid: str):
         """"This is good": the owner's verdict, which the review pill then shows."""
@@ -631,6 +663,26 @@ class Handler(BaseHTTPRequestHandler):
                     "review": reviews.load_reviews(STATE_ROOT, course_id, sources).get(mid)})
 
     # ---- jobs: generation and editing with a model ----
+
+    @route("POST", r"/api/plan/prompt")
+    def plan_prompt(self):
+        """What one module of a curriculum would be written from, assembled by the writers
+        themselves, so what the approval gate shows is what the run will send. The course
+        does not exist yet, so the overrides edited there travel in the plan."""
+        body = self._body()
+        plan = body.get("plan")
+        mid = str(body.get("mid") or "").strip().upper()
+        if not isinstance(plan, dict) or not isinstance(plan.get("modules"), list):
+            return self._fail("Send the plan to preview.")
+        ready = curriculum.plan_for_prompt(plan)
+        carried = (plan.get("prompts") or {}).get(mid) if isinstance(plan.get("prompts"), dict) else {}
+        try:
+            stages = promptview.rows(ready, mid, carried=carried if isinstance(carried, dict) else {})
+        except KeyError:
+            return self._fail("No module %s in this plan." % (mid or "?"), 404)
+        except (TypeError, ValueError) as err:
+            return self._fail("That plan cannot be turned into a prompt: %s" % err)
+        self._json({"module": mid, "stages": stages, "tokens": overrides.TOKENS})
 
     @route("POST", r"/api/generate")
     def generate(self):

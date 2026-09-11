@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 import unittest
 
@@ -31,7 +32,8 @@ SETTINGS.reload()
 
 from coursekit.llm import chain as llm_chain  # noqa: E402
 from coursekit.llm import cli as llm_cli  # noqa: E402
-from studio import catalog, claude_cli, coerce, curriculum, editing, files, figures, generator, jobs, reviews  # noqa: E402
+from studio import (catalog, claude_cli, coerce, curriculum, editing, files, figures,  # noqa: E402
+                    generator, jobs, overrides, reviews)
 from studio.errors import GenerationError  # noqa: E402
 
 
@@ -298,6 +300,147 @@ class TestPlanNormalisation(unittest.TestCase):
         self.assertEqual(cfg.id, "bread")
         self.assertEqual(len(cfg.parts), 2)
         self.assertEqual(cfg.runtime()["storageKey"], "course_bread_v1")
+
+
+class TestPlanPromptPreview(unittest.TestCase):
+    """The approval gate shows every prompt a module will be written from. Each has to be the
+    prompt the run sends, which is why one builder per stage assembles both."""
+
+    class Reply:
+        """Just enough Handler for one route method."""
+
+        def __init__(self, body):
+            self.body, self.sent, self.code = body, None, 200
+
+        def _body(self):
+            return self.body
+
+        def _fail(self, message, code=400, **extra):
+            self.sent, self.code = dict(extra, error=message), code
+
+        def _json(self, obj, code=200):
+            self.sent, self.code = obj, code
+
+    PLAN = {"title": "Bread", "subject": "bread", "hours": 6, "audience": "a beginner",
+            "practitioner": "baker",
+            "parts": [{"id": "p1", "name": "Basics", "hours": 6, "dir": "01-basics"}],
+            "modules": [{"id": "M01", "part": "p1", "title": "Flour", "minutes": 45,
+                         "summary": "What flour is.", "sections": ["Why this matters", "Close"]},
+                        {"id": "M02", "part": "p1", "title": "Water", "minutes": 60}]}
+
+    def _prompt(self, body):
+        from studio import server
+        reply = self.Reply(body)
+        server.Handler.plan_prompt(reply)
+        return reply
+
+    def _stage(self, reply, stage):
+        return next(row for row in reply.sent["stages"] if row["stage"] == stage)
+
+    def test_the_preview_is_what_the_writer_would_send(self):
+        reply = self._prompt({"plan": self.PLAN, "mid": "M01"})
+        self.assertEqual(reply.code, 200)
+        expected = generator.module_prompt(curriculum.plan_for_prompt(self.PLAN),
+                                           self.PLAN["modules"][0])
+        text = self._stage(reply, "module")["prompt"]
+        self.assertEqual(text, expected)
+        self.assertIn("## Why this matters", text)
+        self.assertIn("What flour is.", text)
+        self.assertIn("45 minutes", text)
+
+    def test_every_per_module_call_is_offered(self):
+        stages = [row["stage"] for row in self._prompt({"plan": self.PLAN, "mid": "M01"}).sent["stages"]]
+        self.assertEqual(stages, ["module", "figures", "assessment", "suggestions", "review"])
+        with_notebooks = dict(self.PLAN, notebooks={"kernel": "python3", "packages": []})
+        stages = [row["stage"] for row in self._prompt({"plan": with_notebooks, "mid": "M01"}).sent["stages"]]
+        self.assertIn("notebooks", stages)
+
+    def test_what_is_only_known_at_the_call_is_shown_as_a_token(self):
+        reply = self._prompt({"plan": self.PLAN, "mid": "M01"})
+        for stage in ("assessment", "suggestions", "figures", "review"):
+            self.assertIn(overrides.BODY, self._stage(reply, stage)["prompt"], stage)
+        self.assertIn(overrides.STUDY, self._stage(reply, "review")["prompt"])
+
+    def test_a_prompt_edited_at_the_gate_is_the_one_shown(self):
+        plan = dict(self.PLAN, prompts={"M01": {"assessment": "Six items about %s." % overrides.BODY}})
+        row = self._stage(self._prompt({"plan": plan, "mid": "M01"}), "assessment")
+        self.assertTrue(row["overridden"])
+        self.assertEqual(row["prompt"], "Six items about {{module_text}}.")
+        self.assertIn("Return ONLY", row["default"])
+
+    def test_a_half_edited_plan_still_previews(self):
+        plan = json.loads(json.dumps(self.PLAN))
+        plan["modules"][1].update(title="", minutes="soon")
+        del plan["audience"]
+        reply = self._prompt({"plan": plan, "mid": "M02"})
+        self.assertEqual(reply.code, 200)
+        self.assertIn("60 minutes", self._stage(reply, "module")["prompt"])
+
+    def test_a_module_with_no_sections_gets_the_standard_ones(self):
+        reply = self._prompt({"plan": self.PLAN, "mid": "M02"})
+        for heading in curriculum.DEFAULT_SECTIONS:
+            self.assertIn("## " + heading, self._stage(reply, "module")["prompt"])
+
+    def test_an_unknown_module_and_a_missing_plan_are_refused(self):
+        self.assertEqual(self._prompt({"plan": self.PLAN, "mid": "M09"}).code, 404)
+        self.assertEqual(self._prompt({"mid": "M01"}).code, 400)
+
+
+class TestPromptOverrides(unittest.TestCase):
+    """A course carries its own prompts in plan/prompts.json, and every per-module call
+    honours them: the run sends what the course says, with the tokens filled in."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="studio-overrides-")
+        self.plan = {"title": "Bread", "subject": "bread", "hours": 6,
+                     "audience": "a beginner", "practitioner": "baker",
+                     "parts": [{"id": "p1", "name": "Basics", "hours": 6, "dir": "01"}],
+                     "modules": [{"id": "M01", "part": "p1", "title": "Flour", "minutes": 45,
+                                  "sections": ["Why this matters", "Exercise"]}]}
+        self.mod = self.plan["modules"][0]
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_an_override_is_sent_with_the_tokens_filled_in(self):
+        overrides.put(self.root, "M01", "assessment",
+                      "Six items, all numeric.\n%s\nEnd." % overrides.BODY)
+        sent = generator.assessment_prompt(self.plan, self.mod, "THE BODY", self.root)
+        self.assertEqual(sent, "Six items, all numeric.\nTHE BODY\nEnd.")
+
+    def test_without_an_override_the_platforms_prompt_is_sent(self):
+        sent = generator.assessment_prompt(self.plan, self.mod, "THE BODY", self.root)
+        self.assertIn("Return ONLY", sent)
+        self.assertIn("THE BODY", sent)
+
+    def test_the_review_stage_gets_its_quiz(self):
+        overrides.put(self.root, "M01", "review",
+                      "Judge:%s\nQuiz:%s" % (overrides.BODY, overrides.STUDY))
+        sent = reviews.review_prompt(self.plan, self.mod, "TEXT",
+                                     {"quiz": [{"type": "tf", "q": "Is it?"}]}, self.root)
+        self.assertEqual(sent, "Judge:TEXT\nQuiz:  - [tf] Is it?")
+
+    def test_empty_text_takes_the_override_away(self):
+        overrides.put(self.root, "M01", "module", "Write it my way.")
+        self.assertEqual(overrides.overridden(self.root, "M01"), ["module"])
+        overrides.put(self.root, "M01", "module", "  ")
+        self.assertEqual(overrides.overridden(self.root, "M01"), [])
+        self.assertIn("Hard requirements", generator.module_prompt(self.plan, self.mod, root=self.root))
+
+    def test_an_unknown_stage_is_refused_and_junk_on_disk_is_ignored(self):
+        with self.assertRaises(ValueError):
+            overrides.put(self.root, "M01", "glossary", "no such stage")
+        os.makedirs(os.path.join(self.root, "plan"), exist_ok=True)
+        with open(os.path.join(self.root, overrides.FILE), "w", encoding="utf-8") as fh:
+            json.dump({"M01": {"module": "keep", "nonsense": "drop", "review": 7},
+                       "not-a-module": {"module": "drop"}}, fh)
+        self.assertEqual(overrides.load(self.root), {"M01": {"module": "keep"}})
+
+    def test_the_gates_overrides_are_saved_into_the_course(self):
+        overrides.merge(self.root, {"M01": {"figures": "Draw one 2x2."}, "M02": {"module": ""}})
+        self.assertEqual(overrides.load(self.root), {"M01": {"figures": "Draw one 2x2."}})
+        overrides.forget(self.root, "M01")
+        self.assertEqual(overrides.load(self.root), {})
 
 
 class TestJobs(unittest.TestCase):

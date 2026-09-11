@@ -24,7 +24,7 @@ from coursekit import notebooks as ck_notebooks
 from coursekit.config import DEFAULT_KERNEL
 from coursekit.settings import SETTINGS
 
-from . import claude_cli, prompts
+from . import claude_cli, overrides, prompts
 from .coerce import fix_notebooks
 from .figures import insert_reference
 from .files import write_json
@@ -111,6 +111,19 @@ def references_in(body: str, mid: str) -> List[str]:
     return [m.group("name") for m in _REFERENCE.finditer(body) if m.group("name").startswith(prefix)]
 
 
+def notebooks_prompt(plan: Dict[str, Any], mod: Dict[str, Any], body: str,
+                     headings: List[str], count: int = 0, root: str = "") -> str:
+    """The prompt this module's notebooks are written from - the course's own where it has
+    one. The kernel and packages come from the course, so an override that names them freezes
+    what the settings tab can change."""
+    runtime = plan.get("notebooks") or {}
+    count = count or NOTEBOOKS_PER_MODULE
+    default = prompts.notebooks(plan, mod, body, headings, count, NOTEBOOK_CELLS,
+                                str(runtime.get("kernel") or DEFAULT_KERNEL),
+                                list(runtime.get("packages") or []))
+    return overrides.apply(root, mod["id"], "notebooks", default, body=body)
+
+
 def write_notebooks(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any], body: str,
                     path: str, model: str = "", count: int = 0) -> str:
     """Ask for this module's notebooks, write the files, put the references in, save the text.
@@ -125,8 +138,7 @@ def write_notebooks(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, An
     kernel = str(runtime.get("kernel") or DEFAULT_KERNEL)
     headings = [s.heading for s in ck_loader.parse_sections(body)]
     reply = claude_cli.ask(
-        prompts.notebooks(plan, mod, body, headings, count, NOTEBOOK_CELLS, kernel,
-                          list(runtime.get("packages") or [])),
+        notebooks_prompt(plan, mod, body, headings, count, root),
         model=model, timeout=claude_cli.timeout_for("notebooks"),
         what="the notebooks for %s" % mid)
     fixed = fix_notebooks(parse_reply(reply), headings, count, NOTEBOOK_CELLS)

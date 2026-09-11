@@ -21,7 +21,7 @@ from coursekit import assessments as ck_assess
 from coursekit import config as ck_config
 from coursekit import loader as ck_loader
 
-from . import claude_cli, prompts
+from . import claude_cli, overrides, prompts
 from .coerce import fix_review
 from .curriculum import plan_from_course
 from .errors import GenerationError
@@ -112,6 +112,14 @@ def accept_module(state_root: str, course_id: str, mid: str, accepted: bool = Tr
     return record
 
 
+def review_prompt(plan: Dict[str, Any], spec: Dict[str, Any], body: str,
+                  assess: Dict[str, Any], root: str = "") -> str:
+    """The prompt a module is reviewed against - the course's own where it has one."""
+    return overrides.apply(root, spec["id"], "review",
+                           prompts.review(plan, plan["modules"], spec, body, assess),
+                           body=body, study=prompts.quiz_listing(assess))
+
+
 def review(job: Job, courses_dir: str, state_root: str, course_id: str, mid: str,
            brief: Dict[str, Any]) -> Dict[str, Any]:
     """Have Claude read one module critically and store what it found.
@@ -134,7 +142,7 @@ def review(job: Job, courses_dir: str, state_root: str, course_id: str, mid: str
     job.progress(1, 2, "Reading %s · %s" % (mid, current.title))
     body = read_text(current.source)
     result = fix_review(claude_cli.ask_json(
-        prompts.review(plan, plan["modules"], spec, body, assess), model=model,
+        review_prompt(plan, spec, body, assess, root), model=model,
         timeout=claude_cli.timeout_for("review"), what="a review of %s" % mid))
     result.update(module=mid, title=current.title, at=_now_ms(), model=model or "")
     write_json(_review_path(state_root, course_id, mid), result)

@@ -220,6 +220,67 @@ main {
   text-align: right;
   font-size: 13px;
 }
+.brief {
+  padding: var(--s3) 16px var(--s4) 50px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.brief .bshort {
+  width: 100%;
+  max-width: 320px;
+}
+.brief .bintent,
+.brief .bsec {
+  width: 100%;
+  font-size: var(--fs-sm);
+}
+.brief .bsec {
+  font-family: var(--mono);
+}
+.planhours input.phrs {
+  width: 68px;
+  text-align: right;
+}
+.promptbox {
+  margin: var(--s2) 0 0;
+  padding: var(--s3);
+  max-height: 380px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  line-height: 1.55;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+}
+.prompts .pstage {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  padding: var(--s2) var(--s3);
+  margin-bottom: var(--s2);
+  background: var(--surface);
+}
+.prompts .pstage.own {
+  border-color: var(--accent);
+}
+.prompts .pstage p.sub {
+  margin: 2px 0 0;
+}
+.prompts .tokens {
+  margin: var(--s2) 0 0;
+  padding-left: var(--s4);
+}
+.prompttext {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  line-height: 1.55;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
 .budget {
   display: flex;
   align-items: center;

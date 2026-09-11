@@ -142,6 +142,9 @@ courses/<id>/               one course = one separate git repository (gitignored
   figures/<mid>-<n>.svg     diagrams a module refers to; inlined by the build (see "Figures")
   notebooks/<mid>-<n>.ipynb Jupyter notebooks a module refers to; rendered by the build, run in
                             the page when Jupyter is up (see "Notebooks")
+  plan/plan.json            the approved curriculum; plan/prompts.json, the prompts this
+                            course sends instead of the platform's (see "The prompts a
+                            module is written from")
   plan/ reference/ templates/
   data/assessments/ data/suggestions/
 dist/<id>/                  build output (generated — do not edit)
@@ -806,6 +809,8 @@ reading validation errors next to the course they belong to.
 | `coerce` | model output into shapes the validator accepts: `fix_quiz_item`, `fix_assessment`, `fix_suggestions`, `fix_spec`, `fix_review` |
 | `generator` | the pipeline: plan → approve → write → validate → build; the writers (`write_module`, `write_study_data`) and `build_course` / `check_course` |
 | `editing` | one module of an existing course: `extend`, `rewrite`, patch mode, `draw` (figures), `store_module_data` |
+| `overrides` | the prompts a course sends instead of the platform's, per module, per stage - `plan/prompts.json` |
+| `promptview` | every stage's prompt for one module, gathered for reading and editing |
 | `figures` | figures for one module: parse the delimited reply, write `figures/<mid>-<n>.svg`, put the references in the text |
 | `notebooks` | notebooks for one module: parse the delimited cells, write `notebooks/<mid>-<n>.ipynb`, put the references in the text |
 | `jupyter` | the Jupyter server: is it reachable, and what a served page is told (`GET /api/jupyter`); `build.py jupyter` |
@@ -976,6 +981,48 @@ validation. That function is public for this reason; `test_studio.py` guards the
 
 The approval gate is `Job.await_input`, which parks the worker thread until the browser POSTs
 an answer. A cancel also releases it, so a job waiting for approval can still be stopped.
+
+**What is approved is a brief per module, not a title.** A plan module is
+`{id, part, title, short, minutes, summary, sections, requires}`, and every one of those
+reaches the writer: `summary` is the module's intent and `sections` are the `##` headings it
+must use verbatim. The gate (`ui/js/41-plan.js`) edits the course hours, the part names, and
+per module the title, minutes, sidebar label, intent and sections - and shows, through
+`POST /api/plan/prompt`, the prompt that module would be written from. The prompt is
+assembled by `generator.module_prompt`, the same function `write_module` calls, so the
+preview cannot drift from what the run sends. Hours edited at the gate win over the hours the
+form asked for: trimming a curriculum there is what makes it a shorter course.
+
+### The prompts a module is written from
+
+**Every per-module call is a named stage, and a course may carry its own prompt for any of
+them.** The stages are `module`, `figures`, `notebooks`, `assessment`, `suggestions` and
+`review` (`overrides.STAGES`) - which is every call a run makes about one module. They live
+in the course at `plan/prompts.json`, because they are authoring intent: they travel with a
+zip or a clone, and a rewrite next year is written to the same instructions as the first run.
+
+- **One builder per stage, used by the run and by the screen alike**: `generator.module_prompt`,
+  `generator.assessment_prompt`, `generator.suggestions_prompt`, `figures.figures_prompt`,
+  `notebooks.notebooks_prompt`, `reviews.review_prompt`. Each ends in `overrides.apply`, so a
+  call site cannot forget to honour an override and a preview cannot show something other
+  than what is sent. Nothing calls `prompts.<stage>` directly any more.
+- **An override is sent word for word, except the two values that cannot be known when it is
+  written**: `{{module_text}}` is the module's text at the moment of the call, `{{study_data}}`
+  its quiz for the review stage. Freezing either into the text would make the second rewrite
+  a lie. The section list is not a token: an override written against one set of headings is
+  the owner's to keep current, and "Back to the platform's" is one button away.
+- **`promptview.rows` is the screen's half**: it builds each stage with the tokens standing in
+  for those values, offers only the stages this course can run (no notebooks without the
+  runtime), and says which are the owner's. `GET/PUT /api/courses/<id>/modules/<mid>/prompts`
+  reads and writes them; `POST /api/plan/prompt` does the same at the approval gate, where the
+  course does not exist yet - those overrides travel in the plan and are written into the
+  course by `overrides.merge` when the tree is laid down.
+- The editor is `ui/js/42-prompts.js`, one component on both surfaces: the gate's module brief
+  and the course page's row menu. A module with a prompt of its own says so on its row, next
+  to the review verdict, because that is the first thing to know when its text reads unlike
+  the rest of the course. `manage.remove_module` calls `overrides.forget`.
+- Two prompts are deliberately not overridable: `patch_module` and `patch_assessment`. They
+  carry the current text and the current quiz *as arguments to an edit*, so an override would
+  freeze the thing being edited. A patch is a rewrite of the module's text, not of its brief.
 
 ### Editing an existing course
 

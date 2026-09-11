@@ -722,6 +722,18 @@ REVIEW_SCHEMA = """{
 }"""
 
 
+def quiz_listing(assess: Any) -> str:
+    """The quiz as the review prompt shows it. Public because an overridden review prompt
+    carries `{{study_data}}` where this block goes, and the two must render alike. A string
+    is already that block - which is how a preview puts the token there instead."""
+    if isinstance(assess, str):
+        return assess
+    return "\n".join(
+        "  - [%s] %s" % (q.get("type", "single"), q.get("q", ""))
+        for q in (assess.get("quiz") or [])
+    ) or "  (none)"
+
+
 def review(cfg: Dict[str, Any], modules: List[Dict[str, Any]], spec: Dict[str, Any],
            body: str, assess: Dict[str, Any]) -> str:
     """Read one finished module the way a demanding reader would, before that reader does.
@@ -730,9 +742,7 @@ def review(cfg: Dict[str, Any], modules: List[Dict[str, Any]], spec: Dict[str, A
     place by what the reader can do afterwards, teaches with the mistake named, carries real
     numbers, and is tested by questions that need the idea rather than the wording.
     """
-    quiz = "\n".join(
-        "  - [%s] %s" % (q.get("type", "single"), q.get("q", "")) for q in (assess.get("quiz") or [])
-    ) or "  (none)"
+    quiz = quiz_listing(assess)
     return f"""You are reviewing module {spec['id']}, "{spec['title']}", before its reader finds the gap.
 
 {_course_context(cfg, modules)}

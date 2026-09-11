@@ -28,8 +28,8 @@ from .coerce import fix_assessment, fix_spec, fix_suggestions
 from .curriculum import next_module_id, plan_from_course
 from .errors import GenerationError
 from .files import read_json, read_text, write_json, write_text
-from .generator import (build_course, draw_figures, draw_notebooks, headings_of, module_path,
-                        repair_head,
+from .generator import (assessment_prompt, build_course, draw_figures, draw_notebooks,
+                        headings_of, module_path, repair_head, suggestions_prompt,
                         write_module, write_study_data)
 from .jobs import Job
 
@@ -290,7 +290,7 @@ def _patch(job: Job, root: str, dist_dir: str, cfg, course_id: str, current, pla
         what = "the edited quiz for %s" % mid
     else:
         job.log("%s had no study data to patch; writing it fresh." % mid)
-        prompt = prompts.assessment(plan, spec, body)
+        prompt = assessment_prompt(plan, spec, body, root)
         what = "the quiz and flashcards for %s" % mid
     assess = fix_assessment(claude_cli.ask_json(
         prompt, model=model, timeout=claude_cli.timeout_for("studyData"), what=what), mid)
@@ -300,7 +300,7 @@ def _patch(job: Job, root: str, dist_dir: str, cfg, course_id: str, current, pla
     if headings_moved:
         job.log("The section headings changed, so the suggested questions are written again.")
         suggest = fix_suggestions(claude_cli.ask_json(
-            prompts.suggestions(plan, mid, new_headings, body), model=model,
+            suggestions_prompt(plan, spec, new_headings, body, root), model=model,
             timeout=claude_cli.timeout_for("studyData"),
             what="the suggested questions for %s" % mid), new_headings)
     else:
