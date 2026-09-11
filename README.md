@@ -1,4 +1,4 @@
-# Course Platform
+# Chiron "the one who trained everyone"
   
 ---
  
