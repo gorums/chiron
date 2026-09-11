@@ -158,7 +158,10 @@ platform/                   the engine — knows nothing about any subject
                             js/settings.js  js/boot.js
                             tokens.css, base.css and core/dom.js are the design system
                             Studio links too (see "The design system")
-  tests/                    test_build.py, test_studio.py, page_smoke.js (boots front-end code under node)
+  tests/                    one file per surface: test_build.py (the engine) · test_studio.py
+                            (Studio) · test_server.py (its HTTP layer) · test_cli.py (build.py)
+                            · test_bridge.py (the tutor bridge); fakehttp.py drives a handler
+                            with no socket; page_smoke.js boots front-end code under node
 courses/<id>/               one course = one separate git repository (gitignored here;
                             the directory itself moves with COURSES_DIR)
   course.json               the manifest that makes a folder a course
@@ -209,10 +212,18 @@ a course without a terminal.
 Tests:
 
 ```
-python platform/tests/test_build.py      70 tests — engine, and the code conventions below
-python platform/tests/test_studio.py     131 tests — Studio
+python platform/tests/test_build.py      the engine, and the code conventions below
+python platform/tests/test_studio.py     Studio: authoring, the stores, the model list
+python platform/tests/test_server.py     Studio's HTTP layer, route by route
+python platform/tests/test_cli.py        build.py, every subcommand
+python platform/tests/test_bridge.py     the tutor bridge
+python -m unittest discover -s platform/tests    all of them at once
 npm run format                           prettier over every .js and .css (see "Code conventions")
 ```
+
+Nothing in any of them opens a port, spawns a process or calls a model: a provider is a
+stand-in, and both servers are driven through their real handler with a `BytesIO` where the
+socket would be (`platform/tests/fakehttp.py`).
 
 Requires Python 3 and the `markdown` package (`pip install markdown`). Nothing else - `npm
 install` adds prettier for the front end, and the formatting test skips when it is absent.
@@ -1326,10 +1337,21 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
 
 ### Tests
 
-- Every module in `studio/` has tests in `test_studio.py`; the engine in `test_build.py`.
-  A new route gets a line in the server docstring (the test checks it resolves) and, when
-  it does real work, a test through `Handler` with a stub `modelcall.ask`.
-- Tests stub the model by replacing `modelcall.ask`; they never make a network call.
+- **One test file per surface**, named for it: the engine in `test_build.py`, Studio's own
+  modules in `test_studio.py`, its routes in `test_server.py`, the command line in
+  `test_cli.py`, the bridge in `test_bridge.py`. A test file may be as long as it needs to
+  be - the 600-line ceiling is for code that has to be read, not for a list of cases.
+- **A route is tested by making the request**, not by calling the method. `fakehttp.call`
+  puts a `BytesIO` where the handler's socket would be, so the dispatch, the guards, the
+  body and the status code all run: `call(Handler, "POST", "/api/courses/x/build")`. A new
+  route gets a line in the server docstring (a test checks it resolves) and a test there.
+- **A test redirects the platform rather than using it.** `test_server.redirect_paths` puts
+  `COURSES_DIR`, `DIST_DIR` and the whole state directory in a temporary folder for one
+  test, through `patch_global`, because Studio resolves those once at import into every
+  module that needs them.
+- **Nothing opens a port, spawns a process or calls a model.** The model is stubbed by
+  replacing `modelcall.ask`; a provider is a stand-in object; `jupyter.probe` is the one
+  route that would reach out and is stubbed for every HTTP test.
 - A test that guards a rule of this file names the rule in its docstring.
 
 ## Gotchas

@@ -1568,52 +1568,6 @@ class TestModelChainStaysWithOneProvider(unittest.TestCase):
         self.assertEqual(llm_chain.model_chain("llama3.1:70b", "local"), ["llama3.1:70b"])
 
 
-class TestBridge(unittest.TestCase):
-    """The bridge keeps a socket, a key hunt and a budget. Everything about reaching a model
-    goes through `coursekit.llm`, so there is one implementation rather than two that drift."""
-
-    @classmethod
-    def setUpClass(cls):
-        import importlib.util
-
-        path = os.path.join(os.path.dirname(PLATFORM), "tools", "bridge", "tutor-bridge.py")
-        spec = importlib.util.spec_from_file_location("tutor_bridge_undertest", path)
-        cls.bridge = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.bridge)
-
-    def test_it_reaches_a_model_only_through_the_provider_layer(self):
-        source = open(os.path.join(os.path.dirname(PLATFORM), "tools", "bridge",
-                                   "tutor-bridge.py"), encoding="utf-8").read()
-        for gone in ("def call_api", "def call_cli", "def flatten", "def cli_argv",
-                     "subprocess.run", "x-api-key"):
-            self.assertNotIn(gone, source, "the bridge should not do this itself any more")
-
-    def test_the_budget_drops_the_oldest_turns_first(self):
-        older = [{"role": "user", "content": "a" * 400},
-                 {"role": "assistant", "content": "b" * 400},
-                 {"role": "user", "content": "the newest question"}]
-        system, kept = self.bridge.trim("s" * 100, older, 600)
-        self.assertEqual(kept[-1]["content"], "the newest question")
-        self.assertLess(len(kept), 3)
-        self.assertLessEqual(len(system) + sum(len(m["content"]) for m in kept), 700)
-
-    def test_the_quoted_passage_is_shortened_before_the_question_is(self):
-        system, kept = self.bridge.trim("s" * 8000, [{"role": "user", "content": "why?"}], 2000)
-        self.assertIn("shortened to fit", system)
-        self.assertEqual(kept[0]["content"], "why?")
-
-    def test_a_route_is_chosen_by_what_is_configured(self):
-        self.assertIn(self.bridge.active_mode(), ("cli", "api", "none", "echo"))
-        self.assertEqual(self.bridge.cli_provider().kind, "cli")
-        self.assertEqual(self.bridge.api_provider().kind, "anthropic")
-
-    def test_a_key_is_recognised_whoever_issued_it(self):
-        """The hunt looks for more than one company's key now."""
-        self.assertEqual(self.bridge.KEY_NAMES[0], "ANTHROPIC_API_KEY")
-        self.assertIn("OPENAI_API_KEY", self.bridge.KEY_NAMES)
-        self.assertTrue("sk-ant-x".startswith(self.bridge.KEY_SHAPES))
-
-
 class TestSkillStub(unittest.TestCase):
     """A skill lives in `common/skills/`, so that it belongs to the project rather than to
     whichever tool is reading it today. Every tool then has its own folder it scans, and its
@@ -2151,6 +2105,64 @@ class TestJupyterSettings(unittest.TestCase):
         self.assertEqual(s.jupyter_url, "http://jupyter.local:1234")
         self.assertEqual(s.jupyter_internal_url, "http://jupyter:8888")
         self.assertIn("JUPYTER_TOKEN", settings.ENV_KEYS)
+
+
+class TestAssessmentFiles(TempCourseTest):
+    """The per-part files are merged into one map, and every way two files can disagree
+    about a module is a `DataError` naming what is wrong."""
+
+    def data_dir(self, which):
+        cfg = config.load(self.course.root)
+        return cfg.path(cfg.data[which])
+
+    def write(self, which, name, payload):
+        with open(os.path.join(self.data_dir(which), name), "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+
+    def test_two_files_may_not_claim_one_module(self):
+        self.write("assessments", "part2.json", [_assessment("M01")])
+        with self.assertRaises(DataError) as caught:
+            assessments.load_assessments(config.load(self.course.root))
+        self.assertIn("M01", str(caught.exception))
+
+        os.unlink(os.path.join(self.data_dir("assessments"), "part2.json"))
+        self.write("suggestions", "part2.json", {"M01": [["a?"]]})
+        with self.assertRaises(DataError):
+            assessments.load_suggestions(config.load(self.course.root))
+
+    def test_an_entry_without_an_id_cannot_be_keyed(self):
+        self.write("assessments", "part2.json", [{"quiz": []}])
+        with self.assertRaises(DataError):
+            assessments.load_assessments(config.load(self.course.root))
+
+    def test_each_kind_of_file_holds_the_shape_it_is_read_as(self):
+        self.write("assessments", "part2.json", {"M07": {}})
+        with self.assertRaises(DataError):
+            assessments.load_assessments(config.load(self.course.root))
+        os.unlink(os.path.join(self.data_dir("assessments"), "part2.json"))
+        self.write("suggestions", "part2.json", [["a?"]])
+        with self.assertRaises(DataError):
+            assessments.load_suggestions(config.load(self.course.root))
+
+    def test_a_file_that_is_not_json_names_itself(self):
+        with open(os.path.join(self.data_dir("assessments"), "part2.json"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("{not json")
+        with self.assertRaises(DataError) as caught:
+            assessments.load_assessments(config.load(self.course.root))
+        self.assertIn("part2.json", str(caught.exception))
+
+    def test_a_directory_with_nothing_in_it_is_a_problem_not_an_empty_course(self):
+        for name in os.listdir(self.data_dir("assessments")):
+            os.unlink(os.path.join(self.data_dir("assessments"), name))
+        with self.assertRaises(DataError):
+            assessments.load_assessments(config.load(self.course.root))
+
+    def test_a_directory_that_is_not_there_says_where_it_should_be(self):
+        shutil.rmtree(self.data_dir("suggestions"))
+        with self.assertRaises(DataError) as caught:
+            assessments.load_suggestions(config.load(self.course.root))
+        self.assertIn("suggestions", str(caught.exception))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -2608,5 +2608,419 @@ class TestJupyter(unittest.TestCase):
         self.assertEqual(len(calls), 1, "cached")
         self.assertEqual(calls[0], SETTINGS.jupyter_internal_url + "/api/")
 
+
+class TestTransfer(unittest.TestCase):
+    """Moving a whole course in or out. Nothing existing is ever overwritten, and the folder
+    is always renamed to the id inside its `course.json` - the folder name *is* the id."""
+
+    def setUp(self):
+        sys.path.insert(0, HERE)
+        from test_build import CourseFixture
+        self.tmp = tempfile.mkdtemp(prefix="studio-transfer-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.courses = os.path.join(self.tmp, "courses")
+        os.makedirs(self.courses)
+        self.fixture = CourseFixture(self.courses)
+
+    def _zip(self):
+        from studio import transfer
+        return transfer.export_zip(os.path.join(self.courses, "fixture"))
+
+    def test_the_export_leaves_git_and_the_tool_folders_behind(self):
+        import io as _io
+        import zipfile
+        os.makedirs(os.path.join(self.courses, "fixture", ".git"))
+        with open(os.path.join(self.courses, "fixture", ".git", "HEAD"), "w") as fh:
+            fh.write("ref: refs/heads/main")
+        names = zipfile.ZipFile(_io.BytesIO(self._zip())).namelist()
+        self.assertIn("fixture/course.json", names)
+        self.assertFalse([n for n in names if ".git" in n], "a zip is the course, not the repo")
+
+    def test_exporting_something_that_is_not_a_course_is_refused(self):
+        from studio import transfer
+        with self.assertRaises(CourseError):
+            transfer.export_zip(self.tmp)
+
+    def test_the_folder_is_renamed_to_the_id_in_the_manifest(self):
+        from studio import transfer
+        data = self._zip()
+        shutil.rmtree(os.path.join(self.courses, "fixture"))
+        elsewhere = os.path.join(self.tmp, "other-library")
+        course = transfer.import_zip(elsewhere, data)
+        self.assertEqual(course["id"], "fixture")
+        self.assertEqual(course["modules"], 6)
+        self.assertTrue(os.path.isfile(os.path.join(elsewhere, "fixture", "course.json")))
+
+    def test_a_zip_whose_files_sit_at_its_root_works_too(self):
+        import io as _io
+        import zipfile
+        from studio import transfer
+        source = os.path.join(self.courses, "fixture")
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for where, _dirs, names in os.walk(source):
+                for name in names:
+                    full = os.path.join(where, name)
+                    zf.write(full, os.path.relpath(full, source).replace(os.sep, "/"))
+        elsewhere = os.path.join(self.tmp, "flat")
+        self.assertEqual(transfer.import_zip(elsewhere, buf.getvalue())["id"], "fixture")
+
+    def test_an_import_never_overwrites_what_is_there(self):
+        from studio import transfer
+        with self.assertRaises(CourseError):
+            transfer.import_zip(self.courses, self._zip())
+
+    def test_a_member_climbing_out_of_the_folder_is_dropped(self):
+        """A zip is a file from anywhere; its member names are not to be trusted."""
+        import io as _io
+        import zipfile
+        from studio import transfer
+        with open(self.fixture.cfg_path, encoding="utf-8") as fh:
+            manifest = fh.read()
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("c/course.json", manifest)
+            zf.writestr("c/../../escaped.txt", "no")
+        elsewhere = os.path.join(self.tmp, "safe")
+        transfer.import_zip(elsewhere, buf.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "escaped.txt")))
+
+    def test_only_a_repository_url_is_ever_a_subprocess_argument(self):
+        from studio import transfer
+        for good in ("https://example.com/someone/course.git", "git@example.com:someone/course"):
+            self.assertTrue(transfer.is_git_url(good), good)
+        for bad in ("", "file:///etc", "https://example.com", "; rm -rf /",
+                    "https://example.com/a b", None):
+            self.assertFalse(transfer.is_git_url(bad), bad)
+
+    def _git_says(self, run):
+        import subprocess
+        from studio import transfer
+        self.addCleanup(setattr, transfer.shutil, "which", transfer.shutil.which)
+        self.addCleanup(setattr, transfer.subprocess, "run", transfer.subprocess.run)
+        transfer.shutil.which = lambda name: "/usr/bin/git"
+        transfer.subprocess.run = run
+        del subprocess
+
+    def test_a_clone_that_fails_says_the_last_thing_git_said(self):
+        import subprocess
+        from studio import transfer
+        self._git_says(lambda *a, **kw: subprocess.CompletedProcess(
+            a[0], 128, "", "remote: not found\nfatal: repository not found\n"))
+        with self.assertRaises(CourseError) as caught:
+            transfer.import_git(self.courses, "https://example.com/nope.git")
+        self.assertIn("repository not found", str(caught.exception))
+
+    def test_a_clone_that_hangs_is_stopped_and_said_to_have_been(self):
+        import subprocess
+        from studio import transfer
+
+        def hang(*a, **kw):
+            raise subprocess.TimeoutExpired(a[0], kw.get("timeout", 1))
+
+        self._git_says(hang)
+        with self.assertRaises(CourseError) as caught:
+            transfer.import_git(self.courses, "https://example.com/slow.git", timeout=1)
+        self.assertIn("stopped", str(caught.exception))
+
+
+class TestSearch(unittest.TestCase):
+    """Every course at once, through the build's own loader."""
+
+    def setUp(self):
+        sys.path.insert(0, HERE)
+        from test_build import CourseFixture
+        self.tmp = tempfile.mkdtemp(prefix="studio-search-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.courses = os.path.join(self.tmp, "courses")
+        os.makedirs(self.courses)
+        self.fixture = CourseFixture(self.courses)
+
+    def find(self, query):
+        from studio import search
+        return search.search(self.courses, query)
+
+    def test_one_letter_is_not_a_search(self):
+        self.assertEqual(self.find("a"), {"query": "a", "hits": [], "courses": 0})
+
+    def test_a_heading_outranks_a_passage(self):
+        hits = self.find("core concepts")["hits"]
+        self.assertEqual(hits[0]["kind"], "section")
+        self.assertEqual(hits[0]["text"], "Core concepts")
+
+    def test_a_passage_comes_back_with_the_words_around_it(self):
+        hit = [h for h in self.find("stated plainly")["hits"] if h["kind"] == "passage"][0]
+        self.assertIn("stated plainly", hit["text"])
+        self.assertIn("heading", hit)
+
+    def test_a_course_that_does_not_load_is_skipped_rather_than_ending_the_search(self):
+        broken = os.path.join(self.courses, "broken")
+        os.makedirs(broken)
+        with open(os.path.join(broken, "course.json"), "w", encoding="utf-8") as fh:
+            fh.write("{not json")
+        found = self.find("lesson")
+        self.assertEqual(found["courses"], 1)
+        self.assertTrue(found["hits"])
+
+    def test_a_library_that_is_not_there_yet_is_no_hits(self):
+        from studio import search
+        self.assertEqual(search.search(os.path.join(self.tmp, "nowhere"), "anything")["hits"], [])
+
+
+class TestOwnerVerdicts(unittest.TestCase):
+    """Mark as good is the owner's own verdict, stored in the same file as the model's
+    review so a module row shows one thing."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="studio-verdict-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_marking_a_module_good_without_a_review_says_so(self):
+        record = reviews.accept_module(self.tmp, "c", "M01", True)
+        self.assertTrue(record["ownerOnly"])
+        self.assertEqual(record["verdict"], "solid")
+        self.assertIn("M01", reviews.load_reviews(self.tmp, "c"))
+
+    def test_withdrawing_it_removes_the_record_that_was_only_the_mark(self):
+        reviews.accept_module(self.tmp, "c", "M01", True)
+        self.assertEqual(reviews.accept_module(self.tmp, "c", "M01", False), {})
+        self.assertEqual(reviews.load_reviews(self.tmp, "c"), {})
+
+    def test_withdrawing_it_keeps_a_real_review_underneath(self):
+        path = os.path.join(reviews.reviews_dir(self.tmp, "c"), "M02.json")
+        files.write_json(path, {"module": "M02", "verdict": "thin", "gaps": ["g"],
+                                "errors": [], "quiz": [], "rewriteBrief": "b", "at": 1})
+        reviews.accept_module(self.tmp, "c", "M02", True)
+        record = reviews.accept_module(self.tmp, "c", "M02", False)
+        self.assertNotIn("accepted", record)
+        self.assertEqual(record["verdict"], "thin", "a mark never changes what the model found")
+
+    def test_a_file_that_cannot_be_read_is_skipped_not_fatal(self):
+        path = os.path.join(reviews.reviews_dir(self.tmp, "c"), "M03.json")
+        files.write_text(path, "{not json")
+        self.assertEqual(reviews.load_reviews(self.tmp, "c"), {})
+
+
+class TestReviewJob(unittest.TestCase):
+    """A review is an opinion about content, so it is stored beside the course, not in it."""
+
+    def setUp(self):
+        sys.path.insert(0, HERE)
+        from test_build import CourseFixture
+        self.tmp = tempfile.mkdtemp(prefix="studio-review-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.courses = os.path.join(self.tmp, "courses")
+        self.state = os.path.join(self.tmp, "state")
+        os.makedirs(self.courses)
+        self.fixture = CourseFixture(self.courses)
+        self.addCleanup(setattr, modelcall, "ask", modelcall.ask)
+
+    def _answer(self, payload):
+        modelcall.ask = lambda prompt, **kw: json.dumps(payload)
+
+    def test_what_the_model_found_is_stored_under_the_state_directory(self):
+        self._answer({"verdict": "solid", "summary": "Reads well.", "gaps": ["one gap"],
+                      "errors": [], "quiz": [], "rewriteBrief": "Tighten the opening."})
+        job = jobs.Job("review")
+        result = reviews.review(job, self.courses, self.state, "fixture", "M02", {"model": "opus"})
+        self.assertEqual(result["verdict"], "solid")
+        self.assertEqual(job.meta, {"course": "fixture", "module": "M02"})
+        stored = reviews.load_reviews(self.state, "fixture")["M02"]
+        self.assertEqual(stored["title"], "Lesson 2")
+        self.assertFalse(os.path.isdir(os.path.join(self.courses, "fixture", "reviews")))
+
+    def test_a_module_that_is_not_in_the_course_is_refused(self):
+        self._answer({"verdict": "solid"})
+        with self.assertRaises(GenerationError):
+            reviews.review(jobs.Job("review"), self.courses, self.state, "fixture", "M99", {})
+
+    def test_the_prompt_is_the_course_s_own_when_it_has_one(self):
+        from coursekit.course import loader as ck_loader
+        root = os.path.join(self.courses, "fixture")
+        overrides.put(root, "M01", "review", "Only answer with the word HELLO.")
+        cfg = config.load(root)
+        modules = ck_loader.load_modules(cfg)
+        plan = curriculum.plan_from_course(cfg, modules)
+        spec = next(m for m in plan["modules"] if m["id"] == "M01")
+        prompt = reviews.review_prompt(plan, spec, "the module text", {}, root)
+        self.assertIn("HELLO", prompt)
+
+
+
+class TestJupyterServer(unittest.TestCase):
+    """Studio only probes Jupyter and tells the page where it is; it never runs it itself."""
+
+    def setUp(self):
+        from studio import jupyter
+        jupyter._probe.update(at=0.0, version=None)
+        self.addCleanup(jupyter._probe.update, dict(at=0.0, version=None))
+
+    def test_a_server_that_answers_is_reported_with_its_version(self):
+        import urllib.request
+        from studio import jupyter
+
+        class Answer:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b'{"version": "7.1.2"}'
+
+        self.addCleanup(setattr, urllib.request, "urlopen", urllib.request.urlopen)
+        urllib.request.urlopen = lambda url, timeout=0: Answer()
+        self.assertEqual(jupyter.probe(force=True), "7.1.2")
+        self.assertTrue(jupyter.available())
+        view = jupyter.view()
+        self.assertTrue(view["available"])
+        self.assertEqual(view["url"], SETTINGS.jupyter_url)
+
+    def test_the_token_the_page_is_given_is_never_in_a_built_page(self):
+        """It reaches the page through this route on Studio's loopback origin instead."""
+        from studio import jupyter
+        self.assertIn("token", jupyter.view())
+        self.assertNotIn("jupyter", json.dumps(SETTINGS.page()).lower())
+
+    def test_running_it_needs_the_package_and_says_so_when_it_is_absent(self):
+        from studio import jupyter
+        self.addCleanup(setattr, jupyter, "installed", jupyter.installed)
+        jupyter.installed = lambda: False
+        import contextlib
+        import io as _io
+        with contextlib.redirect_stderr(_io.StringIO()):
+            self.assertEqual(jupyter.run(), 1)
+
+    def test_running_it_hands_the_courses_directory_to_the_server(self):
+        from studio import jupyter
+        seen = {}
+
+        def call(argv, **kw):
+            seen["argv"], seen["env"] = argv, kw.get("env") or {}
+            return 0
+
+        self.addCleanup(setattr, jupyter, "installed", jupyter.installed)
+        self.addCleanup(setattr, jupyter.subprocess, "call", jupyter.subprocess.call)
+        jupyter.installed = lambda: True
+        jupyter.subprocess.call = call
+        import contextlib
+        import io as _io
+        with contextlib.redirect_stdout(_io.StringIO()):
+            self.assertEqual(jupyter.run(), 0)
+        self.assertIn(jupyter.CONFIG_FILE, " ".join(seen["argv"]))
+        self.assertEqual(seen["env"]["COURSES_DIR"], jupyter.COURSES_DIR)
+
+
+class TestDiscoveryRun(unittest.TestCase):
+    """A whole check: every provider asked what it knows, the answers merged per provider,
+    a report written. Nobody has to type a new model's id."""
+
+    class Source:
+        """A provider that answers `catalog()` however the test says."""
+
+        def __init__(self, name, models=(), known=None, ok=True, complete=False, error=""):
+            self.name, self.label, self.kind = name, name.title(), "cli"
+            self.catalog_is_complete = complete
+            self._answer = {"ok": ok, "models": [dict(m) for m in models],
+                            "known": dict(known or {}), "error": error}
+
+        def available(self):
+            return True
+
+        def catalog(self, timeout=0):
+            return dict(self._answer)
+
+    def setUp(self):
+        from studio import discover
+        self.discover = discover
+        self.tmp = tempfile.mkdtemp(prefix="studio-discovery-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(setattr, discover, "report_path", discover.report_path)
+        discover.report_path = lambda: os.path.join(self.tmp, "models-discovery.json")
+
+    def sources(self, *providers):
+        from coursekit import llm
+        self.addCleanup(setattr, llm, "providers", llm.providers)
+        llm.providers = lambda all_of_them=False: list(providers)
+
+    def listed(self, *entries):
+        """The model list in use, written as the layer Studio saves - the real path."""
+        path = os.path.join(self.tmp, "settings.json")
+        files.write_json(path, {"models": {"list": [dict(e) for e in entries],
+                                           "default": entries[0]["alias"]}})
+        was = SETTINGS.studio_file
+
+        def back():
+            SETTINGS.studio_file = was
+            SETTINGS.reload()
+
+        self.addCleanup(back)
+        SETTINGS.studio_file = path
+        SETTINGS.reload()
+
+    def test_a_model_a_provider_offers_and_the_list_lacks_is_added_under_that_provider(self):
+        self.sources(self.Source("one", [{"id": "one-new"}],
+                                 known={"one-old": "", "one-new": ""}))
+        self.listed({"provider": "one", "id": "one-old", "alias": "old", "label": "Old"})
+        report = self.discover.run(save=False)
+        self.assertEqual([m["id"] for m in report["added"]], ["one-new"])
+        self.assertEqual([m["provider"] for m in report["added"]], ["one"])
+        self.assertTrue(report["changed"])
+        self.assertEqual(report["sources"]["one"]["offered"], 1)
+
+    def test_one_provider_says_nothing_about_another_s_models(self):
+        """A Claude Code build says nothing about what OpenAI offers, and is not allowed to."""
+        self.sources(self.Source("one", [{"id": "shared"}], known={"shared": ""}),
+                     self.Source("two", ok=False, error="could not be read"))
+        self.listed({"provider": "two", "id": "two-only", "alias": "t", "label": "T"})
+        report = self.discover.run(save=False)
+        self.assertEqual(report["removed"], [], "a source that cannot answer removes nothing")
+        self.assertEqual([m["id"] for m in report["added"]], ["shared"])
+        self.assertFalse(report["sources"]["two"]["ok"])
+
+    def test_a_provider_s_models_are_never_all_removed(self):
+        self.sources(self.Source("one", known={"something-else": ""}, complete=True))
+        self.listed({"provider": "one", "id": "one-old", "alias": "old", "label": "Old"})
+        report = self.discover.run(save=False)
+        self.assertEqual(report["removed"], [], "the last one stays whatever the source says")
+
+    def test_a_check_that_finds_nothing_new_says_so_and_writes_a_report(self):
+        self.sources(self.Source("one", [{"id": "one-old"}], known={"one-old": ""}))
+        self.listed({"provider": "one", "id": "one-old", "alias": "old", "label": "Old"})
+        report = self.discover.run(save=True)
+        self.assertFalse(report["changed"])
+        self.assertIs(self.discover.status()["last"]["changed"], False)
+
+    def test_the_new_list_is_saved_and_is_the_one_in_use(self):
+        self.sources(self.Source("anthropic", [{"id": "a-new-one"}],
+                                 known={"an-old-one": "", "a-new-one": ""}))
+        self.listed({"provider": "anthropic", "id": "an-old-one", "alias": "old", "label": "Old"})
+        self.discover.run(save=True)
+        self.assertIn("a-new-one", [m["id"] for m in SETTINGS.models])
+
+    def test_a_list_the_validator_refuses_is_reported_rather_than_thrown(self):
+        """`models.replace` is the same gate the settings page goes through."""
+        self.sources(self.Source("one", [{"id": "one-new"}],
+                                 known={"one-old": "", "one-new": ""}))
+        self.listed({"provider": "one", "id": "one-old", "alias": "old", "label": "Old"})
+        report = self.discover.run(save=True)
+        self.assertIn("no provider called", report["error"])
+
+    def test_the_settings_page_is_told_what_would_be_asked(self):
+        self.sources(self.Source("one", [{"id": "x"}]))
+        status = self.discover.status()
+        self.assertEqual([p["name"] for p in status["providers"]], ["one"])
+        self.assertEqual(status["hours"], self.discover.HOURS)
+
+    def test_a_report_that_cannot_be_read_is_not_a_crash(self):
+        files.write_text(self.discover.report_path(), "{not json")
+        self.assertIsNone(self.discover.status()["last"])
+
+    def test_the_schedule_is_off_when_the_setting_is_zero(self):
+        self.addCleanup(setattr, self.discover, "HOURS", self.discover.HOURS)
+        self.discover.HOURS = 0
+        self.assertFalse(self.discover.schedule())
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
