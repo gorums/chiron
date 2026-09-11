@@ -1755,6 +1755,29 @@ class TestCodeConventions(unittest.TestCase):
                         offenders.append("%s:%d %s" % (os.path.relpath(path, self.PLATFORM), n, m.group(0)))
         self.assertEqual(offenders, [], "\n".join(offenders))
 
+    def test_no_python_module_uses_a_name_it_never_imported(self):
+        """The Python half of `page_smoke.js`: a name used and never bound is a NameError the
+        first time that line runs, and a route nobody tested can carry one for a long time.
+        Splitting `server.py` into a package left four of them behind.
+
+        `python -m pyflakes platform tools` locally; skipped when it is not installed, the
+        way the formatter check is - the platform's only real dependency is `markdown`."""
+        import subprocess
+        try:
+            probe = subprocess.run([sys.executable, "-m", "pyflakes", "--version"],
+                                   capture_output=True, text=True)
+        except OSError:
+            self.skipTest("pyflakes not installed (pip install pyflakes)")
+        if probe.returncode != 0:
+            self.skipTest("pyflakes not installed (pip install pyflakes)")
+        proc = subprocess.run([sys.executable, "-m", "pyflakes", "coursekit", "studio", "tests"],
+                              cwd=self.PLATFORM, capture_output=True, text=True, encoding="utf-8")
+        # An unused import is often deliberate here - a re-export, a `# noqa: F401`. An
+        # undefined name never is.
+        bad = [line for line in (proc.stdout + proc.stderr).splitlines()
+               if line.strip() and "imported but unused" not in line]
+        self.assertEqual(bad, [], "\n".join(bad))
+
     def _prettier(self):
         """The formatter, when it is installed: `npm install` at the repo root, or on PATH."""
         local = os.path.join(self.REPO, "node_modules", ".bin",

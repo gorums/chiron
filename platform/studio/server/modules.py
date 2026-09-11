@@ -7,8 +7,12 @@ because every one of them can break it.
 
 from __future__ import annotations
 
+from coursekit.course import config as ck_config
+from coursekit.course import loader as ck_loader
+
 from .. import catalog, manage
-from ..authoring import overrides, promptview, reviews
+from ..authoring import curriculum, generator, overrides, promptview, reviews
+from ..store.runtime import STATE_ROOT, TRASH_DIR
 from ..support.log import log
 from .base import MODULE, route
 

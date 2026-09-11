@@ -10,14 +10,17 @@ from __future__ import annotations
 import base64
 import json
 import os
+from typing import Any, Dict
 
+from coursekit.course import figures as ck_figures
+from coursekit.course import notebooks as ck_notebooks
 from coursekit.errors import CourseError
 from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
 from .. import catalog, manage, transfer
 from ..authoring import generator
-from ..store.runtime import store
+from ..store.runtime import PREFS, TRASH_DIR, store
 from ..support.files import write_text
 from ..support.log import log
 from .base import COURSE, route

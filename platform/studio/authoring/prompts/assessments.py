@@ -13,7 +13,6 @@ from typing import Any, Dict, List
 def patch_assessment(cfg: Dict[str, Any], spec: Dict[str, Any], assess: Dict[str, Any],
                      notes: str, body: str) -> str:
     """The study-data half of a patch: the same object back, with only the flagged items new."""
-    import json
     return f"""Edit the study data for module {spec['id']}, "{spec['title']}", of the course
 "{cfg.get('title', '')}". Change only what the notes below require.
 

@@ -7,9 +7,11 @@ summary - the browser follows the rest over SSE. Nothing here waits for a model.
 
 from __future__ import annotations
 
+from coursekit.course import config as ck_config
 from coursekit.paths import COURSES_DIR, DIST_DIR
 from coursekit.settings import SETTINGS
 
+from .. import catalog
 from ..authoring import curriculum, editing, generator, overrides, promptview, reviews
 from ..store import jobs
 from ..store.runtime import STATE_ROOT
