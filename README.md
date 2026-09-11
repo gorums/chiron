@@ -1,7 +1,5 @@
-# Course Platform — Explained in a Chat
- 
-> A conversation about what this project is and how it works.
- 
+# Course Platform
+  
 ---
  
 ### 🧑 Alejandro
@@ -12,22 +10,22 @@
  
 ### 🤖 AI
  
-Yes. You built a local tool that turns "teach me X in N hours" into a complete, rigorous self-study course, and then helps you actually learn it. It isn't just content; the course keeps track of how you're learning.
+> Yes. You built a local tool that turns "teach me X in N hours" into a complete, rigorous self-study course, and then helps you actually learn it. It isn't just content; the course keeps track of how you're learning.
  
-It has two halves:
+> It has two halves:
  
-**1. Authoring (Course Studio, or the `course-author` skill).** You give a theme, hours and audience ("negotiation, 20 hours, beginner"). A model proposes a curriculum, and nothing gets written until you approve it. Then it writes module by module: markdown text, SVG diagrams, glossary, worksheets, quizzes, flashcards, suggested tutor questions, and notebooks for courses you learn by coding. A `check` step rejects any course that breaks the format rules. After that you can still review, patch, rewrite or add modules, and your own knowledge gaps can feed straight into those rewrites.
+> **1. Authoring (Course Studio, or the `course-author` skill).** You give a theme, hours and audience ("negotiation, 20 hours, beginner"). A model proposes a curriculum, and nothing gets written until you approve it. Then it writes module by module: markdown text, SVG diagrams, glossary, worksheets, quizzes, flashcards, suggested tutor questions, and notebooks for courses you learn by coding. A `check` step rejects any course that breaks the format rules. After that you can still review, patch, rewrite or add modules, and your own knowledge gaps can feed straight into those rewrites.
  
-**2. Studying (the built HTML page).** Every module follows the same learning-science loop: **Predict → Read → Retrieve → Elaborate → Apply → Close the gaps**. On top of that sit spaced-repetition flashcards, a queue of the questions you missed, confidence ratings, mastery levels, checkpoints, a study plan and streaks. There's also an AI tutor in a side rail. It follows the section you're reading, grades your written answers, role-plays a persona, and keeps a "learner memory" of your weak spots.
+> **2. Studying (the built HTML page).** Every module follows the same learning-science loop: **Predict → Read → Retrieve → Elaborate → Apply → Close the gaps**. On top of that sit spaced-repetition flashcards, a queue of the questions you missed, confidence ratings, mastery levels, checkpoints, a study plan and streaks. There's also an AI tutor in a side rail. It follows the section you're reading, grades your written answers, role-plays a persona, and keeps a "learner memory" of your weak spots.
  
-A few design rules hold it together:
+> A few design rules hold it together:
  
-- **Two layers kept apart.** The engine (`platform/`) never mentions a subject. Everything about the subject lives in each course's `course.json`, and a test fails the build if the two leak into each other.
-- **Courses are just folders.** Markdown, JSON, SVG and notebooks, each one its own git repo. Your progress lives separately in `state/`, so a course never carries anyone's reading history.
-- **Model-agnostic.** It runs on the Claude Code or Codex command-line tools you're already signed in to, or on API keys, or on local models, all configured in `platform/settings.json`.
-- **It runs only on your machine** (127.0.0.1), via Docker or `start-studio.bat`.
+> - **Two layers kept apart.** The engine (`platform/`) never mentions a subject. Everything about the subject lives in each course's `course.json`, and a test fails the build if the two leak into each other.
+> - **Courses are just folders.** Markdown, JSON, SVG and notebooks, each one its own git repo. Your progress lives separately in `state/`, so a course never carries anyone's reading history.
+> - **Model-agnostic.** It runs on the Claude Code or Codex command-line tools you're already signed in to, or on API keys, or on local models, all configured in `platform/settings.json`.
+> - **It runs only on your machine** (127.0.0.1), via Docker or `start-studio.bat`.
 
-# Course platform
+# Ready!
 
 **Build an interactive course on any subject, for any number of hours, and study it in your
 browser.**
