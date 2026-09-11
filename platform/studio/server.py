@@ -13,7 +13,7 @@ trust both. The table at the bottom of the class lists every route in one place.
 
     GET  /                                  the UI
     GET  /ui/shared/<file>                  the design system both surfaces are built from
-                                            (platform/web: 00-tokens.css, 01-base.css, 00-dom.js)
+                                            (platform/web: tokens.css, base.css, core/dom.js)
     GET  /api/state                         courses (with progress), providers and models, jobs,
                                             the active profile, the study calendar, Jupyter
     GET  /api/jupyter                       the Jupyter server: reachable?, its address, the token a served page uses
@@ -105,9 +105,9 @@ UI_DIR = os.path.join(HERE, "ui")
 # the same three files at /ui/shared/ rather than keeping a copy that drifts.
 _WEB = os.path.join(os.path.dirname(HERE), "web")
 SHARED_UI = {
-    "00-tokens.css": os.path.join(_WEB, "css", "00-tokens.css"),
-    "01-base.css": os.path.join(_WEB, "css", "01-base.css"),
-    "00-dom.js": os.path.join(_WEB, "js", "00-dom.js"),
+    "tokens.css": os.path.join(_WEB, "css", "tokens.css"),
+    "base.css": os.path.join(_WEB, "css", "base.css"),
+    "dom.js": os.path.join(_WEB, "js", "core", "dom.js"),
 }
 
 # `studio.port` / `studio.host` in settings.json; STUDIO_PORT and STUDIO_HOST override them.

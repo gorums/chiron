@@ -161,7 +161,7 @@ def open_questions(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> 
 def learner_view(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> Dict[str, Any]:
     """What the page's tutor remembers about this reader: the brief and the open gaps.
 
-    The page writes it (see web/js/17c-learner.js); Studio only shows it, because a gap that
+    The page writes it (see web/js/tutor/learner.js); Studio only shows it, because a gap that
     keeps coming back is the best evidence that a module needs rewriting.
     """
     raw = state.get("learner")

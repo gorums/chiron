@@ -4,7 +4,7 @@
    module, a rewrite - shows the two switches (mediaChoices) and sends what was ticked
    (mediaBrief) as `figures` and `notebooks` in the request; the server honours both.
    Notebooks are offered only when the course declares them in its settings. The
-   new-course form is the exception: there the planner decides (10-library.js). */
+   new-course form is the exception: there the planner decides (library.js). */
 
 function mediaChoices(prefix, course, note) {
   const runtime = course && course.notebooks ? course.notebooks : null;

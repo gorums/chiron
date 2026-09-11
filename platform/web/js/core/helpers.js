@@ -1,5 +1,5 @@
 /* ============================ helpers ============================ */
-/* $, esc, toast, ico, fmtH, fmtClock and help() live in 00-dom.js, shared with Studio. */
+/* $, esc, toast, ico, fmtH, fmtClock and help() live in core/dom.js, shared with Studio. */
 const MODS = DATA.modules;
 const byId = id => MODS.find(m => m.id === id);
 const moduleIndex = id => MODS.findIndex(m => m.id === id);

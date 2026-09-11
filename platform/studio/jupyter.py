@@ -4,7 +4,7 @@ Studio runs no kernels itself. A separate Jupyter server - the `jupyter` service
 compose.yaml, or `build.py jupyter` on a machine without Docker - serves the courses
 directory, so `courses/<id>/notebooks/<mid>-<n>.ipynb` opens at
 `<jupyter>/notebooks/<id>/notebooks/<mid>-<n>.ipynb`. The course page embeds that in a
-frame (`web/js/07e-notebooks.js`); this module answers two questions: is the server
+frame (`web/js/reading/notebooks.js`); this module answers two questions: is the server
 reachable, and what should the browser be told (`GET /api/jupyter`).
 
 Both routes share one configuration, `tools/jupyter/jupyter_server_config.py`, which

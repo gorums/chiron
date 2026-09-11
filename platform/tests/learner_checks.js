@@ -1,4 +1,4 @@
-/* Checks for the learner memory (web/js/17c-learner.js), run inside a booted page by
+/* Checks for the learner memory (web/js/tutor/learner.js), run inside a booted page by
    page_smoke.js --checks. The page's globals - STATE, MODS, learnerEvidence, ... - are in
    scope. Each check builds the state it needs and throws when the outcome is wrong. */
 "use strict";

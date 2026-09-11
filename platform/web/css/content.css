@@ -443,7 +443,7 @@
   color: var(--muted);
 }
 
-/* ---------- palette (the dialog itself is in 01-base.css) ---------- */
+/* ---------- palette (the dialog itself is in base.css) ---------- */
 .palette {
   width: 100%;
   max-width: 620px;
@@ -653,7 +653,7 @@
   }
 }
 
-/* ---- listening: the Read step read aloud (07d-audio.js) ---- */
+/* ---- listening: the Read step read aloud (reading/audio.js) ---- */
 .audiobar {
   display: flex;
   align-items: center;

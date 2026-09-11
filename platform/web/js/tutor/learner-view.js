@@ -1,5 +1,5 @@
 /* ---- the learner memory on screen: the profile page and the gaps card ----
-   The model is in 17c-learner.js. This file draws it: `#/learner`, the card on the
+   The model is in tutor/learner.js. This file draws it: `#/learner`, the card on the
    dashboard, and the one action both share - asking the tutor about a gap, which opens
    the module with the question already sent. */
 

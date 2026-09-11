@@ -1,4 +1,4 @@
-/* Checks for the chat rail's place logic (web/js/17-convos.js, 17a-place.js, 17-rail.js),
+/* Checks for the chat rail's place logic (web/js/tutor/convos.js, tutor/place.js, tutor/rail.js),
    run inside a booted page by page_smoke.js --checks. The page's globals - STATE, MODS,
    route, rail, placeNow, convoShown, ... - are in scope. Each check sets the route and
    the section in view the way the page would, then asks what the rail would show. */

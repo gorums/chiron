@@ -1,0 +1,72 @@
+{
+  "_comment": [
+    "The course page ships as one HTML file with no module system, so every source file",
+    "shares one scope and load order is a real contract. This file is the only place that",
+    "order lives — it used to be the numeric prefix on every filename, which made the name",
+    "carry two jobs and left `07d-audio.js` beside `17c-learner.js` in one flat folder.",
+    "",
+    "Read by coursekit/render/bundler.py. A listed file that is not on disk fails the build;",
+    "a file on disk that nobody listed fails the test suite. Either one would otherwise be",
+    "a page silently missing a feature.",
+    "",
+    "Within a group the order is free — files declare functions and are order-independent.",
+    "Two rules are not free: core/state.js defines STATE before core/theme.js reads it on",
+    "load, and boot.js runs the app and stays last."
+  ],
+
+  "css": [
+    "tokens.css",
+    "base.css",
+    "shell.css",
+    "content.css",
+    "notebooks.css",
+    "chat.css",
+    "practice.css"
+  ],
+
+  "js": [
+    "core/dom.js",
+    "core/state.js",
+    "core/helpers.js",
+    "core/theme.js",
+
+    "shell/router.js",
+    "shell/sidebar.js",
+    "shell/palette.js",
+    "shell/keys.js",
+
+    "progress/home.js",
+    "progress/stats.js",
+    "progress/plan.js",
+    "progress/backup.js",
+
+    "reading/module.js",
+    "reading/gaps.js",
+    "reading/figures.js",
+    "reading/audio.js",
+    "reading/notebooks.js",
+    "reading/library.js",
+
+    "practice/quiz.js",
+    "practice/checkpoint.js",
+    "practice/review.js",
+    "practice/worksheets.js",
+
+    "marks/marks.js",
+    "marks/selection.js",
+    "marks/notes.js",
+
+    "tutor/wire.js",
+    "tutor/conn.js",
+    "tutor/convos.js",
+    "tutor/place.js",
+    "tutor/rail.js",
+    "tutor/rail-layout.js",
+    "tutor/grader.js",
+    "tutor/learner.js",
+    "tutor/learner-view.js",
+
+    "settings.js",
+    "boot.js"
+  ]
+}

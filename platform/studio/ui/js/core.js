@@ -15,7 +15,7 @@
    event index the client saw. */
 
 /* $, esc, toast, ico, clock, ago, fmtH, fmtDur and help() come from the shared
-   /ui/shared/00-dom.js, the same file the course page inlines. */
+   /ui/shared/dom.js, the same file the course page inlines. */
 
 let STATE = { courses: [], llm: { available: false, providers: [], models: [] }, jobs: [] };
 let route = { name: "library", id: null, query: {} };
@@ -327,7 +327,7 @@ function closeNavMenu() {
   menu.classList.add("hidden");
   $("#navmenubtn").setAttribute("aria-expanded", "false");
 }
-/* Escape closes the topmost thing: the dialog from 00-dom.js if one is open, otherwise
+/* Escape closes the topmost thing: the dialog from core/dom.js if one is open, otherwise
    the nav menu. Each surface wires this itself — the reader's Escape has more to close. */
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;

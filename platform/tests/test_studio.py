@@ -22,6 +22,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PLATFORM = os.path.dirname(HERE)
 sys.path.insert(0, PLATFORM)
 
+
+def ui_scripts():
+    """Studio's load order, read from the one place it lives: the <script> list in
+    `ui/index.html`. The page's equivalent is `web/bundle.json`."""
+    with open(os.path.join(PLATFORM, "studio", "ui", "index.html"), encoding="utf-8") as fh:
+        return re.findall(r'<script src="/ui/js/([^"]+)"', fh.read())
+
+
 from coursekit import config  # noqa: E402
 from coursekit.errors import CourseError  # noqa: E402
 from coursekit.settings import SETTINGS
@@ -2196,14 +2204,19 @@ class TestStaleReviews(unittest.TestCase):
 class TestServerConventions(unittest.TestCase):
     """The route table and the Studio UI, checked without starting a server."""
 
-    def test_index_html_loads_every_ui_script_in_load_order(self):
-        """`ui/index.html` names its scripts by hand: a file added to `ui/js/` that is not
+    def test_index_html_loads_every_ui_script(self):
+        """`ui/index.html` is Studio's manifest, the way `web/bundle.json` is the page's:
+        it is the one place the load order lives, and a file added to `ui/js/` and not
         listed there boots under the smoke test and is silently absent in the browser."""
-        ui = os.path.join(os.path.dirname(HERE), "studio", "ui")
-        with open(os.path.join(ui, "index.html"), encoding="utf-8") as fh:
-            listed = re.findall(r'<script src="/ui/js/([^"]+)"', fh.read())
-        on_disk = sorted(f for f in os.listdir(os.path.join(ui, "js")) if f.endswith(".js"))
-        self.assertEqual(listed, on_disk)
+        listed = ui_scripts()
+        on_disk = []
+        base = os.path.join(PLATFORM, "studio", "ui", "js")
+        for where, _dirs, names in os.walk(base):
+            rel = os.path.relpath(where, base).replace(os.sep, "/")
+            on_disk += ["%s/%s" % (rel, n) if rel != "." else n
+                        for n in names if n.endswith(".js")]
+        self.assertEqual(sorted(listed), sorted(on_disk))
+        self.assertEqual(listed[-1], "router.js", "the router boots the app and stays last")
 
     def test_every_claude_action_in_the_ui_sends_a_model(self):
         """Every place the UI works with Claude picks its model: the writing forms through
@@ -2218,15 +2231,17 @@ class TestServerConventions(unittest.TestCase):
             start = src.index("async function %s(" % fn)
             return src[start:src.index("\n}\n", start)]
 
-        forms = {("10-library.js", "startGeneration"): '"f"', ("20-course.js", "extendCourse"): '"x"',
-                 ("20-course.js", "rewriteModule"): '"rw-" + mid',
-                 ("20-course.js", "resumeCourse"): 'prefix || "rs"'}
+        forms = {("library.js", "startGeneration"): '"f"',
+                 ("course/course.js", "extendCourse"): '"x"',
+                 ("course/course.js", "rewriteModule"): '"rw-" + mid',
+                 ("course/course.js", "resumeCourse"): 'prefix || "rs"'}
         for (name, fn), prefix in forms.items():
             self.assertIn("modelBrief(%s)" % prefix, body(name, fn), "%s in %s" % (fn, name))
-        for name, fn in (("20-course.js", "reviewModule"), ("25-figures.js", "drawFigures"),
-                         ("27-notebooks.js", "writeNotebooks")):
+        for name, fn in (("course/course.js", "reviewModule"),
+                         ("course/figures.js", "drawFigures"),
+                         ("course/notebooks.js", "writeNotebooks")):
             self.assertIn("quickModelBrief()", body(name, fn), "%s in %s" % (fn, name))
-        with open(os.path.join(ui, "20-course.js"), encoding="utf-8") as fh:
+        with open(os.path.join(ui, "course", "course.js"), encoding="utf-8") as fh:
             self.assertIn("quickModelBar()", fh.read(), "the Modules tab shows the pick")
 
     def test_every_route_is_registered_once(self):
@@ -2253,13 +2268,13 @@ class TestServerConventions(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("node"), "node not on PATH")
     def test_studio_ui_boots_under_node(self):
-        """Every file in ui/js/, in load order, under the stub DOM: catches a name one file
-        uses that no file declares."""
+        """Every file in ui/js/, in the order index.html loads them, under the stub DOM:
+        catches a name one file uses that no file declares."""
         import subprocess
         ui = os.path.join(PLATFORM, "studio", "ui", "js")
         # The shared design system loads first, exactly as index.html links it.
-        files = [os.path.join(PLATFORM, "web", "js", "00-dom.js")]
-        files += [os.path.join(ui, n) for n in sorted(os.listdir(ui)) if n.endswith(".js")]
+        files = [os.path.join(PLATFORM, "web", "js", "core", "dom.js")]
+        files += [os.path.join(ui, *rel.split("/")) for rel in ui_scripts()]
         harness = os.path.join(HERE, "page_smoke.js")
         proc = subprocess.run(["node", harness] + files, capture_output=True, text=True,
                               encoding="utf-8", timeout=60)

@@ -1,6 +1,6 @@
 /* ---- notebooks: a Jupyter notebook inlined by the build (coursekit/notebooks.py) ----
    The saved run is rendered cell by cell; served by Studio with Jupyter up, the block
-   swaps it for the live notebook in a frame (web/js/07e-notebooks.js). */
+   swaps it for the live notebook in a frame (web/js/reading/notebooks.js). */
 .notebook {
   margin: 18px 0 22px;
   border: 1px solid var(--line);

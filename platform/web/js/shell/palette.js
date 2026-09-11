@@ -1,6 +1,6 @@
 /* ---------- the command palette ----------
    Everything on this page is one Ctrl+K away: a module, a section, a mark, a screen. The
-   dialog it opens is the shared one from 00-dom.js. */
+   dialog it opens is the shared one from core/dom.js. */
 let paletteIndex = null,
   paletteCursor = 0,
   paletteResults = [];

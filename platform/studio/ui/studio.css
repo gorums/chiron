@@ -1,7 +1,7 @@
 /* Course Studio's own layout.
 
    Everything both surfaces share — tokens, buttons, forms, cards, tags, toasts, menus —
-   comes from /ui/shared/00-tokens.css and /ui/shared/01-base.css, the very files the
+   comes from /ui/shared/tokens.css and /ui/shared/base.css, the very files the
    course page inlines. This file holds only what belongs to a Studio screen: the header,
    the library grid, the course page, the curriculum gate, the job screen, the editor.
    Add a colour or a font size here and you have started a second design system. */

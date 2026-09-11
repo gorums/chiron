@@ -520,7 +520,7 @@ class TestRender(TempCourseTest):
         self.assertIn("booted", proc.stdout)
 
     def test_learner_memory_behaves(self):
-        """The learner memory (17c-learner.js): evidence, chips, the tutor context, a checked
+        """The learner memory (tutor/learner.js): evidence, chips, the tutor context, a checked
         model reply, and a closed gap that stays closed through a refresh and a merge."""
         import subprocess
         node = shutil.which("node")
@@ -534,7 +534,7 @@ class TestRender(TempCourseTest):
         self.assertIn("learner checks passed", proc.stdout)
 
     def test_chat_rail_follows_the_place(self):
-        """The chat rail (17-convos.js, 17a-place.js, 17-rail.js): the conversation shown is
+        """The chat rail (tutor/convos.js, tutor/place.js, tutor/rail.js): the conversation shown is
         the one at the place the reader is looking at - step, and section on the Read step -
         a hand-picked one stays only until they move, a pin fixes the place, and the tutor is
         told what the step asks and what the reader wrote."""
@@ -550,7 +550,7 @@ class TestRender(TempCourseTest):
         self.assertIn("rail checks passed", proc.stdout)
 
     def test_reading_aloud_behaves(self):
-        """Reading aloud (07d-audio.js): what a section says, block by block; a section read
+        """Reading aloud (reading/audio.js): what a section says, block by block; a section read
         to its end is ticked and the next one follows; leaving the Read step stops it."""
         import subprocess
         node = shutil.which("node")
@@ -587,8 +587,15 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
         self.assertEqual(offenders, [], "\n".join(offenders))
 
     def test_boot_runs_last(self):
-        names = [os.path.basename(p) for p in bundler.source_files() if p.endswith(".js")]
-        self.assertTrue(names[-1].endswith("-boot.js"), "boot must sort last, got %s" % names[-1])
+        """The one ordering rule the manifest cannot express in its own shape: every other
+        file declares functions, boot.js runs the app (CONVENTIONS.md "Front-end conventions")."""
+        order = bundler.manifest()["js"]
+        self.assertEqual(order[-1], "boot.js", "boot must load last, got %s" % order[-1])
+
+    def test_every_front_end_source_file_is_in_the_manifest(self):
+        """`web/bundle.json` is the load order and the inventory both. A file nobody listed
+        is a feature silently missing from the page (CONVENTIONS.md "Front-end conventions")."""
+        self.assertEqual(bundler.unlisted(), [])
 
     def test_bundles_are_non_empty(self):
         self.assertGreater(len(bundler.js()), 10000)
@@ -607,12 +614,12 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
     # The three places a vendor may be named, each for a reason that is not prose.
     VENDORS_ALLOWED = {
         # It is the adapters: one entry per wire format, named for the format it speaks.
-        "14b-wire.js": ("anthropic", "openai", "gemini"),
+        "wire.js": ("anthropic", "openai", "gemini"),
         # A built page can be older than the Studio serving it, so it reads both the block's
         # name and the one it had before providers existed.
-        "14-conn.js": ("claude",),
+        "conn.js": ("claude",),
         # A save from before providers held one key, and it could only ever have been that one.
-        "01-state.js": ("anthropic",),
+        "state.js": ("anthropic",),
     }
 
     def test_neither_front_end_names_who_makes_the_model(self):
@@ -1745,30 +1752,29 @@ class TestCodeConventions(unittest.TestCase):
         if not prettier:
             self.skipTest("prettier not installed (npm install)")
         import subprocess
-        proc = subprocess.run([prettier, "--check", "platform/web/js/*.js", "platform/web/css/*.css",
-                               "platform/studio/ui/js/*.js", "platform/studio/ui/*.css",
-                               "platform/tests/page_smoke.js"],
+        proc = subprocess.run([prettier, "--check", "platform/web/**/*.{js,css}",
+                               "platform/studio/ui/**/*.{js,css}", "platform/tests/*.js"],
                               cwd=self.REPO, capture_output=True, text=True, encoding="utf-8",
                               shell=(os.name == "nt"))
         self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
 
     def test_page_javascript_files_stay_small(self):
-        """A file is one concern. Past this size it is two, and should be split (17-rail.js
-        became 17-convos.js + 17-rail.js at 800 lines)."""
+        """A file is one concern. Past this size it is two, and should be split: the chat
+        rail became tutor/convos.js + tutor/rail.js at 800 lines."""
         big = []
         for path in bundler.source_files():
             if path.endswith(".js"):
                 with open(path, encoding="utf-8") as fh:
                     n = sum(1 for _ in fh)
                 if n > 700:
-                    big.append("%s: %d lines" % (os.path.basename(path), n))
+                    big.append("%s: %d lines" % (os.path.relpath(path, self.REPO), n))
         self.assertEqual(big, [], "\n".join(big))
 
     # ---- the design system: one place for colour, one scale for type ----
 
     CSS_DIRS = ("platform/web/css", "platform/studio/ui")
     JS_DIRS = ("platform/web/js", "platform/studio/ui/js")
-    # A size is a rung of the scale in 00-tokens.css, or one of the three relative sizes
+    # A size is a rung of the scale in tokens.css, or one of the three relative sizes
     # prose sets against its own. This used to be a list of every number already written,
     # which is a ratchet and not a scale: it grew to twenty-six values.
     FONT_SIZES = {"0.87em", "1em", "1.17em", "inherit"}
@@ -1777,28 +1783,28 @@ class TestCodeConventions(unittest.TestCase):
     # The layout utilities a button may also wear. They place it; they are not the family.
     BTN_UTILITIES = {"gap-top", "gap-top-sm", "gap-bottom", "pushright", "grow", "hidden"}
 
-    def _css_files(self):
+    def _sources(self, roots, suffix):
+        """Both front ends now keep their source in folders, so these walk rather than list."""
         out = []
-        for rel in self.CSS_DIRS:
-            base = os.path.join(self.REPO, rel)
-            out += [os.path.join(base, n) for n in sorted(os.listdir(base)) if n.endswith(".css")]
-        return out
+        for rel in roots:
+            for where, _dirs, names in os.walk(os.path.join(self.REPO, rel)):
+                out += [os.path.join(where, n) for n in sorted(names) if n.endswith(suffix)]
+        return sorted(out)
+
+    def _css_files(self):
+        return self._sources(self.CSS_DIRS, ".css")
 
     def _js_files(self):
-        out = []
-        for rel in self.JS_DIRS:
-            base = os.path.join(self.REPO, rel)
-            out += [os.path.join(base, n) for n in sorted(os.listdir(base)) if n.endswith(".js")]
-        return out
+        return self._sources(self.JS_DIRS, ".js")
 
     def test_only_the_token_file_carries_a_colour(self):
-        """Every colour the platform has is in web/css/00-tokens.css. A hex or an rgba()
+        """Every colour the platform has is in web/css/tokens.css. A hex or an rgba()
         anywhere else is a second palette starting (CONVENTIONS.md "The design system")."""
         import re
         colour = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(")
         offenders = []
         for path in self._css_files():
-            if os.path.basename(path) == "00-tokens.css":
+            if os.path.basename(path) == "tokens.css":
                 continue
             with open(path, encoding="utf-8") as fh:
                 for n, line in enumerate(fh, 1):
@@ -1823,7 +1829,7 @@ class TestCodeConventions(unittest.TestCase):
         self.assertEqual(offenders, [], "\n".join(offenders))
 
     def test_radii_come_from_the_scale(self):
-        """A corner is a rung of the radius scale in 00-tokens.css. `50%` is a circle and
+        """A corner is a rung of the radius scale in tokens.css. `50%` is a circle and
         `0` is a deliberate square; everything else is a token. This was sixteen loose
         numbers, three of them a spacing token standing in for a radius
         (CONVENTIONS.md "The design system")."""
@@ -1831,7 +1837,7 @@ class TestCodeConventions(unittest.TestCase):
         rule = re.compile(r"border-radius:\s*([^;}\n]+)")
         offenders = []
         for path in self._css_files():
-            if os.path.basename(path) == "00-tokens.css":
+            if os.path.basename(path) == "tokens.css":
                 continue
             with open(path, encoding="utf-8") as fh:
                 for n, line in enumerate(fh, 1):
@@ -1863,7 +1869,7 @@ class TestCodeConventions(unittest.TestCase):
         """CSS cannot share one declaration block between a media query and a selector, and
         the theme is three-state, so the dark palette is written twice. The two copies are
         one palette (CONVENTIONS.md "The design system")."""
-        path = os.path.join(self.REPO, "platform/web/css/00-tokens.css")
+        path = os.path.join(self.REPO, "platform/web/css/tokens.css")
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
         marks = (':root:not([data-theme="light"])', ':root[data-theme="dark"]')
@@ -1881,7 +1887,7 @@ class TestCodeConventions(unittest.TestCase):
         """A `title` is not a tooltip: it never shows on a touch screen, never shows on
         keyboard focus, and is announced inconsistently — which made `help()`, the one
         glossary, unreachable for most of the people it was written for. Every hint goes
-        through `data-help` and the engine in 00-dom.js (CONVENTIONS.md "The design
+        through `data-help` and the engine in core/dom.js (CONVENTIONS.md "The design
         system"). An <iframe>'s `title` is its accessible name and is the exception."""
         import re
         offenders = []
@@ -1917,7 +1923,7 @@ class TestCodeConventions(unittest.TestCase):
         self.assertEqual(offenders, [], "classes used with no CSS rule: %s" % offenders)
 
     # The pairs the design system leans on at 13.5px and below, where AA asks for 4.5:1.
-    # Read out of 00-tokens.css so the check moves when the palette does.
+    # Read out of tokens.css so the check moves when the palette does.
     CONTRAST_PAIRS = [("--muted", "--bg"), ("--muted", "--surface"), ("--text-2", "--bg"),
                       ("--text-2", "--surface"), ("--accent-ink", "--accent-soft"),
                       ("--ok", "--ok-soft"), ("--warm", "--warm-soft"), ("--bad", "--bad-soft"),
@@ -1937,7 +1943,7 @@ class TestCodeConventions(unittest.TestCase):
     def _themes(self):
         """The light palette and the dark one, as name -> hex, from the token file."""
         import re
-        path = os.path.join(self.REPO, "platform", "web", "css", "00-tokens.css")
+        path = os.path.join(self.REPO, "platform", "web", "css", "tokens.css")
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
         light, dark = {}, {}
@@ -1949,7 +1955,7 @@ class TestCodeConventions(unittest.TestCase):
             is_dark = 'data-theme="dark"' in m.group(1) or "prefers-color-scheme: dark" in context
             (dark if is_dark else light).update(found)
         if not light or not dark:
-            raise AssertionError("could not read both palettes out of 00-tokens.css")
+            raise AssertionError("could not read both palettes out of tokens.css")
         merged_dark = dict(light)
         merged_dark.update(dark)
         return {"light": light, "dark": merged_dark}

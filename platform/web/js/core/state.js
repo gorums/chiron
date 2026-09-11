@@ -48,7 +48,7 @@ const blank = () => ({
   bridge: connDefaults(),
   streak: { days: 0, last: null, seen: [], freezes: 0, frozen: [] },
   gone: {}, // id -> when, for conversations and marks deleted on purpose (see mergeStates)
-  learner: learnerBlank(), // what the tutor remembers about this reader (see 17c-learner.js)
+  learner: learnerBlank(), // what the tutor remembers about this reader (see tutor/learner.js)
   theme: null,
   v: 1,
 });
@@ -326,7 +326,7 @@ function progressOf(id) {
       doneAt: null,
       time: 0,
       step: 0,
-      gapWork: {}, // item key -> { answer, closed, verdict, text, at } (see 07b-gaps.js)
+      gapWork: {}, // item key -> { answer, closed, verdict, text, at } (see reading/gaps.js)
       gapsAt: null, // when the Close-the-gaps step was first opened
     };
   if (!STATE.progress[id].elabFb) STATE.progress[id].elabFb = {};

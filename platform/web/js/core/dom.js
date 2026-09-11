@@ -2,7 +2,7 @@
    the one glossary that explains the platform's own words at the point they are printed.
 
    The reader inlines this file with the rest of `web/js/`; Studio links it from
-   `/ui/shared/00-dom.js` before its own scripts. It therefore may not touch anything but
+   `/ui/shared/dom.js` before its own scripts. It therefore may not touch anything but
    the DOM — no STATE, no CFG, no api(). */
 
 const $ = s => document.querySelector(s);

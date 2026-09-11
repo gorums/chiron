@@ -91,11 +91,11 @@ on the settings page with the name they came from. Every `providers.*.apiKey` is
 by rule (`settings.is_secret`), so a provider added later is masked without this file being
 edited.
 
-**The page speaks the wire formats too, in `web/js/14b-wire.js`.** A page opened off disk
+**The page speaks the wire formats too, in `web/js/tutor/wire.js`.** A page opened off disk
 has no Python beside it, and a served page must not need the bridge to ask a question the
 reader is paying for themselves — so `WIRE` is the browser's half of `coursekit/llm/`: one
 entry per kind (`anthropic`, `openai`, `gemini`), each about ten lines of `url`, `headers`,
-`body`, `reply`, `problem`. `14-conn.js` chooses a route and never asks which of them
+`body`, `reply`, `problem`. `tutor/conn.js` chooses a route and never asks which of them
 answered. **A key is per provider** (`STATE.bridge.keys`, migrated from the single
 `bridge.key` in `upgrade()`), stays in the browser, and a key that cannot reach the chosen
 model does not count: a stored OpenAI key must not turn off a Studio that reaches the model
@@ -111,7 +111,7 @@ is a setting because nothing should be inferring which company's API serves whic
 `SETTINGS.page()` into the `CFG` the shell receives: the bridge address, the providers a
 browser may call itself (`page_providers` — enabled, not a `cli` kind, **never a key**), the
 model list with each model's provider and the default, and the `page` block (tutor budgets,
-sync timing, study rules, rail sizes). `01-state.js` binds them to `PLATFORM`, `TUTOR`, `SYNC`, `STUDY`
+sync timing, study rules, rail sizes). `core/state.js` binds them to `PLATFORM`, `TUTOR`, `SYNC`, `STUDY`
 and `LAYOUT`; a fresh state's connection block comes from `connDefaults()`. Do not write an
 address, a model id or a limit into `platform/web/js/` - add a key to `settings.json` and
 read it through `CFG.platform`. `test_build.py` fails on `api.anthropic.com`, a `claude-*`
@@ -130,9 +130,22 @@ platform/                   the engine — knows nothing about any subject
     llm/                    reaching a model, whoever makes it: the provider layer
                             (see "Reaching a model"). The bridge imports it too
   studio/                   the local web app: generate + build from a browser
-    ui/                     its front end: index.html + studio.css + js/ (one file per screen)
-  web/                      the course page's source: shell.html + css/ + js/ (one file per concern).
-                            00-tokens.css, 01-base.css and 00-dom.js are the design system
+    ui/                     its front end: index.html (which is also its load order) +
+                            studio.css + js/{core,library,job,plan,course/,settings/}.js
+  web/                      the course page's source:
+                            bundle.json               the load order and the inventory, in one place
+                            shell.html                the document the build injects into
+                            css/                      tokens · base · shell · content · notebooks · chat · practice
+                            js/core/                  dom · state · helpers · theme
+                            js/shell/                 router · sidebar · palette · keys
+                            js/progress/              home · stats · plan · backup
+                            js/reading/               module · gaps · figures · audio · notebooks · library
+                            js/practice/              quiz · checkpoint · review · worksheets
+                            js/marks/                 marks · selection · notes
+                            js/tutor/                 wire · conn · convos · place · rail · rail-layout
+                                                      grader · learner · learner-view
+                            js/settings.js  js/boot.js
+                            tokens.css, base.css and core/dom.js are the design system
                             Studio links too (see "The design system")
   tests/                    test_build.py, test_studio.py, page_smoke.js (boots front-end code under node)
 courses/<id>/               one course = one separate git repository (gitignored here;
@@ -242,13 +255,13 @@ the prompt and asks the model to read nothing, so it needs no filesystem context
 
 A course opened at `http://127.0.0.1:8790/course/<id>/<output>-local.html` behaves differently
 from the same file opened off disk, and every difference goes through one detection: the
-`STUDIO` constant in `01-state.js`, set only when the page's origin is http(s) and its path is
+`STUDIO` constant in `core/state.js`, set only when the page's origin is http(s) and its path is
 `/course/<id>/…` for its own course id.
 
 - **Progress syncs to the platform.** `save()` still writes localStorage, then debounces a
   `PUT /api/courses/<id>/progress`; `pagehide` flushes with `sendBeacon`. On boot `syncPull()`
   runs before the first render and **merges** the platform copy into the local one
-  (`mergeStates` in `01-state.js`: union of every keyed collection, the later entry on a
+  (`mergeStates` in `core/state.js`: union of every keyed collection, the later entry on a
   clash, deletions remembered in `STATE.gone`), so two tabs or two browsers never lose each
   other's chats or highlights. A `storage` event merges what another tab of the same
   course saved; a tab becoming visible pulls again. Device settings (`bridge`, `ui`, `theme`) never leave the
@@ -372,9 +385,9 @@ must return nothing.
 any more than it may say "marketing": a provider is named from `CFG.platform.providers` or
 from `/api/state`, and a model from its own `label`. `TestEngineIsSubjectAgnostic`
 enforces it over `platform/web/` and `platform/studio/ui/` with three stated exceptions —
-`14b-wire.js`, which *is* the adapters; the block-name fallback in `14-conn.js`, because a
+`tutor/wire.js`, which *is* the adapters; the block-name fallback in `tutor/conn.js`, because a
 built page can be older than the Studio serving it; and the one-key migration in
-`01-state.js`. The one-liner:
+`core/state.js`. The one-liner:
 
 ```
 grep -rniE "claude|anthropic|openai|gemini" platform/web/ platform/studio/ui/
@@ -403,7 +416,7 @@ too), nothing else.
 | `assessments` | quizzes, flashcards, suggested questions; merges the per-part files |
 | `library` | glossary, mental models, worksheets, plan pages — all optional. `fillable` turns a worksheet's blanks into numbered inputs |
 | `validate` | every cross-file check, collected into one report |
-| `bundler` | concatenates `web/css/*.css` and `web/js/*.js` |
+| `bundler` | concatenates the CSS and JS named by `web/bundle.json`, in that order |
 | `renderer` | injects `CFG` + `DATA` into `shell.html`; writes both outputs |
 | `scaffold` | theme + hours → an empty but valid course tree |
 | `cli` | argparse |
@@ -412,12 +425,25 @@ too), nothing else.
 
 The app ships as one HTML file with no runtime dependency beyond a webfont, because a course
 has to work offline and from a `file://` URL. That is why `bundler` concatenates rather than
-bundles — but the source is still one file per concern under `platform/web/js/`.
+bundles — but the source is still one file per concern, under `platform/web/js/`, in folders
+named for what the reader is doing: `reading/`, `practice/`, `progress/`, `marks/`, `tutor/`,
+with `core/` and `shell/` under all of them.
 
-**Load order is the numeric filename prefix**, and it matters: files declare functions and
-are otherwise order-independent, but `21-boot.js` runs the app and must stay last. Insert a
-new file by picking a free number, or a letter suffix on the neighbour it belongs beside
-(`09b-checkpoint.js` sorts after `09-review.js`), not by renaming everything after it.
+**The load order lives in `web/bundle.json` and nowhere else.** There is no module system in
+the page, so every file shares one scope and the order is a real contract — but it is a
+property of the *bundle*, not of any file, and it used to be written as a number on the front
+of every filename. That made the name carry two jobs and do neither: the order was unreadable
+(`07b`, `09b`, `11b`, `14b`, `17a`…`17d`), a new file could only be inserted by appending a
+letter to its neighbour, and the name said nothing about what was inside. A manifest says the
+order once and leaves the files free to be named and grouped for meaning.
+
+Adding a file is therefore two steps: write it in the folder it belongs to, and add a line to
+`bundle.json`. Forget the second and the test suite says so — `bundler.unlisted()` is the
+inventory check, because a file nobody listed is a feature silently missing from the page. A
+listed file that is not on disk fails the build instead.
+
+Within a group the order is free; two things are not. `core/state.js` defines `STATE` before
+`core/theme.js` reads it on load, and `boot.js` runs the app and stays last.
 
 ### The design system: three files, two surfaces
 
@@ -429,11 +455,11 @@ to mean *filled* in Studio and *outlined* in the page.
 
 | | |
 |---|---|
-| `web/css/00-tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--control-line` for a control's own boundary, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-display`, the radius scale `--radius-xxs..--radius-pill`, and the two breakpoint ladders as a comment |
-| `web/css/01-base.css` | the primitives: reset, one `:focus-visible` ring, the `.btn` family, the form block, `.card`, `.tag`, `.pill`, `.badge`, `.bar`, `.chip`, `.note`, `.problems`, `.toast`, `.menu`, `.empty`, `.scrim`, `.spin`/`.pulse`, `.topbar`, and the spacing utilities (`.gap-top`, `.rowline`, `.grow`, …) that keep `style=` out of the markup |
-| `web/js/00-dom.js` | `$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, `HELP` / `help(term)`, the hint engine behind `data-help`, and the dialog: `showModal`, `confirmModal`, `promptModal`, `closeModal` |
+| `web/css/tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--control-line` for a control's own boundary, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-display`, the radius scale `--radius-xxs..--radius-pill`, and the two breakpoint ladders as a comment |
+| `web/css/base.css` | the primitives: reset, one `:focus-visible` ring, the `.btn` family, the form block, `.card`, `.tag`, `.pill`, `.badge`, `.bar`, `.chip`, `.note`, `.problems`, `.toast`, `.menu`, `.empty`, `.scrim`, `.spin`/`.pulse`, `.topbar`, and the spacing utilities (`.gap-top`, `.rowline`, `.grow`, …) that keep `style=` out of the markup |
+| `web/js/core/dom.js` | `$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, `HELP` / `help(term)`, the hint engine behind `data-help`, and the dialog: `showModal`, `confirmModal`, `promptModal`, `closeModal` |
 
-`web/css/01b-shell.css` holds the reader's own frame (the three-column grid, the sidebar) and
+`web/css/shell.css` holds the reader's own frame (the three-column grid, the sidebar) and
 Studio's `studio.css` holds Studio's; neither surface loads the other's.
 
 - **`.btn` is outlined. `.primary` is the filled one, and there is one per region** — the
@@ -456,7 +482,7 @@ Studio's `studio.css` holds Studio's; neither surface loads the other's.
   `--s2`, a *spacing* token standing in for a radius.
 - **The type scale is twelve rungs and nothing else.** `--fs-xxs` (11px) through
   `--fs-display` (52px): a 1px ramp below the body size where UI text has to stay dense and
-  still be told apart, opening up above it. A raw px `font-size` outside `00-tokens.css`
+  still be told apart, opening up above it. A raw px `font-size` outside `tokens.css`
   fails the suite. The guard used to be an allowlist of every number already written, which
   is a ratchet and not a scale — it had grown to twenty-six values across 154 declarations.
 - **`.tag` says what something is** (`ok`, `warn`, `bad`, `acc`, `stale`), **`.pill` says what
@@ -464,18 +490,18 @@ Studio's `studio.css` holds Studio's; neither surface loads the other's.
   `.tag`, not a family of their own.
 - **`help(term)` is the one glossary.** Mastery levels, freeze, mistake card, calibration,
   checkpoint, compact, the verdict scale, patch versus rewrite, resume, stale, profile,
-  anchor, practitioner, curriculum — each defined once in `00-dom.js` and shown where the
+  anchor, practitioner, curriculum — each defined once in `core/dom.js` and shown where the
   word appears, instead of on a page the reader has to go and find.
 - **Every hint is `data-help`, and `title` is not used.** A browser tooltip never appears on
   a touch screen, never appears on keyboard focus, and is announced inconsistently — so the
   glossary above was invisible to most of the people it was written for. The engine in
-  `00-dom.js` shows a hint on hover, on focus and on tap, wires `aria-describedby`, and
+  `core/dom.js` shows a hint on hover, on focus and on tap, wires `aria-describedby`, and
   gives a tab stop to a carrier nothing can focus *unless* it sits inside something already
   focusable, which is what keeps a sidebar of badges from becoming a sidebar of tab stops.
   A disabled `.btn` keeps its pointer events for the same reason: its hint is the one that
   says what it is waiting for. The exceptions are `<iframe title>`, which is the frame's
   accessible name, and `document.title`.
-- **The dialog is a primitive, so it is in `00-dom.js`.** `confirmModal` / `promptModal` say
+- **The dialog is a primitive, so it is in `core/dom.js`.** `confirmModal` / `promptModal` say
   what they are, trap Tab, hand the focus back to whatever opened them, and focus *Cancel*
   when the action is dangerous. Never `confirm()`. It used to live beside the reader's
   command palette, which left Studio — the surface that writes files — without one.
@@ -486,12 +512,12 @@ Studio's `studio.css` holds Studio's; neither surface loads the other's.
 - **Two breakpoint ladders, five rungs and three.** Viewport 1200 · 960 · 860 · 720 · 560;
   container 900 · 800 · 700, because the reading column follows `#main` and not the window.
   A media query cannot read a custom property, so they are numbers at the rule and a comment
-  in `00-tokens.css` — the point is that a new rule picks a rung rather than inventing one.
+  in `tokens.css` — the point is that a new rule picks a rung rather than inventing one.
 - **The dark palette is written twice and is one palette.** CSS cannot share a declaration
   block between a media query and a selector, and the theme is three-state — light, dark, and
   the attribute being absent. `test_the_dark_palette_is_written_once_in_two_places` keeps the
   two copies identical, so a token added to one and forgotten in the other fails the suite.
-- Eight guards in `TestCodeConventions` hold this: no colour outside `00-tokens.css`, no raw
+- Eight guards in `TestCodeConventions` hold this: no colour outside `tokens.css`, no raw
   px font size anywhere, no raw radius anywhere, no `.btn` variant without a rule (in the CSS
   or the markup), no class used in a template that no stylesheet defines, no `title` where a
   `data-help` belongs, the two dark blocks identical, and a ceiling on inline `style=` per
@@ -524,7 +550,7 @@ much as a variable name is a contract with the next person to read the code.
 | Your gaps | profile, learner memory | `#/learner` |
 | needs fixing | broken | a course whose check fails |
 
-`KIND_LABELS` in `ui/js/00-core.js` is the same rule for job kinds: no screen prints a raw
+`KIND_LABELS` in `ui/js/core.js` is the same rule for job kinds: no screen prints a raw
 `kind`.
 
 ### What the reader can do
@@ -535,20 +561,20 @@ and everything else exists to make the practice half of that honest:
 
 | | Where |
 |---|---|
-| Eight question types (`single`, `multi`, `tf`, `numeric`, `order`, `match`, `cloze`, `short`), per-option feedback, a hints ladder, confidence rating on every answer | `08-quiz.js` — one engine, driven by the `QZ` object, shared by module quizzes and checkpoints |
-| Mistake queue: a missed or hinted question becomes a card due tomorrow, retired after four clean recalls | `02-helpers.js` (`addMistake`, `grade`), `09-review.js` (`#/review/mistakes`) |
-| Checkpoints: mixed quizzes across a finished part, and a course challenge across everything | `09b-checkpoint.js`, results in `S.cpHist`, per-module hits in `S.chk` |
-| Mastery per module — Read → Practised → Proficient → Mastered — that a checkpoint miss can lower | `02-helpers.js` (`mastery`), coloured dots everywhere |
-| Study plan (hours per week or a target date), the "today" list, streak freezes, a study-day heatmap, browser notifications when served by Studio | `10b-plan.js`, `10-stats.js`, `01-state.js` (`markDay`) |
-| The tutor as grader: Elaborate and Apply answers, `short` quiz answers, filled worksheets and role-play transcripts all get a `VERDICT:` line and a Covered / Missing / Wrong / Ask-yourself reply | `17b-grader.js` |
-| Role-play: the tutor plays `assess.roleplay.persona` in the rail and stays in character until "Finish & get feedback" | `17b-grader.js`, `17-rail.js` (`c.kind === "rp"`) |
-| Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Claude | `11b-worksheets.js`; the inputs are made at build time by `library.fillable` |
-| Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `07-module.js`, `06-home.js` |
-| Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `07c-figures.js`, `css/02-content.css` |
-| Listening: the Read step read aloud by the browser's own speech engine, block by block with the spoken block highlighted; a section heard to its end is ticked read; voice and speed under `S.ui` (see "Listening") | `07d-audio.js`, `css/02-content.css` |
-| Notebooks: a Jupyter notebook rendered read-only in the Read step and, when served by Studio with Jupyter running, run and edited right there (see "Notebooks") | `07e-notebooks.js`, `css/02b-notebooks.css` |
-| Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `07-module.js`, `15-marks-core.js`, `18-notes.js`, `19-settings.js`, `10b-plan.js` (`viewRecord`), `css/04-practice.css` |
-| The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `17c-learner.js`, `17d-learner-view.js` (`#/learner`), `06-home.js` (`renderGapCard`) |
+| Eight question types (`single`, `multi`, `tf`, `numeric`, `order`, `match`, `cloze`, `short`), per-option feedback, a hints ladder, confidence rating on every answer | `practice/quiz.js` — one engine, driven by the `QZ` object, shared by module quizzes and checkpoints |
+| Mistake queue: a missed or hinted question becomes a card due tomorrow, retired after four clean recalls | `core/helpers.js` (`addMistake`, `grade`), `practice/review.js` (`#/review/mistakes`) |
+| Checkpoints: mixed quizzes across a finished part, and a course challenge across everything | `practice/checkpoint.js`, results in `S.cpHist`, per-module hits in `S.chk` |
+| Mastery per module — Read → Practised → Proficient → Mastered — that a checkpoint miss can lower | `core/helpers.js` (`mastery`), coloured dots everywhere |
+| Study plan (hours per week or a target date), the "today" list, streak freezes, a study-day heatmap, browser notifications when served by Studio | `progress/plan.js`, `progress/stats.js`, `core/state.js` (`markDay`) |
+| The tutor as grader: Elaborate and Apply answers, `short` quiz answers, filled worksheets and role-play transcripts all get a `VERDICT:` line and a Covered / Missing / Wrong / Ask-yourself reply | `tutor/grader.js` |
+| Role-play: the tutor plays `assess.roleplay.persona` in the rail and stays in character until "Finish & get feedback" | `tutor/grader.js`, `tutor/rail.js` (`c.kind === "rp"`) |
+| Fillable worksheets, saved in `S.sheets[slug]`, copied out as text or reviewed by Claude | `practice/worksheets.js`; the inputs are made at build time by `library.fillable` |
+| Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `reading/module.js`, `progress/home.js` |
+| Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `reading/figures.js`, `css/content.css` |
+| Listening: the Read step read aloud by the browser's own speech engine, block by block with the spoken block highlighted; a section heard to its end is ticked read; voice and speed under `S.ui` (see "Listening") | `reading/audio.js`, `css/content.css` |
+| Notebooks: a Jupyter notebook rendered read-only in the Read step and, when served by Studio with Jupyter running, run and edited right there (see "Notebooks") | `reading/notebooks.js`, `css/notebooks.css` |
+| Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `reading/module.js`, `marks/marks.js`, `marks/notes.js`, `settings.js`, `progress/plan.js` (`viewRecord`), `css/practice.css` |
+| The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `tutor/learner.js`, `tutor/learner-view.js` (`#/learner`), `progress/home.js` (`renderGapCard`) |
 
 Everything above lives in `localStorage` with the rest of the reader's state, so it syncs
 to Studio and travels through Backup / restore. Reading preferences and the notification
@@ -557,7 +583,7 @@ opt-in sit under `S.ui` and stay on the device.
 ### The learner memory
 
 `STATE.learner` is one course's memory of one reader - what the tutor should know before
-it answers. It is built in three layers by `17c-learner.js`:
+it answers. It is built in three layers by `tutor/learner.js`:
 
 - **Evidence** (`learnerEvidence`) is derived, never stored: one line per sign in the
   state the page already keeps - a quiz miss with what was answered and how sure they
@@ -583,7 +609,7 @@ it answers. It is built in three layers by `17c-learner.js`:
   (`renderGapCard`); the sidebar counts them; "Ask the tutor" on a gap opens the module
   with the question already sent (`askAbout`, through `rail.pendingAsk`).
 
-- **Close the gaps** is the sixth step of every module (`07b-gaps.js`). `gapItems(mid)`
+- **Close the gaps** is the sixth step of every module (`reading/gaps.js`). `gapItems(mid)`
   turns the module's record into drill items with a stable key - the brief's gaps for this
   module, each missed quiz question (`q:<index>`, carrying the right answer and its
   `why`), each lapsing card (`l:<card>`), each exercise graded partial or wrong (its
@@ -608,12 +634,12 @@ One rule: **the rail shows the conversation at the place the reader is looking a
 follows them when they move.** A place is `{mid, step, sec}` - the module, the step from
 the route (`predict`, `read`, `quiz`, `elab`, `apply`, `gaps`) and, on the Read step, the
 section under the reading line. It is read off the page whenever it is needed
-(`placeNow()` in `17a-place.js`), never stored; the only thing kept on scroll is
-`rail.section`, which the scroll handler in `07-module.js` maintains with hysteresis.
+(`placeNow()` in `tutor/place.js`), never stored; the only thing kept on scroll is
+`rail.section`, which the scroll handler in `reading/module.js` maintains with hysteresis.
 
 - **One conversation per place, found, not tracked.** A conversation carries its place
   (`step`, `sec`); `convoAt(place)` returns the newest one there, or null, and nothing is
-  created until the first message is sent (`17-convos.js`). There is no stored "active"
+  created until the first message is sent (`tutor/convos.js`). There is no stored "active"
   conversation; an `active` map old saves still carry is ignored. A chat on the
   Elaborate step is about the Elaborate step; scrolling from section 2 to section 3 shows
   section 3's chat. Role-plays and chats from before places existed have no place and
@@ -628,7 +654,7 @@ section under the reading line. It is read off the page whenever it is needed
   has written so far (`placeText`): the Predict guess, the quiz question in view, the
   Elaborate answers with their verdicts, the Apply draft (the model answer only once it
   is revealed), the open gap items. `placeSuggestions` gives each step its own chips.
-- **Every way to a passage is `jumpToPassage(mid, sec, markId)`** (`07-module.js`): a TOC
+- **Every way to a passage is `jumpToPassage(mid, sec, markId)`** (`reading/module.js`): a TOC
   link, a message's label, a menu row, a bookmark, a mark opened from Marks & questions.
   On the Read step it scrolls now; from anywhere else it sets `jumpTarget` and changes
   the route, and `landOn()` scrolls once the step is drawn. Jumps are instant, so the
@@ -639,11 +665,11 @@ section under the reading line. It is read off the page whenever it is needed
 There is no module system and no build step for the JS. Everything is top-level in one
 scope. Adding a global means adding it to that shared scope — check the name is free.
 
-The names to know: `STATE` is the reader's whole saved state (`01-state.js`, shape in
+The names to know: `STATE` is the reader's whole saved state (`core/state.js`, shape in
 `blank()`); `progressOf(mid)` is one module's slice of it; `route` is the parsed hash
 (`view`, `id`, `step`); `MODS` and `byId` are the course; `QUIZ` is the quiz being drawn
-(`08-quiz.js`); `rail` is everything the chat rail keeps between renders (`17-rail.js`),
-and the conversations it shows live in `STATE.convos` (`17-convos.js`, which documents the
+(`practice/quiz.js`); `rail` is everything the chat rail keeps between renders (`tutor/rail.js`),
+and the conversations it shows live in `STATE.convos` (`tutor/convos.js`, which documents the
 message shape). Keys stored in `STATE` are a contract with every existing save - rename a
 function freely, never a stored key.
 
@@ -682,7 +708,7 @@ list of ids; then listed ids come first in that sequence and the rest follow by 
 so the cheap listing and the build never disagree. Part membership is still the folder the
 file sits in; `manage.move_module` moves the file when the part changes and rewrites `order`.
 
-The reading timer (`07-module.js`) pauses after `page.study.idleSeconds` without input, so a
+The reading timer (`reading/module.js`) pauses after `page.study.idleSeconds` without input, so a
 tab left open does not count as study. `page.ui.readMin` is the narrowest the reading column
 may get before the rail is capped; the section list beside the prose hides itself through a
 container query on `#main`, not a viewport breakpoint, because the rail changes the column
@@ -692,7 +718,7 @@ A `##` section whose body is empty is dropped from the render *and* from the cou
 is usually why a count mismatch appears out of nowhere.
 
 **A section ticks itself once the reader has scrolled past it.** `tickScrolledPast` in
-`07-module.js` runs off the same scroll handler that decides which section is current, and
+`reading/module.js` runs off the same scroll handler that decides which section is current, and
 ticks any section whose bottom edge has left the reading band (`page.ui.readLine`) — the
 whole section, so a glance at the first paragraph never counts. The tick is drawn in place
 rather than by redrawing the step, which would throw the reader back to the top. A tick
@@ -720,7 +746,7 @@ other. Colour comes only from classes the page defines for both themes - `fig-1`
 `fig-4`, `fig-soft`, `fig-line`, `fig-muted` - and from `currentColor`.
 
 A figure whose groups carry `<g data-step="1">`, `<g data-step="2">`, ... is a **build-up**:
-`07c-figures.js` hides the steps and adds Back / Next / Play (`page.figures.playMs`
+`reading/figures.js` hides the steps and adds Back / Next / Play (`page.figures.playMs`
 between steps). That is the animated GIF a course cannot carry, with the reader in charge
 of the pace. Everything outside a step group is always visible.
 
@@ -728,7 +754,7 @@ of the pace. Everything outside a step group is always visible.
 
 A course cannot ship audio either - no model makes any, and an mp3 per module would not
 fit in one file - so the Read step is read aloud by the **Web Speech API**, the voice the
-operating system or the browser provides. `07d-audio.js` owns it: `sectionSpeech` turns a
+operating system or the browser provides. `reading/audio.js` owns it: `sectionSpeech` turns a
 section into chunks - the heading, then each block under `SPEECH_BLOCKS` (a paragraph, a
 list item, a table row read as its cells, a figure's caption; the drawing is skipped),
 long paragraphs split at sentence ends under `page.audio.chunkChars` because some engines
@@ -793,7 +819,7 @@ is a `check` failure like a figure. The section's `text` excerpt is taken before
 and the section's `public()` carries the code of its notebooks (`build.notebookPromptChars`)
 so `placeText` on the Read step can hand it to the tutor.
 
-The page (`07e-notebooks.js`) shows that rendering everywhere - off disk, published, and
+The page (`reading/notebooks.js`) shows that rendering everywhere - off disk, published, and
 when Jupyter is down - and, when served by Studio, asks `GET /api/jupyter` once per Read
 step. If a Jupyter server answers, each block gains **Run it here**, which swaps the
 rendering for the live notebook in a frame (`page.notebooks.height`), and **Open in a tab**.
@@ -905,7 +931,7 @@ context variant fails with `unrecognized_model`) — which is how a run died at 
 resort. `prefs.models()` is the only list the Settings page offers, and it is
 `SETTINGS.models`: `models.list` from `settings.json` under whatever the settings page
 saved over it. **The list is editable without touching a committed file.** The "Models on
-offer" card on `#/settings` (`ui/js/31-models.js`) edits id, alias, label and note per row,
+offer" card on `#/settings` (`ui/js/settings/models.js`) edits id, alias, label and note per row,
 reorders, adds and removes; Save is `PUT /api/models` with the whole list, which
 `studio/models.py` validates (an id `claude --model` would take, no name used twice, never
 empty) and writes to `state/settings.json`, the Studio layer of the settings, then
@@ -913,7 +939,7 @@ empty) and writes to `state/settings.json`, the Studio layer of the settings, th
 Test button is `POST /api/models/test`: `modelcall.probe` asks the CLI once with that
 model only, no fallback chain, within `claude.probeTimeout`, so a typo or a retired id is
 refused on the settings page and not at module 8 of a run. A served course page adopts the
-list Studio reports in `/api/state` (`adoptStudioModels` in `14-conn.js`, `claude.models`
+list Studio reports in `/api/state` (`adoptStudioModels` in `tutor/conn.js`, `claude.models`
 with `apiId` and `claude.defaultModel`), so it needs no rebuild; a page off disk keeps the
 list it was built with, and the bridge reads the layer when it starts.
 
@@ -988,7 +1014,7 @@ already on disk, and writes only what is missing. `POST /api/courses/<id>/resume
 both switches, when `can_resume()` says so.
 
 **Every form that writes module text shows the same two switches** - draw figures, write
-notebooks - and sends them as `figures` and `notebooks` in the request (`ui/js/26-media.js`:
+notebooks - and sends them as `figures` and `notebooks` in the request (`ui/js/course/media.js`:
 `mediaChoices`, `mediaBrief`). A new course lets the planner decide about notebooks
 (`notebooks: "auto" | "yes" | "no"`, see "Notebooks"); a resume, an added module and a
 rewrite take booleans, and the notebooks switch is offered only when the course declares
@@ -1030,7 +1056,7 @@ an answer. A cancel also releases it, so a job waiting for approval can still be
 **What is approved is a brief per module, not a title.** A plan module is
 `{id, part, title, short, minutes, summary, sections, requires}`, and every one of those
 reaches the writer: `summary` is the module's intent and `sections` are the `##` headings it
-must use verbatim. The gate (`ui/js/41-plan.js`) edits the course hours, the part names, and
+must use verbatim. The gate (`ui/js/plan.js`) edits the course hours, the part names, and
 per module the title, minutes, sidebar label, intent and sections - and shows, through
 `POST /api/plan/prompt`, the prompt that module would be written from. The prompt is
 assembled by `generator.module_prompt`, the same function `write_module` calls, so the
@@ -1061,7 +1087,7 @@ zip or a clone, and a rewrite next year is written to the same instructions as t
   reads and writes them; `POST /api/plan/prompt` does the same at the approval gate, where the
   course does not exist yet - those overrides travel in the plan and are written into the
   course by `overrides.merge` when the tree is laid down.
-- The editor is `ui/js/42-prompts.js`, one component on both surfaces: the gate's module brief
+- The editor is `ui/js/course/prompts.js`, one component on both surfaces: the gate's module brief
   and the course page's row menu. A module with a prompt of its own says so on its row, next
   to the review verdict, because that is the first thing to know when its text reads unlike
   the rest of the course. `manage.remove_module` calls `overrides.forget`.
@@ -1107,8 +1133,10 @@ collide.
 
 ### The Studio UI
 
-`ui/js/` is one file per screen, loaded in name order by `ui/index.html` (`00-core.js` is
-the plumbing every screen uses, `90-router.js` boots the app and must stay last), and
+`ui/js/` is one file per screen, and **`ui/index.html`'s `<script>` list is Studio's load
+order** — the same rule as `web/bundle.json`, in the one file Studio already has for it
+(`core.js` is the plumbing every screen uses, `router.js` boots the app and stays last; a
+file on disk that is not listed fails `test_index_html_loads_every_ui_script`). It is
 hash-routed: `#/` library with a "today" strip and progress cards, `#/new`,
 `#/course/<id>` (tabs: Modules, Add a module, Questions, Files, Settings),
 `#/course/<id>/edit?path=`, `#/job/<id>`, `#/jobs` (the recent runs, so a finished or failed
@@ -1212,20 +1240,22 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
 - **Prettier formats everything** (`npm run format`, config in `.prettierrc`). The test
   runs `prettier --check` when it is installed. One statement per line: never
   `a; b; c` on one line, never a `function f() { x; y }` one-liner with two statements.
-- **One file per concern, in load order.** The numeric prefix is the load order; a file is
-  a screen (`ui/js/20-course.js`) or a concern (`web/js/17-convos.js`). Past ~700 lines a
-  file is two concerns (a test fails on a page file over 700 lines). Insert a new file with
-  a free number or a letter suffix on its neighbour, not by renumbering.
+- **One file per concern, in a folder named for the concern.** A file is a screen
+  (`ui/js/course/course.js`) or a concern (`web/js/tutor/convos.js`), and its folder says
+  which part of the product it belongs to. Past ~700 lines a file is two concerns (a test
+  fails on a page file over 700 lines). Load order is not in the name: it is `web/bundle.json`
+  for the page and the `<script>` list in `ui/index.html` for Studio, and a new file has to
+  be added to whichever applies.
 - **Globals are named for what they are, in full.** `STATE`, `progressOf`, `convos()`,
   `rail.pinned` - never `S`, `P`, `CV`, `pi`. A file's own mutable state lives in one
-  object at its top with a comment per field (`rail` in `17-rail.js`), not in a row of
+  object at its top with a comment per field (`rail` in `tutor/rail.js`), not in a row of
   `let`s. Single letters are for lambda parameters and loop counters only, and only when
   the noun is obvious from the line (`m => m.id`).
 - **Stored shapes are a contract.** Everything under `STATE` is in readers' localStorage
   and in `state/progress/`; a message is `{r, t, ts}` because every save says so. Add a
   field with a default in `blank()` and `upgrade()`; never rename or repurpose one.
 - **No colour, size or component of your own** (see "The design system"): a colour comes
-  from `00-tokens.css`, a button from the `.btn` family, a spacing from a `.gap-*` or
+  from `tokens.css`, a button from the `.btn` family, a spacing from a `.gap-*` or
   `.rowline` utility. An inline `style=` is for a value only the code knows - a bar's width,
   a colour picked from a score - and a test caps how many there may be.
 - **A control says its name and its state.** An icon button carries `aria-label`; a toggle
@@ -1243,7 +1273,7 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
   nested one is not. Anything longer than a screen becomes a function that returns HTML.
 - **Behaviour goes through `save()`.** State changes call `save()` once at the end, which
   writes localStorage and schedules the sync; nothing writes localStorage directly outside
-  `01-state.js`.
+  `core/state.js`.
 - **Boot under node before you ship.** `node platform/tests/page_smoke.js <built page>`
   and the same with `platform/studio/ui/js/*.js` catch an undeclared name; both run from
   the test suites. `--checks <file.js>` runs a checks file inside the booted page, which

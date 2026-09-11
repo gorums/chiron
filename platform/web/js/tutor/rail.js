@@ -1,16 +1,16 @@
 /* ---- the chat rail: always there, always about what you are looking at ----
 
    The rule is one sentence: the rail shows the conversation at the place the reader is
-   looking at (`placeNow()` in 17a-place.js, `convoAt` in 17-convos.js), and follows them
+   looking at (`placeNow()` in tutor/place.js, `convoAt` in tutor/convos.js), and follows them
    when they move. The two exceptions are explicit: a conversation the reader picked by
    hand (`rail.showing`) stays until they move somewhere else, and a passage they pinned
    (`rail.pinned`) fixes the place until they unpin it. Nothing is tracked on scroll but
-   `rail.section`, which 07-module.js keeps; nothing is created until a message is sent. */
+   `rail.section`, which reading/module.js keeps; nothing is created until a message is sent. */
 
 /* Everything the rail keeps between renders. Nothing here is saved: the conversations
-   themselves live in STATE.convos (see 17-convos.js). */
+   themselves live in STATE.convos (see tutor/convos.js). */
 const rail = {
-  section: 0, // the section under the reading line on the Read step (07-module.js sets it)
+  section: 0, // the section under the reading line on the Read step (reading/module.js sets it)
   showing: null, // a conversation the reader chose by hand, by id; null = the one at the place
   pinned: null, // a passage pinned as the question's context: { mid, sec, text, markId }
   pinnedQuestions: null, // suggested questions for the pinned passage

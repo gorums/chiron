@@ -4,7 +4,7 @@
    off the page at the moment it is needed - never tracked, never stored:
      placeNow() = { mid, step, sec }
    `step` is the module step from the route; `sec` is the section under the reading line
-   (07-module.js keeps `rail.section` up to date on the Read step) or the section of a
+   (reading/module.js keeps `rail.section` up to date on the Read step) or the section of a
    pinned passage. Everything else here turns a place into words: a label for the rail,
    the text the tutor is shown, the questions worth suggesting. */
 function stepIndexOf(key) {

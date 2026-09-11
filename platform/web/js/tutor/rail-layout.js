@@ -1,6 +1,6 @@
 /* ---- where the chat rail sits: open or shut, docked right or along the bottom, how wide ----
    All of it is a device setting under STATE.ui, which never leaves the browser. The rail's
-   contents are 17-rail.js. */
+   contents are tutor/rail.js. */
 function railOpen() {
   if (!STATE.ui) STATE.ui = { rail: true };
   return STATE.ui.rail !== false;

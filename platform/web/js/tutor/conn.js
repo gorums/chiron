@@ -5,7 +5,7 @@
                whatever provider it is configured with. Nothing for the reader to set up.
      bridge  — the small program in tools/bridge/, for a page opened off disk.
      direct  — a key the reader pasted into Settings; the page calls that provider itself
-               (the wire formats are in 14b-wire.js). Only possible from a local copy of
+               (the wire formats are in tutor/wire.js). Only possible from a local copy of
                this file: a published page is not allowed to call other hosts.
 
    A saved key wins over Studio, because pasting one is an explicit choice to pay per

@@ -1,4 +1,4 @@
-/* Checks for reading aloud (web/js/07d-audio.js), run inside a booted page by
+/* Checks for reading aloud (web/js/reading/audio.js), run inside a booted page by
    page_smoke.js --checks. The DOM is a stub there, so what a section says is checked on
    hand-made elements, and the player is driven by calling what the browser would call. */
 "use strict";

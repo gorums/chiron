@@ -1,6 +1,6 @@
 /* The primitives both surfaces are built from: reset, focus, buttons, forms, cards,
    tags, toasts, menus. Served to the reader (inlined by the bundler) and to Studio
-   (linked at /ui/shared/01-base.css). Anything that belongs to one screen only lives in
+   (linked at /ui/shared/base.css). Anything that belongs to one screen only lives in
    that surface's own stylesheet — this file has no layout in it. */
 
 /* ---------- reset ---------- */
@@ -676,7 +676,7 @@ textarea {
   margin-right: 9px;
   flex: none;
 }
-/* Motion is off for everything, on both surfaces. This used to live in 04-practice.css,
+/* Motion is off for everything, on both surfaces. This used to live in practice.css,
    which only the reader loads, so Studio's transitions ignored the preference entirely. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -698,7 +698,7 @@ body.nomotion *::after {
 }
 
 /* ---------- hints ----------
-   The tooltip `title` never was: see the hint engine in 00-dom.js. One host element,
+   The tooltip `title` never was: see the hint engine in core/dom.js. One host element,
    moved to whatever is being explained. */
 .helptip {
   position: fixed;

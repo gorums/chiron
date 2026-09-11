@@ -4,7 +4,7 @@
    cover every provider worth calling from a browser, and they differ in about ten lines
    each: where the key goes, whether the system prompt is a field or a turn, and where the
    reply is. Everything else - choosing a route, retrying, saying what went wrong - is
-   14-conn.js and does not care which of these answered.
+   tutor/conn.js and does not care which of these answered.
 
    This is the browser's half of coursekit/llm/. The two are separate on purpose: a page
    opened off disk has no Python next to it, and a served page must not need the bridge to

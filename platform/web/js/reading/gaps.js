@@ -1,7 +1,7 @@
 /* ---- step 6 of a module: close the gaps ----
    The last step of the cycle drills what the module's own record says went wrong: the
    gaps named for this module, the quiz questions missed, the cards that keep
-   lapsing, the exercises a grader marked partial or wrong (`gapItems` in 17c-learner.js).
+   lapsing, the exercises a grader marked partial or wrong (`gapItems` in tutor/learner.js).
    Each one is a question; the reader answers in writing, the tutor grades it against the
    module text and the original miss, and a correct answer closes the item. With no tutor
    the reader scores themselves. Answers and verdicts live in `progressOf(mid).gapWork`
