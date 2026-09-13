@@ -37,9 +37,11 @@
   font-size: var(--fs-sm);
   color: var(--muted);
 }
+/* The saved run is read, not worked in, so it is capped rather than sized: whatever the
+   reader dragged the live frame to is also as far as this one grows. */
 .nb-static {
   padding: 8px 14px 12px;
-  max-height: 640px;
+  max-height: var(--nb-h, 560px);
   overflow: auto;
 }
 .nb-md {
@@ -91,9 +93,58 @@
 .nb-frame {
   display: block;
   width: 100%;
+  height: var(--nb-h, 560px);
   border: 0;
   resize: vertical;
   background: var(--surface);
+}
+
+/* ---- room to work ----
+   A notebook in the reading column is about 560px wide and as tall as the reader left it.
+   That is enough to read and not enough to work, so there are three ways to make room,
+   all of them the reader's and none of them stored in the course: drag the bottom edge of
+   the block, widen the column (a device setting, kept across modules), or fill the window. */
+
+/* Wide: the section list and the reading measure traded for width, for as long as the
+   reader wants it. It is the whole Read step that widens - a notebook alone, breaking out
+   of its column, would leave the prose around it hanging. */
+body.nb-wide .wrap {
+  max-width: 1180px;
+}
+body.nb-wide .readgrid {
+  grid-template-columns: 1fr;
+}
+body.nb-wide .toc {
+  display: none;
+}
+
+/* Full screen: the block leaves the flow, so a spacer holds its place and the page behind
+   it does not jump. Below the sidebar's slide-over and the dialog, above everything else. */
+.notebook.full {
+  position: fixed;
+  inset: 0;
+  z-index: 88;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+.notebook.full .nb-head {
+  flex: none;
+}
+.notebook.full .nb-static,
+.notebook.full .nb-frame {
+  flex: 1 1 auto;
+  height: auto;
+  max-height: none;
+  resize: none;
+}
+body.nb-full {
+  overflow: hidden;
+}
+.nb-spacer {
+  margin: 18px 0 22px;
 }
 .notebook.missing {
   border-style: dashed;

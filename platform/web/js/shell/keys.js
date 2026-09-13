@@ -6,6 +6,7 @@ document.addEventListener("keydown", e => {
   const typing = tag === "input" || tag === "textarea" || tag === "select";
   if (e.key === "Escape") {
     if (modalOpen()) return closeModal();
+    if (notebooks.full) return notebookFull(notebooks.full);
     if (rail.menuOpen) {
       rail.menuOpen = false;
       renderChatMenu();

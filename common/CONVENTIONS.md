@@ -600,7 +600,7 @@ and everything else exists to make the practice half of that honest:
 | Prerequisites from a module's `**Requires:**` line, shown as chips and warned about when weak | `reading/module.js`, `progress/home.js` |
 | Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `reading/figures.js`, `css/content.css` |
 | Listening: the Read step read aloud by the browser's own speech engine, block by block with the spoken block highlighted; a section heard to its end is ticked read; voice and speed under `S.ui` (see "Listening") | `reading/audio.js`, `css/content.css` |
-| Notebooks: a Jupyter notebook rendered read-only in the Read step and, when served by Studio with Jupyter running, run and edited right there (see "Notebooks") | `reading/notebooks.js`, `css/notebooks.css` |
+| Notebooks: a Jupyter notebook rendered read-only in the Read step and, when served by Studio with Jupyter running, run and edited right there, with the room to work in it - taller, wide, or the whole window (see "Notebooks") | `reading/notebooks.js`, `css/notebooks.css` |
 | Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `reading/module.js`, `marks/marks.js`, `marks/notes.js`, `settings.js`, `progress/plan.js` (`viewRecord`), `css/practice.css` |
 | The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `tutor/learner.js`, `tutor/learner-view.js` (`#/learner`), `progress/home.js` (`renderGapCard`) |
 
@@ -853,7 +853,23 @@ step. If a Jupyter server answers, each block gains **Run it here**, which swaps
 rendering for the live notebook in a frame (`page.notebooks.height`), and **Open in a tab**.
 The frame's URL is `<jupyter>/notebooks/<id>/notebooks/<file>?token=...`: the server serves
 the courses directory, so the file the reader edits and saves is the one the course
-carries. Nothing about a notebook is stored in the reader's state.
+carries. Nothing about the notebook itself is stored in the reader's state: it starts as
+its saved run every time the section is drawn.
+
+**A notebook needs room the reading column does not have.** The prose column is about
+560px wide - a measure chosen for reading - and a notebook in it is legible and unusable,
+so the block carries three ways to make room, all of them the reader's: drag the live
+frame's bottom edge (the height is kept in `STATE.ui.nbHeight` for every notebook after
+it, between `page.notebooks.minHeight` and `maxHeight`, starting at
+`page.notebooks.height`, and it caps the saved run too); **Wide**, which trades the
+section list and the reading measure for width (`STATE.ui.nbWide`, `body.nb-wide` on the
+Read step); and **Full screen**, which gives the block the window. Wide widens the whole
+step rather than the block alone - a notebook breaking out of its column would leave the
+prose around it hanging. Full screen takes the block out of the flow, so a spacer holds
+its place and the page behind does not collapse, and the frame element is never re-made,
+so a running kernel survives both. Height and width are device settings, like the reading
+preferences; `notebookRouteChanged()` gives the window back when the reader leaves the
+Read step.
 
 **The Jupyter server is a third service, never Studio itself.** `studio/jupyter.py` only
 probes it (`/api/`, cached for `jupyter.probeCacheSeconds` because `/api/state` is polled)

@@ -243,7 +243,9 @@
       "playMs": 1600
     },
     "notebooks": {
-      "height": 560
+      "height": 560,
+      "minHeight": 240,
+      "maxHeight": 2400
     },
     "audio": {
       "rate": 1,
