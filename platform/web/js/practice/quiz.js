@@ -63,7 +63,7 @@ function drawQuiz() {
   if (!host) return;
   const qs = QUIZ.qs;
   if (qs.finished) return QUIZ.onDone();
-  const { it, mid } = qItem(),
+  const { it, mid, qi } = qItem(),
     st = qState(),
     t = it.type || "single";
   const n = QUIZ.items.length;
@@ -107,7 +107,7 @@ function drawQuiz() {
   } else {
     h += verdictHtml(it, st);
     if (st.ok != null)
-      h += `<div class="rowline gap-top"><button class="btn primary" onclick="qNext()">${qs.i === n - 1 ? "See results" : "Next question"} <kbd>↵</kbd></button></div>`;
+      h += `<div class="rowline gap-top"><button class="btn primary" onclick="qNext()">${qs.i === n - 1 ? "See results" : "Next question"} <kbd>↵</kbd></button>${flagButton(mid, qi)}</div>`;
   }
   h += `</div>`;
   host.innerHTML = h;

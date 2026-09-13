@@ -9,7 +9,7 @@ signed in to than an API key.** The bridge routes questions through it, so no ke
 per-use billing are involved. Start it, then pick "Use the bridge" in the site's Settings
 under the collapsed alternative section.
 
-The program is `tutor-bridge.py`. `claude-bridge.py` is its old name and still starts it.
+The program is `tutor-bridge.py`.
 
 ## How it works
 

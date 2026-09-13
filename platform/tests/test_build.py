@@ -552,6 +552,34 @@ class TestRender(TempCourseTest):
         self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
         self.assertIn("rail checks passed", proc.stdout)
 
+    def test_flagging_a_quiz_question_behaves(self):
+        """A flag (practice/flags.js): kept per module, listed on the Marks page, taken back
+        with the deletion remembered, and merged between copies like a mark."""
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        harness = os.path.join(HERE, "page_smoke.js")
+        checks = os.path.join(HERE, "flags_checks.js")
+        proc = subprocess.run([node, harness, self.result.local_path, "--checks", checks],
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
+        self.assertIn("flag checks passed", proc.stdout)
+
+    def test_the_tutor_usage_count_behaves(self):
+        """The usage count (tutor/usage.js): calls and tokens per model, a cost only where
+        the row carries a price, and a device setting that never syncs."""
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        harness = os.path.join(HERE, "page_smoke.js")
+        checks = os.path.join(HERE, "usage_checks.js")
+        proc = subprocess.run([node, harness, self.result.local_path, "--checks", checks],
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, (proc.stdout + proc.stderr).strip())
+        self.assertIn("usage checks passed", proc.stdout)
+
     def test_reading_aloud_behaves(self):
         """Reading aloud (reading/audio.js): what a section says, block by block; a section read
         to its end is ticked and the next one follows; leaving the Read step stops it."""
@@ -614,13 +642,10 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
     # here would be a second source of truth, and the one that goes stale.
     VENDORS = ("claude", "anthropic", "openai", "chatgpt", "gpt-", "gemini", "llama", "mistral")
 
-    # The three places a vendor may be named, each for a reason that is not prose.
+    # The two places a vendor may be named, each for a reason that is not prose.
     VENDORS_ALLOWED = {
         # It is the adapters: one entry per wire format, named for the format it speaks.
         "wire.js": ("anthropic", "openai", "gemini"),
-        # A built page can be older than the Studio serving it, so it reads both the block's
-        # name and the one it had before providers existed.
-        "conn.js": ("claude",),
         # A save from before providers held one key, and it could only ever have been that one.
         "state.js": ("anthropic",),
     }
@@ -691,6 +716,14 @@ class TestEngineIsSubjectAgnostic(unittest.TestCase):
             self.assertIn(key, platform)
         self.assertIn(platform["defaultModel"], [m["id"] for m in platform["models"]])
         self.assertEqual(platform, settings.SETTINGS.page())
+
+    def test_a_model_price_reaches_the_page_only_when_the_row_has_one(self):
+        """`price` on a model row ({in, out}, USD per million tokens) is what lets the page
+        estimate the tutor's cost; a row without one sends none rather than a guess."""
+        page_model = settings.SETTINGS.page_model
+        priced = page_model({"id": "m", "provider": "p", "price": {"in": 3, "out": 15}})
+        self.assertEqual(priced["price"], {"in": 3, "out": 15})
+        self.assertNotIn("price", page_model({"id": "m", "provider": "p"}))
 
 
 class TestPaths(unittest.TestCase):
@@ -1318,6 +1351,15 @@ class TestAnthropicProvider(WireTest):
         self.assertEqual(reply.text, "hello")
         self.assertEqual(self.sent[0].headers["X-api-key"], "sk-ant-test")
 
+    def test_the_tokens_an_answer_cost_are_reported(self):
+        """A page shows the reader what a key is spending, so a reply's usage travels on the
+        Reply as {in, out} - and is None, not zero, when the reply does not say."""
+        said = dict(self._said("hello"), usage={"input_tokens": 12, "output_tokens": 3})
+        self._answers(said, self._said("again"))
+        req = llm_base.Request(prompt="q", model="claude-opus-5", timeout=5)
+        self.assertEqual(self.provider.complete(req).usage, {"in": 12, "out": 3})
+        self.assertIsNone(self.provider.complete(req).usage)
+
     def test_a_built_prompt_becomes_the_one_turn(self):
         """A caller that built its own text is not holding a conversation."""
         self._answers(self._said("ok"))
@@ -1430,6 +1472,26 @@ class TestOpenAIProvider(WireTest):
         self._answers({"data": [{"id": "gpt-5.6"}, {"id": "gpt-4o"}]})
         self.assertEqual([m["id"] for m in self.provider.catalog()["models"]],
                          ["gpt-5.6", "gpt-4o"])
+
+
+class TestUsageIsReadFromEveryWireFormat(WireTest):
+    """Each format names the token counts differently; the Reply carries one shape."""
+
+    def test_openai_and_gemini_report_the_tokens(self):
+        openai = llm_openai.OpenAIProvider(
+            name="openai", label="OpenAI", api_url="https://o.test/v1/chat/completions",
+            models_url="https://o.test/v1/models", key="sk-test")
+        self._answers({"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+                       "usage": {"prompt_tokens": 5, "completion_tokens": 2}})
+        req = llm_base.Request(prompt="q", model="gpt-5.6", timeout=5)
+        self.assertEqual(openai.complete(req).usage, {"in": 5, "out": 2})
+        gemini = llm_gemini.GeminiProvider(
+            name="google", label="Google Gemini", api_url="https://g.test/v1beta",
+            key="AIza-test")
+        self._answers({"candidates": [{"content": {"parts": [{"text": "hi"}]},
+                                       "finishReason": "STOP"}],
+                       "usageMetadata": {"promptTokenCount": 7, "candidatesTokenCount": 1}})
+        self.assertEqual(gemini.complete(req).usage, {"in": 7, "out": 1})
 
 
 class TestGeminiProvider(WireTest):

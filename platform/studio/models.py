@@ -72,9 +72,21 @@ def normalise(entries: Any) -> List[Dict[str, str]]:
                  "note": str(raw.get("note") or "").strip()[:NOTE_CHARS]}
         if alias and alias != model_id:
             entry["alias"] = alias
+        if raw.get("price") is not None:
+            entry["price"] = _price(n, raw["price"])
         out.append(entry)
     _check_aliases(out)
     return out
+
+
+def _price(n: int, raw: Any) -> Dict[str, float]:
+    """A model's price, {in, out} in USD per million tokens. The page estimates the tutor's
+    cost from it, so a row that carries one keeps it through the settings page."""
+    try:
+        return {"in": float(raw["in"]), "out": float(raw["out"])}
+    except (TypeError, KeyError, ValueError):
+        raise ValueError("Model %d: price needs numbers for in and out, USD per million "
+                         "tokens." % n) from None
 
 
 def _check_aliases(entries: List[Dict[str, str]]) -> None:

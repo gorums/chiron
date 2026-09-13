@@ -47,6 +47,7 @@ function viewMarks() {
     })
     .filter(b => byId(b.mid))
     .sort((a, b) => b.ts - a.ts);
+  const flags = allFlags().filter(x => byId(x.mid));
   const f = markFilter;
   let h = `<div class="wrap-wide"><div class="rowline wrapped markshead"><div class="grow"><h2 class="big">Marks &amp; questions</h2>
   <p class="lede">Everything you highlighted, noted, bookmarked, or asked about — in one place.</p></div>
@@ -59,6 +60,7 @@ function viewMarks() {
       ["notes", "Notes " + all.filter(m => m.note).length],
       ["hl", "Highlights " + all.filter(m => !m.note && m.status !== "open").length],
       ["books", "Bookmarks " + books.length],
+      ["flags", "Flagged questions " + flags.length],
     ]
       .map(
         ([k, l]) =>
@@ -67,7 +69,7 @@ function viewMarks() {
       .join("")}
   </div>`;
 
-  if (!all.length && !chats.length && !books.length) {
+  if (!all.length && !chats.length && !books.length && !flags.length) {
     h += `<div class="empty"><h2 class="big">Nothing marked yet</h2>
       <p class="narrow">Open any module. The tutor sits on the right and follows you down the page, suggesting questions for whatever section you are reading. Select a sentence to ask about that exact passage, highlight it to keep, or flag it as a question you still need answered.</p>
       <a class="btn primary gap-top" href="${stepHash(MODS[0].id, 1)}">Open ${MODS[0].id}</a></div></div>`;
@@ -85,6 +87,9 @@ function viewMarks() {
         <div class="markttl">${ico("flag", 14)} ${esc(sec ? sec.h : "")}</div>
         <div class="rowline wrapped"><button class="btn sm primary" onclick="jumpToPassage('${mod.id}',${b.sec},null)">Go to section</button><button class="btn sm" onclick="toggleBookmark('${mod.id}',${b.sec});viewMarks()">Remove</button></div></div>`;
     });
+  }
+  if (f === "flags" || f === "all") {
+    flags.forEach(x => (h += flagRow(x)));
   }
   if (f === "all" || f === "chats") {
     chats.forEach(c => {
@@ -144,6 +149,18 @@ function markRow(m) {
       <button class="btn sm primary" onclick="openPanel('${m.mid}','${m.id}')">Ask about it</button>
       ${m.status === "open" ? `<button class="btn sm" onclick="setMarkStatus('${m.mid}','${m.id}','answered');viewMarks()">Mark answered</button>` : ""}
       <button class="btn sm" onclick="jumpToPassage('${m.mid}',${m.sec},'${m.id}')">Go to passage</button>
+    </div></div>`;
+}
+function flagRow(x) {
+  const mod = byId(x.mid);
+  return `<div class="markrow qq"><div class="meta"><span class="tag acc">${mod.id}</span><span>${esc(mod.short)}</span>
+      <span class="tag warn" data-help="${esc(help("flagged question"))}">flagged question ${x.qi + 1}</span>
+      <span class="pushright">${new Date(x.ts).toLocaleDateString()}</span></div>
+    <div class="txt">${esc(x.q)}</div>
+    ${x.note ? `<div class="qbox"><b>What is wrong</b>${esc(x.note)}</div>` : ""}
+    <div class="rowline wrapped markacts">
+      <a class="btn sm primary" href="${stepHash(mod.id, 2)}">Go to the quiz</a>
+      <button class="btn sm" onclick="removeFlag('${mod.id}',${x.qi});viewMarks()">Take it back</button>
     </div></div>`;
 }
 function continueConvo(id) {

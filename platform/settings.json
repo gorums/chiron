@@ -93,7 +93,7 @@
     }
   },
   "models": {
-    "_": "Every model on offer. `provider` names the row in `providers` that reaches it; left out, it means `llm.defaultProvider`. `alias` is the short name a person types and is unique across the whole list; `id` need only be unique within its provider.",
+    "_": "Every model on offer. `provider` names the row in `providers` that reaches it; left out, it means `llm.defaultProvider`. `alias` is the short name a person types and is unique across the whole list; `id` need only be unique within its provider. An optional `price` ({\"in\", \"out\"}, USD per million tokens) lets a course page estimate what the tutor cost.",
     "default": "opus",
     "list": [
       {

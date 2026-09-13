@@ -150,6 +150,8 @@ const HELP = {
     "How well your confidence matches your results. Being sure and wrong is worth knowing about.",
   compact:
     "Replaces a long chat with a summary, so the tutor keeps the thread without re-reading everything.",
+  "flagged question":
+    "A quiz question you think is wrong. It reaches whoever owns the course as a brief for a patch.",
   "close the gaps":
     "The sixth step: drill exactly what you got wrong in this module until it is closed.",
   gap: "Something the tutor has seen you get wrong more than once, with the question that would prove it is fixed.",

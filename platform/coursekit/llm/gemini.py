@@ -49,6 +49,10 @@ class GeminiProvider(HttpProvider):
         parts = ((candidates[0].get("content") or {}).get("parts") or []) if candidates else []
         return "".join(str(p.get("text") or "") for p in parts).strip()
 
+    def usage_of(self, answer: Dict[str, Any]):
+        usage = answer.get("usageMetadata") or {}
+        return self.tokens(usage.get("promptTokenCount"), usage.get("candidatesTokenCount"))
+
     def notes_of(self, answer: Dict[str, Any]) -> str:
         candidates = answer.get("candidates") or []
         why = str((candidates[0].get("finishReason") or "") if candidates else "")

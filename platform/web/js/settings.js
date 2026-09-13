@@ -155,6 +155,8 @@ function viewSettings() {
       <button class="btn sm" onclick="resetRailSize()">Reset</button></div></div>
   </div>
 
+  ${usageCard()}
+
   <div class="card gap-bottom">
     <h3 class="eyebrow">Backup &amp; restore</h3>
     <p class="sub gap-bottom">${STUDIO ? "Progress is also kept on the platform while this page is served by Studio. A backup is still the way to move it to a page opened off disk." : "Progress lives in this browser only. Keep a copy, or move it to another machine."}</p>

@@ -248,6 +248,8 @@ class TestCourseRoutes(ServerTest):
         self.assertEqual(detail["modules"], 6)
         self.assertEqual([m["id"] for m in detail["moduleList"]][:2], ["M01", "M02"])
         self.assertEqual(detail["profile"], "default")
+        self.assertEqual(detail["questions"], [])
+        self.assertEqual(detail["flags"], [], "the reader's quiz flags, once there are any")
 
     def test_check_reports_every_problem_without_building(self):
         course = self.fixture()
@@ -722,7 +724,7 @@ class TestStateRoutes(ServerTest):
         state = self.get("/api/state").json()
         self.assertEqual([c["id"] for c in state["courses"]], ["fixture"])
         self.assertIn("llm", state)
-        self.assertIn("claude", state, "a page loaded before the rename still looks for it")
+        self.assertNotIn("claude", state, "the block is named for what it is, not a vendor")
         self.assertIn("calendar", state)
 
     def test_the_listing_counts_module_files_rather_than_parsing_them(self):

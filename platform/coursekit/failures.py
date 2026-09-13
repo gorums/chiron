@@ -2,7 +2,7 @@
 
 The classifier moved into the provider layer, next to the code that produces the stderr it
 reads. This re-export stays because two things import it from outside the package by path -
-`tools/bridge/claude-bridge.py` and the tests - and because the name is in the docstrings of
+`tools/bridge/tutor-bridge.py` and the tests - and because the name is in the docstrings of
 half of Studio. Like the module it points at, it is standard library only.
 """
 

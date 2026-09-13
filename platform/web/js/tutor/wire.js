@@ -15,8 +15,14 @@
      headers(cfg, key)  how the key travels
      body(req)          the request as that API wants it
      reply(json)        the text, dug out of whatever it came wrapped in
+     usage(json)        the tokens it cost, {in, out}, or null when the reply does not say
      problem(json)      what the error body said, when it said anything
 */
+function tokenPair(inbound, outbound) {
+  return Number.isInteger(inbound) && Number.isInteger(outbound)
+    ? { in: inbound, out: outbound }
+    : null;
+}
 const WIRE = {
   anthropic: {
     url: cfg => cfg.apiUrl,
@@ -41,6 +47,10 @@ const WIRE = {
         .filter(c => c.type === "text")
         .map(c => c.text)
         .join(""),
+    usage: json => {
+      const u = (json && json.usage) || {};
+      return tokenPair(u.input_tokens, u.output_tokens);
+    },
     problem: json => (json && json.error && json.error.message) || "",
   },
 
@@ -61,6 +71,10 @@ const WIRE = {
     reply: json => {
       const first = (json.choices || [])[0] || {};
       return (first.message && first.message.content) || "";
+    },
+    usage: json => {
+      const u = (json && json.usage) || {};
+      return tokenPair(u.prompt_tokens, u.completion_tokens);
     },
     problem: json => (json && json.error && (json.error.message || json.error.code)) || "",
   },
@@ -88,6 +102,10 @@ const WIRE = {
       const first = (json.candidates || [])[0] || {};
       const parts = (first.content && first.content.parts) || [];
       return parts.map(p => p.text || "").join("");
+    },
+    usage: json => {
+      const u = (json && json.usageMetadata) || {};
+      return tokenPair(u.promptTokenCount, u.candidatesTokenCount);
     },
     problem: json => (json && json.error && (json.error.message || json.error.status)) || "",
   },

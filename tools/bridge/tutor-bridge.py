@@ -251,7 +251,17 @@ def answer(mode, provider, system, messages, model, max_tokens):
     request = Request(system=system, messages=messages, model=model or CFG.get("model") or "",
                       timeout=CLI_TIMEOUT if provider.kind == "cli" else API_TIMEOUT,
                       max_tokens=min(int(max_tokens or MAX_TOKENS), MAX_TOKENS_CAP))
-    return llm.complete(provider, request).text
+    return llm.complete(provider, request)
+
+
+def answered(reply, mode, **more):
+    """What the page is sent for one answer: the text, the route, and the tokens it cost
+    when the provider said - the page counts them for the reader."""
+    body = dict(more, text=reply.text, mode=mode)
+    usage = getattr(reply, "usage", None)
+    if usage:
+        body["usage"] = usage
+    return body
 
 
 # --------------------------------------------------------------------------- the server
@@ -402,8 +412,8 @@ class Handler(BaseHTTPRequestHandler):
                 "tool so the bridge can use it.")})
         system, model, tokens = body.get("system") or "", body.get("model"), body.get("max_tokens")
         try:
-            text = answer(mode, provider, system, messages, model, tokens)
-            return self._send(200, {"text": text, "mode": mode})
+            reply = answer(mode, provider, system, messages, model, tokens)
+            return self._send(200, answered(reply, mode))
         except LLMFailed as exc:
             self._failed(exc, mode, system, messages, model, tokens)
         except Exception as exc:  # noqa: BLE001 - anything else still owes the page an answer
@@ -416,9 +426,9 @@ class Handler(BaseHTTPRequestHandler):
         worth_it = exc.kind == AUTH or (mode == "cli" and exc.kind != TIMEOUT)
         if other is not None and other.available() and worth_it:
             try:
-                text = answer(mode, other, system, messages, model, tokens)
+                reply = answer(mode, other, system, messages, model, tokens)
                 kind = "api" if other.kind != "cli" else "cli"
-                return self._send(200, {"text": text, "mode": kind, "notice": _switched(mode)})
+                return self._send(200, answered(reply, kind, notice=_switched(mode)))
             except Exception:  # noqa: BLE001 - the first failure is the one to report
                 pass
         self._send(504 if exc.kind == TIMEOUT else 502,

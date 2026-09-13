@@ -51,6 +51,7 @@
     "practice/checkpoint.js",
     "practice/review.js",
     "practice/worksheets.js",
+    "practice/flags.js",
 
     "marks/marks.js",
     "marks/selection.js",
@@ -58,6 +59,7 @@
 
     "tutor/wire.js",
     "tutor/conn.js",
+    "tutor/usage.js",
     "tutor/convos.js",
     "tutor/place.js",
     "tutor/rail.js",

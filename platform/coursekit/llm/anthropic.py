@@ -67,6 +67,10 @@ class AnthropicProvider(HttpProvider):
         return "".join(part.get("text", "") for part in (answer.get("content") or [])
                        if part.get("type") == "text").strip()
 
+    def usage_of(self, answer: Dict[str, Any]):
+        usage = answer.get("usage") or {}
+        return self.tokens(usage.get("input_tokens"), usage.get("output_tokens"))
+
     def notes_of(self, answer: Dict[str, Any]) -> str:
         # "end_turn" is the model finishing; anything else - a hit token cap, a stop
         # sequence - is worth a line beside an answer that may be cut short.

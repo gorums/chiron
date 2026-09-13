@@ -26,7 +26,7 @@ import json
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .base import Capabilities, LLMFailed, Provider, Reply, Request, failed
 from .failures import AUTH, TIMEOUT, UNKNOWN, describe, from_status
@@ -99,7 +99,8 @@ class HttpProvider(Provider):
         if not text:
             raise failed("the reply carried no text", provider=self.name)
         return Reply(text=text, model=req.model, provider=self.name,
-                     seconds=round(time.time() - started, 1), notes=self.notes_of(answer))
+                     seconds=round(time.time() - started, 1), notes=self.notes_of(answer),
+                     usage=self.usage_of(answer))
 
     def probe(self, model: str, timeout: int = 0) -> Dict[str, Any]:
         started = time.time()
@@ -137,7 +138,19 @@ class HttpProvider(Provider):
         """Anything worth a line in the log beside a good answer - a hit token cap, say."""
         return ""
 
+    def usage_of(self, answer: Dict[str, Any]) -> Optional[Dict[str, int]]:
+        """The tokens one answer cost, as {"in", "out"}, when the reply says. A page shows
+        the reader what a key is spending; nothing else depends on it."""
+        return None
+
     # ---- shared shaping
+
+    @staticmethod
+    def tokens(inbound: Any, outbound: Any) -> Optional[Dict[str, int]]:
+        """A usage pair, or None unless the reply carried both numbers."""
+        if isinstance(inbound, int) and isinstance(outbound, int):
+            return {"in": inbound, "out": outbound}
+        return None
 
     @staticmethod
     def turns(req: Request) -> List[Dict[str, str]]:

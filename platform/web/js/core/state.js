@@ -36,6 +36,7 @@ const blank = () => ({
   mcards: {},
   notes: {},
   marks: {},
+  flags: {}, // mid -> quiz questions the reader thinks are wrong (see practice/flags.js)
   convos: {},
   biz: "",
   chk: {},
@@ -46,6 +47,7 @@ const blank = () => ({
   pos: {},
   sheets: {},
   bridge: connDefaults(),
+  usage: usageBlank(), // what the tutor has cost from this browser (see tutor/usage.js)
   streak: { days: 0, last: null, seen: [], freezes: 0, frozen: [] },
   gone: {}, // id -> when, for conversations and marks deleted on purpose (see mergeStates)
   learner: learnerBlank(), // what the tutor remembers about this reader (see tutor/learner.js)
@@ -66,11 +68,20 @@ function load() {
 /* Older saves predate some fields; fill them in rather than guarding every read. */
 function upgrade(s) {
   const b = blank();
-  ["mcards", "chk", "cpHist", "bookmarks", "pos", "sheets", "gone", "convos", "marks"].forEach(
-    k => {
-      if (!s[k] || typeof s[k] !== "object") s[k] = b[k];
-    }
-  );
+  [
+    "mcards",
+    "chk",
+    "cpHist",
+    "bookmarks",
+    "pos",
+    "sheets",
+    "gone",
+    "convos",
+    "marks",
+    "flags",
+  ].forEach(k => {
+    if (!s[k] || typeof s[k] !== "object") s[k] = b[k];
+  });
   s.bridge = Object.assign(connDefaults(), s.bridge || {});
   if (!s.bridge.keys || typeof s.bridge.keys !== "object") s.bridge.keys = {};
   // A save from before providers held one key, and it was always Anthropic's.
@@ -101,13 +112,14 @@ function save() {
    the copy that saved later (a conversation: the one updated later), progress per module
    keeping every section read on either side, and deletions remembered in `gone` so a
    stale copy cannot bring a deleted conversation or mark back. Scalars come from the
-   later copy. Device settings (`bridge`, `ui`, `theme`) are the caller's business. */
+   later copy. Device settings (`bridge`, `ui`, `theme`, `usage`) are the caller's business. */
 const MERGED_MAPS = [
   "progress",
   "cards",
   "mcards",
   "notes",
   "marks",
+  "flags",
   "convos",
   "chk",
   "bookmarks",
@@ -129,15 +141,8 @@ function mergeStates(a, b) {
     if (gone[id]) delete out.convos[id];
     else if (x && y) out.convos[id] = (x.updated || 0) > (y.updated || 0) ? x : y;
   });
-  out.marks = {};
-  const mids = new Set([...Object.keys(older.marks || {}), ...Object.keys(newer.marks || {})]);
-  mids.forEach(mid => {
-    const byId = {};
-    [...((older.marks || {})[mid] || []), ...((newer.marks || {})[mid] || [])].forEach(mk => {
-      if (mk && mk.id && !gone[mk.id]) byId[mk.id] = mk;
-    });
-    out.marks[mid] = Object.values(byId);
-  });
+  out.marks = mergeLists(older.marks, newer.marks, gone);
+  out.flags = mergeLists(older.flags, newer.flags, gone);
 
   Object.keys(out.progress).forEach(mid => {
     const x = (older.progress || {})[mid],
@@ -176,6 +181,20 @@ function mergeStates(a, b) {
   ].sort((p, q) => (p.at || 0) - (q.at || 0));
 
   out.updatedAt = Math.max(a.updatedAt || 0, b.updatedAt || 0);
+  return out;
+}
+/* Two copies of a per-module list of `{id, ...}` rows: the union, by id, without the rows
+   deleted on purpose. The later copy wins a clash because it is spread second. */
+function mergeLists(a, b, gone) {
+  const out = {};
+  const mids = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+  mids.forEach(mid => {
+    const byId = {};
+    [...((a || {})[mid] || []), ...((b || {})[mid] || [])].forEach(row => {
+      if (row && row.id && !gone[row.id]) byId[row.id] = row;
+    });
+    out[mid] = Object.values(byId);
+  });
   return out;
 }
 /* Something deleted on purpose stays deleted when copies merge. */
@@ -245,6 +264,7 @@ function syncBody() {
   delete o.bridge;
   delete o.ui;
   delete o.theme;
+  delete o.usage;
   return JSON.stringify({ state: o });
 }
 async function syncPull() {
@@ -266,7 +286,7 @@ async function syncPull() {
     // Merge rather than replace: the platform copy may be behind this browser on some
     // things and ahead on others. Whatever this browser had that the platform lacked
     // goes back up straight away.
-    const keep = { bridge: STATE.bridge, ui: STATE.ui, theme: STATE.theme };
+    const keep = { bridge: STATE.bridge, ui: STATE.ui, theme: STATE.theme, usage: STATE.usage };
     const before = JSON.stringify(STATE);
     STATE = upgrade(Object.assign(mergeStates(STATE, remote), keep));
     const changed = JSON.stringify(STATE) !== before;

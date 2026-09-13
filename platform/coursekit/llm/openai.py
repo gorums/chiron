@@ -45,6 +45,10 @@ class OpenAIProvider(HttpProvider):
         message = (choices[0].get("message") or {}) if choices else {}
         return str(message.get("content") or "").strip()
 
+    def usage_of(self, answer: Dict[str, Any]):
+        usage = answer.get("usage") or {}
+        return self.tokens(usage.get("prompt_tokens"), usage.get("completion_tokens"))
+
     def notes_of(self, answer: Dict[str, Any]) -> str:
         choices = answer.get("choices") or []
         why = str((choices[0].get("finish_reason") or "") if choices else "")

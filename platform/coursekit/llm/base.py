@@ -15,7 +15,7 @@ provider pick.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..settings import SETTINGS
 from .failures import UNKNOWN, describe
@@ -62,6 +62,7 @@ class Reply:
     provider: str = ""
     seconds: float = 0.0
     notes: str = ""                 # anything the provider said alongside a good answer
+    usage: Optional[Dict[str, int]] = None   # {"in", "out"} tokens, when the reply says
 
 
 class ProviderUnavailable(RuntimeError):

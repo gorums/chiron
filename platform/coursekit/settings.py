@@ -388,9 +388,18 @@ class Settings:
             "bridgeUrl": self.bridge_url,
             "providers": self.page_providers(),
             "defaultModel": self.model_id(self.default_model),
-            "models": [{"id": m["id"], "label": m.get("label") or m["id"],
-                        "provider": m["provider"]} for m in self.models],
+            "models": [self.page_model(m) for m in self.models],
         })
+        return out
+
+    @staticmethod
+    def page_model(m: Dict[str, Any]) -> Dict[str, Any]:
+        """One model row as the page sees it. `price` ({in, out}, USD per million tokens)
+        travels when the row has one: it is what lets the page estimate what the tutor
+        cost, and it is a setting because nothing should be guessing a vendor's prices."""
+        out = {"id": m["id"], "label": m.get("label") or m["id"], "provider": m["provider"]}
+        if isinstance(m.get("price"), dict):
+            out["price"] = m["price"]
         return out
 
     # ---- for the Studio settings page ----

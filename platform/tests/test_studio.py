@@ -869,11 +869,13 @@ class TestProgressStore(unittest.TestCase):
 
     def test_device_settings_never_reach_disk(self):
         self.store.save("bread", {"bridge": {"key": "sk-ant-x"}, "theme": "dark",
-                                  "ui": {"rail": False}, "notes": {"M01": "n"}})
+                                  "ui": {"rail": False}, "usage": {"calls": 3},
+                                  "notes": {"M01": "n"}})
         state = self.store.load("bread")["state"]
         self.assertNotIn("bridge", state)
         self.assertNotIn("theme", state)
         self.assertNotIn("ui", state)
+        self.assertNotIn("usage", state, "what a key spent belongs to the browser it is in")
         self.assertEqual(state["notes"], {"M01": "n"})
 
     def test_bad_ids_and_bad_bodies_are_refused(self):
@@ -948,8 +950,6 @@ class TestModelChoice(unittest.TestCase):
         self.assertEqual(state["llm"]["models"], view["models"],
                          "every writing form offers the list, so /api/state carries it")
         self.assertEqual(state["llm"]["defaultModel"], SETTINGS.model_id(catalog.PREFS.model))
-        self.assertEqual(state["claude"], state["llm"],
-                         "the older name still answers, for a page loaded before the rename")
         self.assertTrue(state["llm"]["providers"], "and every provider Studio could use")
         self.assertEqual(view["modelList"]["list"], SETTINGS.models)
         self.assertEqual(view["paths"]["settings"], SETTINGS.path)
@@ -1016,6 +1016,11 @@ class TestModelList(unittest.TestCase):
                                  "note": "n", "alias": "x"},
                                 {"provider": "claude-code", "id": "claude-y-1",
                                  "label": "claude-y-1", "note": ""}])
+        priced = models.normalise([{"id": "claude-x-9", "price": {"in": "3", "out": 15}}])
+        self.assertEqual(priced[0]["price"], {"in": 3.0, "out": 15.0},
+                         "a price survives the settings page, as numbers")
+        with self.assertRaises(ValueError):
+            models.normalise([{"id": "claude-x-9", "price": {"in": "cheap"}}])
         for bad in ([], "x", [{}], [{"id": "Claude Opus"}], [{"id": "claude-x", "alias": "bad alias"}],
                     [{"id": "claude-x"}, {"id": "claude-x"}],
                     [{"id": "claude-x", "alias": "a"}, {"id": "claude-y", "alias": "a"}],
@@ -1622,6 +1627,21 @@ class TestCourseEditing(unittest.TestCase):
         self.assertEqual([q["id"] for q in qs], ["k3", "k1"], "newest first, highlights excluded")
         self.assertEqual(qs[1]["title"], "Water")
         self.assertEqual(catalog.open_questions({}, mods), [])
+
+    def test_flagged_questions_from_state(self):
+        """A quiz question the reader flagged reaches the Questions tab as a patch brief;
+        a row without a question index is not one."""
+        state = {"flags": {"M02": [
+            {"id": "f1", "qi": 3, "q": "Which is it?", "note": "B is also right", "ts": 5},
+            {"id": "f2", "qi": 0, "q": "First?", "note": "", "ts": 9},
+            {"id": "f3", "q": "no index"},
+        ], "M09": "junk"}}
+        mods = [{"id": "M02", "title": "Water"}]
+        flags = catalog.flagged_questions(state, mods)
+        self.assertEqual([f["id"] for f in flags], ["f2", "f1"], "newest first")
+        self.assertEqual(flags[1]["title"], "Water")
+        self.assertEqual(flags[1]["qi"], 3)
+        self.assertEqual(catalog.flagged_questions({}, mods), [])
 
     def test_learner_view_keeps_open_gaps_only(self):
         """The page's learner memory reaches Studio as the brief and the open gaps; a gap

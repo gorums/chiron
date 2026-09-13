@@ -84,8 +84,11 @@ each naming the `provider` that reaches it; a row that names none belongs to
 `llm.defaultProvider`, which is what lets a list saved before providers existed keep
 working. An `id` need only be unique within its provider — two providers may well offer the
 same model — while an `alias`, being the short name a person types, is unique across the
-whole list. `llm.*` holds how hard the platform tries: the timeout, the retries, the
-backoff. **A setting written under its older name still works**: `claude.*` and
+
+/clewhole list. A row may carry a `price` (`{"in", "out"}`, USD per million tokens); it
+reaches the page as `CFG.platform.models[].price` and is the only thing the tutor's cost
+estimate is made from - nothing infers a vendor's prices. `llm.*` holds how hard the
+platform tries: the timeout, the retries, the backoff. **A setting written under its older name still works**: `claude.*` and
 `anthropic.*` are read, moved to their new homes by `settings._absorb_legacy`, and reported
 on the settings page with the name they came from. Every `providers.*.apiKey` is a secret
 by rule (`settings.is_secret`), so a provider added later is masked without this file being
@@ -296,7 +299,7 @@ from the same file opened off disk, and every difference goes through one detect
   `?tab=add&from=<mid>` or `?rewrite=<mid>`.
 
 The bridge remains the route for a page opened off disk (`file://`), where none of this
-applies. It is `tools/bridge/tutor-bridge.py` (`claude-bridge.py` still starts it), and it
+applies. It is `tools/bridge/tutor-bridge.py`, and it
 reaches a model only through `coursekit.llm` — the same provider layer Studio uses, so the
 retry policy, the model chain and the failure kinds are one implementation rather than two
 that drift. What is its own: a loopback socket with CORS, the key hunt (`candidate_keys`,
@@ -601,6 +604,8 @@ and everything else exists to make the practice half of that honest:
 | Figures: SVG diagrams inlined in the Read step, and build-ups the reader steps through or plays (see "Figures") | `reading/figures.js`, `css/content.css` |
 | Listening: the Read step read aloud by the browser's own speech engine, block by block with the spoken block highlighted; a section heard to its end is ticked read; voice and speed under `S.ui` (see "Listening") | `reading/audio.js`, `css/content.css` |
 | Notebooks: a Jupyter notebook rendered read-only in the Read step and, when served by Studio with Jupyter running, run and edited right there, with the room to work in it - taller, wide, or the whole window (see "Notebooks") | `reading/notebooks.js`, `css/notebooks.css` |
+| Tutor usage: every answer counted per model in `STATE.usage` - the call, and the tokens in and out when an API reported them (`wire.js` `usage`, `Reply.usage` through the bridge) - with a cost estimated only for a model whose row carries a `price`. A device setting like the key it is spent with: stripped from the sync, kept through a pull | `tutor/usage.js`, `settings.js` (`usageCard`), `progress.DEVICE_KEYS` |
+| Flagging a quiz question as wrong: the flag lives in `STATE.flags`, shows on the Marks page, and reaches Studio's Questions tab as a patch brief for that module's quiz | `practice/flags.js`, `marks/notes.js`, `catalog.flagged_questions` |
 | Bookmarks, resume position, open questions that the tutor's reply closes, notes export as markdown, reading preferences (size, width, serif, motion), a print stylesheet, and a course record page | `reading/module.js`, `marks/marks.js`, `marks/notes.js`, `settings.js`, `progress/plan.js` (`viewRecord`), `css/practice.css` |
 | The learner memory: what the tutor knows about this reader, per course, built from every miss, verdict and question; it goes into every tutor prompt and ahead of the suggested questions (see "The learner memory" below) | `tutor/learner.js`, `tutor/learner-view.js` (`#/learner`), `progress/home.js` (`renderGapCard`) |
 
@@ -978,16 +983,14 @@ files and spawns processes. Do not make it listen on another interface.
 `{available, provider, providerLabel, hint, providers, model, models, defaultModel}`:
 `available` is about the provider a writing job would actually run on — a key for a provider
 nobody writes with must not read as "Studio may write" — and `providers` is every configured
-row with `enabled`, `available`, its model count and whether it is the default. The same
-block is still sent as `claude` for one release, because a page loaded before the rename
-looks for it. In the UI, `llmState()` reads whichever is there and `providerName()` is the
-one place a provider is named, so no screen carries a vendor of its own; `_provider(doing)`
+row with `enabled`, `available`, its model count and whether it is the default. In the UI,
+`llmState()` reads it and `providerName()` is the one place a provider is named, so no screen carries a vendor of its own; `_provider(doing)`
 is the server-side guard, and it names the provider that could not answer rather than
 telling someone to install the wrong thing.
 
 **Prompts go in on stdin, never as `-p <prompt>`.** A Windows command line caps at 8191
 characters, and a module prompt is an order of magnitude larger. stdin removes the ceiling.
-`tools/bridge/claude-bridge.py` does the same; its remaining trim only bounds cost per question.
+`tools/bridge/tutor-bridge.py` does the same; its remaining trim only bounds cost per question.
 
 **Every CLI call names its model.** Without `--model`, Claude Code inherits whatever the
 person last chose interactively, and the headless SDK path rejects some of those (a `[1m]`
@@ -1050,7 +1053,7 @@ exhausted account, an overloaded server and a model it does not recognise the sa
 non-zero exit and a line of stderr — so `coursekit/llm/failures.py` names the kind once
 (`quota`, `auth`, `model`, `transient`, `timeout`, `unknown`) and everything above it acts
 on the name rather than reading stderr again. It sits in `coursekit`, stdlib-only, because
-`tools/bridge/claude-bridge.py` imports it from outside the package the way it imports
+`tools/bridge/tutor-bridge.py` imports it from outside the package the way it imports
 `settings`.
 
 - **`transient` is waited out**, on the same model: `claude.retries` further attempts with
@@ -1186,6 +1189,9 @@ Without a model (`studio/manage.py`):
 | `POST /api/courses/<id>/modules/<mid>/accept` | `{accepted: bool}`: the owner's own verdict, "this is good". `reviews.accept_module` stores it in the same review file (`accepted`, and `ownerOnly` when there was no review), the row shows "good" over whatever Claude said, and it goes stale like a review when the module changes. |
 | `POST /api/courses/<id>/delete` | needs `{confirm: <id>}`; moves `courses/<id>` and `dist/<id>` to `state/trash/<id>-<stamp>/` and forgets the progress copy. |
 
+The reader's flagged quiz questions (`state.flags`) come back in the course detail as `flags`,
+each offered on the Questions tab as a patch of that module (`?rewrite=<mid>&q=…`), which
+is the mode that fixes a quiz and leaves the text alone.
 The reader's open questions (`state.marks` with status `open`/`answered`) come back in the
 course detail as `questions`; the Studio Questions tab turns any of them into an Add-a-module
 or Rewrite brief through query params (`?tab=add&q=…&notes=…`, `?rewrite=<mid>&q=…`). The

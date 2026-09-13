@@ -101,7 +101,7 @@ class BridgeTest(unittest.TestCase):
         bridge.llm.providers = lambda: [cli, api]
         return cli, api
 
-    def answers(self, text="the answer", raises=None):
+    def answers(self, text="the answer", raises=None, usage=None):
         """What `llm.complete` gives back, and what it was asked."""
         bridge = self.bridge
         seen = {}
@@ -110,7 +110,7 @@ class BridgeTest(unittest.TestCase):
             seen["provider"], seen["request"] = provider, request
             if raises:
                 raise raises
-            return type("Reply", (), {"text": text})()
+            return type("Reply", (), {"text": text, "usage": usage})()
 
         self.addCleanup(setattr, bridge.llm, "complete", bridge.llm.complete)
         bridge.llm.complete = complete
@@ -441,6 +441,17 @@ class TestAsk(BridgeTest):
         self.assertEqual(reply.status, 502)
         self.assertEqual(reply.json()["why"], "quota")
         self.assertEqual(reply.json()["resetsAt"], "3pm")
+
+    def test_the_tokens_an_answer_cost_reach_the_page(self):
+        """The page counts what a key is spending, so a provider's usage travels in the
+        reply - and is left out, not sent empty, when the provider said nothing."""
+        self.providers(api=Stand_in("anthropic"))
+        self.answers(usage={"in": 40, "out": 9})
+        body = self.post("/ask", {"messages": [{"role": "user", "content": "q"}]}).json()
+        self.assertEqual(body["usage"], {"in": 40, "out": 9})
+        self.answers()
+        body = self.post("/ask", {"messages": [{"role": "user", "content": "q"}]}).json()
+        self.assertNotIn("usage", body)
 
     def test_a_timeout_is_a_504(self):
         self.providers(cli=Stand_in("cli"))

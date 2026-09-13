@@ -465,7 +465,7 @@ async function removeModule(id, mid, partId) {
 
 function paintQuestions(c) {
   const qs = c.questions || [];
-  const gaps = paintGaps(c);
+  const gaps = paintGaps(c) + paintFlags(c);
   if (!qs.length) {
     $("#tabbody").innerHTML = `${gaps}<div class="card"><h3 class="eyebrow">Open questions</h3>
       <p class="sub">Nothing marked yet. While reading, select a sentence and turn it into a question — every one collects here, where it can become a new module or a rewrite.</p></div>`;
@@ -493,6 +493,29 @@ function paintQuestions(c) {
   $("#tabbody").innerHTML = `${gaps}<div class="card">
     <h3 class="eyebrow">Open questions</h3>
     <p class="sub">The passages the reader marked with a question. They are the most honest map of where this course stops short — turn one into a brief.</p>
+    ${rows}</div>`;
+}
+/* the quiz questions the reader flagged as wrong, each offered as a patch brief */
+function paintFlags(c) {
+  const flags = c.flags || [];
+  if (!flags.length) return "";
+  const rows = flags
+    .map(f => {
+      const notes = encodeURIComponent(
+        `Quiz question ${f.qi + 1} of ${f.mid} ("${f.q}") was flagged by the reader${f.note ? ": " + f.note : ""}. Fix the question, its answer or its feedback; leave the module's text alone unless the text is what is wrong.`
+      );
+      return `<div class="qrow">
+      <div class="qmeta"><span class="mid">${esc(f.mid)}</span> ${esc(f.title)} · question ${f.qi + 1}</div>
+      <blockquote>${esc(f.q)}</blockquote>
+      ${f.note ? `<p class="qask">${esc(f.note)}</p>` : ""}
+      <div class="actions">
+        <a class="btn sm" href="#/course/${encodeURIComponent(c.id)}?tab=modules&rewrite=${encodeURIComponent(f.mid)}&q=${notes}">Patch or rewrite ${esc(f.mid)}…</a>
+      </div></div>`;
+    })
+    .join("");
+  return `<div class="card">
+    <h3 class="eyebrow" data-help="${esc(help("flagged question"))}">Flagged quiz questions</h3>
+    <p class="sub">Questions the reader thinks are wrong. A patch fixes the quiz and leaves the text alone.</p>
     ${rows}</div>`;
 }
 /* the gaps the page's tutor is working on, each offered as a rewrite brief */

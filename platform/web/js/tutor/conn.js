@@ -64,7 +64,12 @@ function adoptStudioModels(llm) {
   PLATFORM.models.splice(
     0,
     PLATFORM.models.length,
-    ...list.map(m => ({ id: m.apiId, label: m.name || m.apiId, provider: m.provider || "" }))
+    ...list.map(m => ({
+      id: m.apiId,
+      label: m.name || m.apiId,
+      provider: m.provider || "",
+      price: m.price || null,
+    }))
   );
   if (llm.defaultModel) PLATFORM.defaultModel = llm.defaultModel;
   if (typeof syncModelPickers === "function") syncModelPickers();
@@ -88,8 +93,7 @@ async function checkStudio() {
     const r = await fetch(STUDIO.origin + "/api/state", { signal: ctrl.signal, cache: "no-store" });
     clearTimeout(t);
     const j = await r.json();
-    // `llm` is the block; `claude` is what it was called before providers had names.
-    const llm = (j && (j.llm || j.claude)) || null;
+    const llm = (j && j.llm) || null;
     studioOk = !!(llm && llm.available);
     if (llm) adoptStudioModels(llm);
   } catch (e) {
@@ -156,6 +160,7 @@ async function callDirect(system, messages, model, maxTokens, provider, key) {
     j = await r.json();
   } catch (e) {}
   if (!r.ok) throw directError(chosen, r.status, wire.problem(j));
+  recordUsage(req.model, wire.usage(j));
   return wire.reply(j) || "(empty reply)";
 }
 
@@ -286,6 +291,7 @@ async function askBridge(system, messages) {
     });
     const j = await r.json().catch(() => ({ error: "Studio sent something unreadable." }));
     if (!r.ok || j.error) throw tutorError(j, r.status, "Studio error " + r.status);
+    recordUsage(modelFor(b), null);
     return j.text || "(empty reply)";
   }
   const r = await fetch(b.url.replace(/\/$/, "") + "/ask", {
@@ -305,6 +311,7 @@ async function askBridge(system, messages) {
     toast(j.notice);
     save();
   }
+  recordUsage(modelFor(b), j.usage || null);
   return j.text || "(empty reply)";
 }
 

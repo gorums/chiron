@@ -128,6 +128,7 @@ def course_detail(course_id: str) -> Dict[str, Any]:
     state_obj = record["state"] if record else {}
     info["moduleProgress"] = module_progress(state_obj)
     info["questions"] = open_questions(state_obj, info["moduleList"])
+    info["flags"] = flagged_questions(state_obj, info["moduleList"])
     info["learner"] = learner_view(state_obj, info["moduleList"])
     info["settings"] = manage.settings(root)
     info["notebooks"] = cfg.notebooks or None
@@ -157,6 +158,28 @@ def open_questions(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> 
                 "status": m.get("status"), "ts": m.get("ts") or 0,
             })
     return sorted(out, key=lambda q: q["ts"], reverse=True)
+
+
+def flagged_questions(state: Dict[str, Any],
+                      module_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The quiz questions the reader flagged as wrong, newest first.
+
+    A quiz item is model output, and a wrong answer key is the defect a reader meets most
+    often; a flag is the one that says which. Each row is a brief for a patch of the quiz.
+    """
+    titles = {m["id"]: m["title"] for m in module_list}
+    out = []
+    flags = state.get("flags") if isinstance(state.get("flags"), dict) else {}
+    for mid, rows in flags.items():
+        for f in rows if isinstance(rows, list) else []:
+            if not isinstance(f, dict) or not isinstance(f.get("qi"), int):
+                continue
+            out.append({
+                "mid": mid, "title": titles.get(mid, mid), "id": f.get("id", ""),
+                "qi": f["qi"], "q": str(f.get("q") or "")[:400],
+                "note": str(f.get("note") or "")[:400], "ts": f.get("ts") or 0,
+            })
+    return sorted(out, key=lambda f: f["ts"], reverse=True)
 
 
 def learner_view(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -282,9 +305,6 @@ def state() -> Dict[str, Any]:
     return {
         "courses": courses,
         "llm": llm_view(),
-        # The name this block had when there was only ever one provider. A page built or
-        # loaded before that changed still looks for it; it goes when nothing does.
-        "claude": llm_view(),
         "jobs": [j.summary() for j in REGISTRY.all()[:RECENT_JOBS]],
         "jupyter": jupyter_public(),
         "root": REPO_ROOT,
@@ -314,7 +334,8 @@ def models_view() -> List[Dict[str, str]]:
     labels = {name: cfg.get("label") or name for name, cfg in SETTINGS.providers.items()}
     return [{"id": m["name"], "name": m["label"], "note": m["note"],
              "apiId": SETTINGS.model_id(m["name"]), "provider": m["provider"],
-             "providerLabel": labels.get(m["provider"], m["provider"])}
+             "providerLabel": labels.get(m["provider"], m["provider"]),
+             "price": m.get("price")}
             for m in prefs.models()]
 
 
@@ -354,7 +375,6 @@ def settings_view() -> Dict[str, Any]:
         "modelList": models.current(),
         "discovery": discover.status(),
         "llm": llm_view(),
-        "claude": llm_view(),
         "jupyter": jupyter_public(),
         "paths": {"root": REPO_ROOT, "courses": COURSES_DIR, "dist": DIST_DIR,
                   "state": STATE_ROOT, "log": LOG_FILE, "settings": SETTINGS.path,
