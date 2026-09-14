@@ -29,8 +29,11 @@ SELECTOR = re.compile(
     rb'\{id:"(claude-[a-z0-9.-]+)",name:"([^"]+)"(?:[^{}]|\{[^{}]*\})*?section:"[a-z_]+"\}')
 # The catalogue rows: {id:"claude-opus-5",family:"opus",display_name:"Opus 5",...
 CATALOG = re.compile(rb'\{id:"(claude-[a-z0-9.-]+)",family:"[a-z]+",display_name:"([^"]+)"')
-# A path a Windows npm shim runs: "%~dp0\node_modules\@anthropic-ai\claude-code\cli.js"
-SHIM_TARGET = re.compile(r'"?%~dp0\\?([^"\s]+\.(?:js|exe))"?', re.I)
+# A path a Windows npm shim runs: "%~dp0\node_modules\@anthropic-ai\claude-code\cli.js" in the
+# shims npm 6 wrote, "%dp0%\node_modules\..." in the ones it writes now. Both also name the
+# runner, "%dp0%\node.exe", ahead of the script - so every path is collected and `binary`
+# prefers the script.
+SHIM_TARGET = re.compile(r'"?%(?:~dp0|dp0%)\\?([^"\s]+\.(?:js|exe))"?', re.I)
 
 CACHE_DIR = os.path.join("cache", "model-catalog")     # under the config directory
 
@@ -53,11 +56,13 @@ def binary(cli: str) -> str:
             shim = fh.read()
     except OSError:
         return ""
-    found = SHIM_TARGET.search(shim)
-    if not found:
-        return ""
-    target = os.path.join(os.path.dirname(cli), found.group(1).replace("\\", os.sep))
-    return os.path.realpath(target) if os.path.isfile(target) else ""
+    found = SHIM_TARGET.findall(shim)
+    scripts = [path for path in found if path.lower().endswith(".js")]
+    for relative in scripts + [path for path in found if path not in scripts]:
+        target = os.path.join(os.path.dirname(cli), relative.replace("\\", os.sep))
+        if os.path.isfile(target):
+            return os.path.realpath(target)
+    return ""
 
 
 def config_dir() -> str:

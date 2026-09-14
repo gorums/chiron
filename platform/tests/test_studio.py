@@ -1173,6 +1173,43 @@ class TestModelDiscovery(unittest.TestCase):
         self.assertEqual(claude_code.read(fh.name)["known"], first["known"])
         self.assertFalse(claude_code.read("")["ok"])
 
+
+    def test_a_windows_shim_is_followed_to_the_cli_js_it_runs(self):
+        """`binary()`: a native executable is itself; an npm `.cmd` shim is read for the
+        cli.js it runs; a shim that names nothing, or names a file that is not there, and no
+        CLI at all, are all "" rather than a guess."""
+        import shutil
+        import tempfile
+        from coursekit.llm import claude_code
+        tmp = tempfile.mkdtemp(prefix="studio-shim-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        target = os.path.join(tmp, "node_modules", "@anthropic-ai", "claude-code", "cli.js")
+        os.makedirs(os.path.dirname(target))
+        with open(target, "wb") as fh:
+            fh.write(FAKE_CLI)
+        shim = os.path.join(tmp, "claude.cmd")
+        with open(shim, "w", encoding="utf-8") as fh:
+            fh.write('@ECHO off\r\n"%~dp0\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\r\n')
+        self.assertEqual(claude_code.binary(shim), os.path.realpath(target), "the npm 6 shim")
+        self.assertTrue(claude_code.read(claude_code.binary(shim))["ok"], "and it parses")
+        with open(os.path.join(tmp, "node.exe"), "wb") as fh:
+            fh.write(b"the runner, not the catalogue")
+        with open(shim, "w", encoding="utf-8") as fh:
+            fh.write('@ECHO off\r\nSET dp0=%~dp0\r\n'
+                     'IF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n)\r\n'
+                     '"%_prog%"  "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\r\n')
+        self.assertEqual(claude_code.binary(shim), os.path.realpath(target),
+                         "the shim npm writes now: %dp0%, and node.exe named first is the runner")
+        self.assertEqual(claude_code.binary(target), os.path.realpath(target), "not a shim: itself")
+        self.assertEqual(claude_code.binary(""), "")
+        with open(shim, "w", encoding="utf-8") as fh:
+            fh.write("@ECHO off\r\necho no target here\r\n")
+        self.assertEqual(claude_code.binary(shim), "", "a shim naming nothing")
+        with open(shim, "w", encoding="utf-8") as fh:
+            fh.write('"%~dp0\\gone\\cli.js" %*\r\n')
+        self.assertEqual(claude_code.binary(shim), "", "a shim naming a file that is not there")
+        self.assertEqual(claude_code.binary(os.path.join(tmp, "absent.cmd")), "", "no such shim")
+
     def test_a_fetched_catalogue_beats_the_binary_seed(self):
         import tempfile
         from coursekit.llm import claude_code
@@ -1556,6 +1593,92 @@ class TestCourseEditing(unittest.TestCase):
         self.assertGreaterEqual(mod["changedLines"], 1)
         self.assertTrue(any("kept" in e.get("message", "") for e in job.events if e["kind"] == "log"))
 
+
+    def test_rewrite_regenerates_text_figures_and_study_data(self):
+        """A full rewrite: same id, same file, same position; the text, the figures and the
+        study data are all written again, and the notes reach the writer as direction."""
+        from coursekit.course import assessments as ck_assess
+        from coursekit.course import config as ck_config
+        from coursekit.course import loader as ck_loader
+        m3 = next(m for m in self.modules if m.id == "M03")
+        calls = []
+
+        def fake_ask(prompt, **kw):
+            calls.append(prompt)
+            if "=== FIGURE" in prompt:
+                return FIGURE_REPLY
+            if "study data for module M03" in prompt:
+                return json.dumps({"predict": "rewritten",
+                                   "quiz": [{"q": "Q", "options": ["a", "b", "c", "d"], "answer": 1, "why": "w"}],
+                                   "cards": [{"front": "f", "back": "b"}], "elaborate": ["e"],
+                                   "transfer": {"scenario": "s", "prompt": "p", "model": "m"}})
+            if "one-tap questions" in prompt:
+                return json.dumps([["a", "b", "c"]] * 3)
+            if "Write module M03" in prompt:
+                return ("# M03 - Rewritten\n\n**Time:** 60 minutes\n\n"
+                        "## Why this matters\n\nnew\n\n## Core concepts\n\nnew\n\n## Exercise\n\nnew\n")
+            raise AssertionError("unexpected call: " + prompt[:80])
+
+        original = modelcall.ask
+        modelcall.ask = fake_ask
+        try:
+            job = jobs.Job("rewrite")
+            result = editing.rewrite(job, self.tmp, os.path.join(self.tmp, "dist"), "fixture", "M03",
+                                     {"notes": "make it shorter", "figures": True})
+        finally:
+            modelcall.ask = original
+
+        self.assertEqual((result["mode"], result["module"]), ("rewrite", "M03"))
+        self.assertEqual(result["modules"], 6, "same count: nothing was added")
+        self.assertIn("Rewritten", files.read_text(m3.source), "same file, new text")
+        written = next(c for c in calls if "Write module M03" in c)
+        self.assertIn("A rewrite of the existing module", written)
+        self.assertIn("make it shorter", written, "the notes reached the writer")
+        self.assertTrue(any("=== FIGURE" in c for c in calls), "figures were drawn")
+        self.assertTrue(os.path.isfile(os.path.join(self.fixture.root, "figures", "M03-1.svg")))
+        cfg = ck_config.load(self.fixture.root)
+        self.assertEqual(ck_assess.load_assessments(cfg)["M03"]["predict"], "rewritten")
+        self.assertFalse(os.path.isfile(os.path.join(self.fixture.root, "data/assessments/M03.json")),
+                         "replaced in place, not written as a second claim on M03")
+        self.assertEqual([m.id for m in ck_loader.load_modules(cfg)][2], "M03", "same position")
+        self.assertEqual(self.fixture.problems(), [])
+        steps = [e["label"] for e in job.events if e["kind"] == "progress"]
+        self.assertTrue(any(s.startswith("Figures for M03") for s in steps), steps)
+        self.assertEqual(steps[-1], "Done")
+
+    def test_rewrite_can_skip_figures_and_refuses_an_unknown_module(self):
+        """`figures: false` keeps the figure stage out of the run; a module id the course
+        does not have is a GenerationError before anything is asked."""
+        calls = []
+
+        def fake_ask(prompt, **kw):
+            calls.append(prompt)
+            self.assertNotIn("=== FIGURE", prompt, "figures were switched off")
+            if "study data for module M02" in prompt:
+                return json.dumps({"predict": "p",
+                                   "quiz": [{"q": "Q", "options": ["a", "b", "c", "d"], "answer": 0, "why": "w"}],
+                                   "cards": [{"front": "f", "back": "b"}], "elaborate": ["e"],
+                                   "transfer": {"scenario": "s", "prompt": "p", "model": "m"}})
+            if "one-tap questions" in prompt:
+                return json.dumps([["a", "b", "c"]] * 3)
+            return ("# M02 - Rewritten\n\n**Time:** 60 minutes\n\n"
+                    "## Why this matters\n\nx\n\n## Core concepts\n\ny\n\n## Exercise\n\nz\n")
+
+        original = modelcall.ask
+        modelcall.ask = fake_ask
+        try:
+            result = editing.rewrite(jobs.Job("rewrite"), self.tmp, os.path.join(self.tmp, "dist"),
+                                     "fixture", "M02", {"notes": "", "figures": False})
+            with self.assertRaises(GenerationError):
+                editing.rewrite(jobs.Job("rewrite"), self.tmp, os.path.join(self.tmp, "dist"),
+                                "fixture", "M99", {"notes": ""})
+        finally:
+            modelcall.ask = original
+
+        self.assertEqual(result["mode"], "rewrite")
+        self.assertEqual(len(calls), 3, "text, study data, suggestions - and no figures")
+        self.assertEqual(self.fixture.problems(), [])
+
     def test_settings_round_trip_and_id_lock(self):
         from studio import manage
         before = manage.settings(self.fixture.root)
@@ -1667,6 +1790,25 @@ class TestCourseEditing(unittest.TestCase):
         empty = catalog.learner_view({}, mods)
         self.assertEqual(empty, {"brief": "", "strengths": [], "gaps": [], "at": None})
 
+
+    def test_module_progress_reads_the_badges_off_the_reader_state(self):
+        """Per module: done, minutes, sections read, quiz finished - and nothing the page
+        stored in an unexpected shape is fatal."""
+        state = {"progress": {
+            "M01": {"done": True, "time": 610, "secs": {"0": True, "1": False, "2": True},
+                    "quiz": {"finished": True}},
+            "M02": {"time": "abc", "secs": "junk", "quiz": "junk"},
+            "M03": {"secs": {"0": True}, "time": 59.9},
+            "M04": "junk",
+        }}
+        view = catalog.module_progress(state)
+        self.assertEqual(view["M01"], {"done": True, "minutes": 10, "read": 2, "quiz": True})
+        self.assertEqual(view["M02"], {"done": False, "minutes": 0, "read": 0, "quiz": False})
+        self.assertEqual(view["M03"], {"done": False, "minutes": 0, "read": 1, "quiz": False})
+        self.assertNotIn("M04", view)
+        self.assertEqual(catalog.module_progress({}), {})
+        self.assertEqual(catalog.module_progress({"progress": None}), {})
+
     # ---- resuming a run that died ----
 
     def _stub_claude(self, calls):
@@ -1730,6 +1872,63 @@ class TestCourseEditing(unittest.TestCase):
         self.assertNotIn("await", kinds, "a resume never asks for approval again")
         # Reference docs that were stubs got written; a second resume would keep them.
         self.assertTrue(generator.is_real_file(os.path.join(self.fixture.root, "reference/glossary.md")))
+
+
+    def test_worksheets_are_optional_and_never_lose_a_finished_course(self):
+        """`_write_worksheets`: a plan that fails, a plan that is not a list, a spec with no
+        name, a worksheet whose call fails - each is logged or skipped, never raised; the
+        rest are written under templates/ and capped at the setting."""
+        templates = os.path.join(self.fixture.root, "templates")
+        before = set(os.listdir(templates))
+        plan = curriculum.plan_from_course(self.cfg, self.modules)
+        spec_list = [
+            {"name": "Hydration calculator", "slug": "Hydration Calc!", "purpose": "each bake"},
+            {"name": "Never written", "slug": "never-written"},
+            {"slug": "no-name"},
+            "junk",
+        ] + [{"name": "Filler %d" % i} for i in range(generator.MAX_WORKSHEETS)]
+        mode = {"plan": "ok"}
+
+        def fake_ask(prompt, **kw):
+            if "fill-in worksheets it should ship" in prompt:
+                if mode["plan"] == "fail":
+                    raise GenerationError("the model is out")
+                if mode["plan"] == "object":
+                    return json.dumps({"not": "a list"})
+                return json.dumps(spec_list)
+            if "Worksheet: Never written" in prompt:
+                raise GenerationError("boom")
+            name = prompt.split("Worksheet: ")[1].split("\n")[0]
+            return "```markdown\n# %s\n\nUse it when...\n```" % name
+
+        original = modelcall.ask
+        modelcall.ask = fake_ask
+        try:
+            job = jobs.Job("generate")
+            generator._write_worksheets(job, self.fixture.root, plan, plan["modules"], "")
+            new = set(os.listdir(templates)) - before
+            self.assertIn("hydration-calc.md", new, "the slug is cleaned")
+            self.assertNotIn("never-written.md", new, "a failed worksheet is skipped")
+            self.assertEqual(len(new), generator.MAX_WORKSHEETS - 3,
+                             "the cap counts entries: four leading slots, one of them written")
+            text = files.read_text(os.path.join(templates, "hydration-calc.md"))
+            self.assertTrue(text.startswith("# Hydration calculator"), "the fence is stripped")
+            written = [e["slug"] for e in job.events if e["kind"] == "worksheet"]
+            self.assertEqual(written[0], "hydration-calc")
+            logs = [e["message"] for e in job.events if e["kind"] == "log"]
+            self.assertTrue(any("never-written" in m and "skipping" in m for m in logs), logs)
+
+            for failing in ("fail", "object"):
+                mode["plan"] = failing
+                job = jobs.Job("generate")
+                seen = set(os.listdir(templates))
+                generator._write_worksheets(job, self.fixture.root, plan, plan["modules"], "")
+                self.assertEqual(set(os.listdir(templates)), seen, failing)
+                if failing == "fail":
+                    logs = [e["message"] for e in job.events if e["kind"] == "log"]
+                    self.assertTrue(any("Could not plan worksheets" in m for m in logs), logs)
+        finally:
+            modelcall.ask = original
 
     def test_reconstruct_plan_orders_and_fills(self):
         self.fixture.edit_manifest(shortTitles=dict(
