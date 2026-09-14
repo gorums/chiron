@@ -299,12 +299,18 @@ function hintHost() {
   }
   return el;
 }
-/* The hint a focus or a hover should show: the carrier itself, or the one inside it. */
+const HINT_FOCUSABLE = "a[href], button, input, select, textarea, [tabindex], summary";
+/* The hint a focus, a hover or a tap should show: the carrier under the pointer, or - when
+   the pointer is on a link or a button that wraps a carrier, such as a nav item with a
+   badge - the carrier inside it. Never the first carrier inside any old container: that
+   made hovering a crumb line, a card or a row show a hint the pointer was nowhere near, and
+   crossing a child without one hid it again, so hints blinked wherever the pointer went. */
 function hintCarrier(el) {
   if (!el || !el.closest) return null;
   const own = el.closest("[data-help]");
   if (own) return own;
-  return el.querySelector ? el.querySelector("[data-help]") : null;
+  const wrapper = el.closest(HINT_FOCUSABLE);
+  return wrapper ? wrapper.querySelector("[data-help]") : null;
 }
 function showHint(el) {
   const text = el && el.getAttribute("data-help");
@@ -332,7 +338,6 @@ function hideHint() {
 }
 /* Anything carrying a hint and unable to take the focus is given a tab stop, so the hint
    is reachable without a mouse. Both surfaces redraw whole screens, so this watches. */
-const HINT_FOCUSABLE = "a[href], button, input, select, textarea, [tabindex], summary";
 function stampHints(root) {
   (root.querySelectorAll ? root.querySelectorAll("[data-help]") : []).forEach(el => {
     if (el.matches(HINT_FOCUSABLE)) return;
@@ -342,7 +347,9 @@ function stampHints(root) {
 }
 document.addEventListener("mouseover", e => showHint(hintCarrier(e.target)));
 document.addEventListener("mouseout", e => {
-  if (hintOn && !hintOn.contains(e.relatedTarget)) hideHint();
+  // Moving between a carrier's own children, or across the link that wraps it, is not
+  // leaving it: hide only when what is under the pointer now would show something else.
+  if (hintOn && hintCarrier(e.relatedTarget) !== hintOn) hideHint();
 });
 document.addEventListener("focusin", e => showHint(hintCarrier(e.target)));
 document.addEventListener("focusout", hideHint);

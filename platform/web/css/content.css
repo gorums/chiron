@@ -46,6 +46,10 @@
   font-size: var(--fs-xs);
   color: var(--muted);
   margin-bottom: 7px;
+  /* The clock in this line ticks once a second. With proportional digits every tick moves
+     the mastery label after it by a pixel or three, and a pointer resting on its edge is
+     inside it, then outside, then inside - so its hint blinks. Tabular digits hold the line. */
+  font-variant-numeric: tabular-nums;
 }
 .readhead h2 {
   font-family: var(--serif);
