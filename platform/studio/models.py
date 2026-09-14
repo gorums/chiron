@@ -41,42 +41,50 @@ def normalise(entries: Any) -> List[Dict[str, str]]:
     if not isinstance(entries, list) or not entries:
         raise ValueError("The model list needs at least one model.")
     known = SETTINGS.provider_names(all_of_them=True)
-    fallback = SETTINGS.default_provider
     out: List[Dict[str, str]] = []
     seen: Dict[str, str] = {}       # "<provider>/<id>" and every alias -> the label it belongs to
     for n, raw in enumerate(entries, 1):
-        if not isinstance(raw, dict):
-            raise ValueError("Model %d is not an object." % n)
-        model_id = str(raw.get("id") or "").strip()
-        if not MODEL_ID.match(model_id):
-            raise ValueError("Model %d: '%s' is not a model id (lowercase letters, digits and "
-                             ". _ : / -, like claude-sonnet-5 or gpt-5.6)." % (n, model_id))
-        provider = str(raw.get("provider") or "").strip() or fallback
-        if provider not in known:
-            raise ValueError("Model %d: there is no provider called '%s'. Configured: %s."
-                             % (n, provider, ", ".join(known)))
-        alias = str(raw.get("alias") or "").strip()
-        if alias and not MODEL_ALIAS.match(alias):
-            raise ValueError("Model %d: alias '%s' may only hold lowercase letters, digits and "
-                             "hyphens." % (n, alias))
-        label = str(raw.get("label") or "").strip()[:LABEL_CHARS] or model_id
-        # An id is a model of one provider, so two providers may both offer gpt-4o. An alias
-        # is a name a person types, so it has to mean one thing across the whole list.
-        for name in filter(None, (provider + "/" + model_id,
-                                  alias if alias != model_id else "")):
-            if name in seen:
-                raise ValueError("'%s' names two models (%s and %s)."
-                                 % (name.split("/")[-1], seen[name], label))
-            seen[name] = label
-        entry = {"provider": provider, "id": model_id, "label": label,
-                 "note": str(raw.get("note") or "").strip()[:NOTE_CHARS]}
-        if alias and alias != model_id:
-            entry["alias"] = alias
-        if raw.get("price") is not None:
-            entry["price"] = _price(n, raw["price"])
+        entry = _entry(n, raw, known)
+        _claim_names(entry, seen)
         out.append(entry)
     _check_aliases(out)
     return out
+
+
+def _entry(n: int, raw: Any, known: List[str]) -> Dict[str, str]:
+    """One row, each field checked and tidied; `n` is its place in the list, for the message."""
+    if not isinstance(raw, dict):
+        raise ValueError("Model %d is not an object." % n)
+    model_id = str(raw.get("id") or "").strip()
+    if not MODEL_ID.match(model_id):
+        raise ValueError("Model %d: '%s' is not a model id (lowercase letters, digits and "
+                         ". _ : / -, like claude-sonnet-5 or gpt-5.6)." % (n, model_id))
+    provider = str(raw.get("provider") or "").strip() or SETTINGS.default_provider
+    if provider not in known:
+        raise ValueError("Model %d: there is no provider called '%s'. Configured: %s."
+                         % (n, provider, ", ".join(known)))
+    alias = str(raw.get("alias") or "").strip()
+    if alias and not MODEL_ALIAS.match(alias):
+        raise ValueError("Model %d: alias '%s' may only hold lowercase letters, digits and "
+                         "hyphens." % (n, alias))
+    entry = {"provider": provider, "id": model_id,
+             "label": str(raw.get("label") or "").strip()[:LABEL_CHARS] or model_id,
+             "note": str(raw.get("note") or "").strip()[:NOTE_CHARS]}
+    if alias and alias != model_id:
+        entry["alias"] = alias
+    if raw.get("price") is not None:
+        entry["price"] = _price(n, raw["price"])
+    return entry
+
+
+def _claim_names(entry: Dict[str, str], seen: Dict[str, str]) -> None:
+    """An id is a model of one provider, so two providers may both offer gpt-4o. An alias is
+    a name a person types, so it has to mean one thing across the whole list."""
+    for name in filter(None, (entry["provider"] + "/" + entry["id"], entry.get("alias", ""))):
+        if name in seen:
+            raise ValueError("'%s' names two models (%s and %s)."
+                             % (name.split("/")[-1], seen[name], entry["label"]))
+        seen[name] = entry["label"]
 
 
 def _price(n: int, raw: Any) -> Dict[str, float]:

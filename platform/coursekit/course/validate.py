@@ -85,68 +85,129 @@ def _strings(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(s, str) and s.strip() for s in value)
 
 
+def _is_index(value: Any, options: list) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value < len(options)
+
+
+def _options(q: Dict[str, Any]) -> list:
+    return q.get("options") if isinstance(q.get("options"), list) else []
+
+
+# ---- one checker per quiz type: what its answer has to look like -----------------------
+
+
+def _single_problems(q: Dict[str, Any], label: str) -> List[str]:
+    options, answer = _options(q), q.get("answer")
+    if not _is_index(answer, options):
+        return ["%s: answer %r is not a valid index into %d options." % (label, answer, len(options))]
+    return []
+
+
+def _multi_problems(q: Dict[str, Any], label: str) -> List[str]:
+    options, answer = _options(q), q.get("answer")
+    problems = []
+    if len(options) < 2:
+        problems.append("%s: a multi-select question needs at least 2 options." % label)
+    if not isinstance(answer, list) or not answer or not all(_is_index(a, options) for a in answer):
+        problems.append("%s: answer must be a non-empty list of option indexes." % label)
+    return problems
+
+
+def _tf_problems(q: Dict[str, Any], label: str) -> List[str]:
+    if not isinstance(q.get("answer"), bool):
+        return ["%s: a true/false question needs answer true or false." % label]
+    return []
+
+
+def _numeric_problems(q: Dict[str, Any], label: str) -> List[str]:
+    problems = []
+    if not _is_number(q.get("answer")):
+        problems.append("%s: a numeric question needs a number as its answer." % label)
+    tol = q.get("tolerance", 0)
+    if not _is_number(tol) or tol < 0:
+        problems.append("%s: tolerance must be a number >= 0." % label)
+    return problems
+
+
+def _order_problems(q: Dict[str, Any], label: str) -> List[str]:
+    if len(_options(q)) < 2:
+        return ["%s: an ordering question needs at least 2 options, listed in the correct order." % label]
+    return []
+
+
+def _match_problems(q: Dict[str, Any], label: str) -> List[str]:
+    pairs = q.get("pairs")
+    ok = (isinstance(pairs, list) and len(pairs) >= 2
+          and all(isinstance(p, list) and len(p) == 2 and all(isinstance(x, str) and x.strip() for x in p)
+                  for p in pairs))
+    if not ok:
+        return ["%s: a matching question needs 'pairs', a list of at least 2 [left, right] strings." % label]
+    return []
+
+
+def _cloze_problems(q: Dict[str, Any], label: str) -> List[str]:
+    answer = q.get("answer")
+    problems = []
+    if "___" not in str(q.get("q", "")):
+        problems.append("%s: a cloze question needs a blank written as ___ in its text." % label)
+    if not ((isinstance(answer, str) and answer.strip()) or _strings(answer)):
+        problems.append("%s: a cloze answer is a string, or a list of acceptable strings." % label)
+    return problems
+
+
+def _short_problems(q: Dict[str, Any], label: str) -> List[str]:
+    if not isinstance(q.get("model"), str) or not q["model"].strip():
+        return ["%s: a short-answer question needs a 'model' answer to compare against." % label]
+    return []
+
+
+# The one place a type is matched to its rules. Keyed by QUIZ_TYPES, and checked to be.
+ANSWER_CHECKS = {
+    "single": _single_problems, "multi": _multi_problems, "tf": _tf_problems,
+    "numeric": _numeric_problems, "order": _order_problems, "match": _match_problems,
+    "cloze": _cloze_problems, "short": _short_problems,
+}
+assert set(ANSWER_CHECKS) == set(QUIZ_TYPES), "every quiz type needs an answer check"
+
+
+def _feedback_problems(q: Dict[str, Any], kind: str, label: str) -> List[str]:
+    """Per-option feedback: only for types whose answer is picked from options, one per option."""
+    feedback = q.get("feedback")
+    if feedback is None:
+        return []
+    if kind not in OPTION_TYPES:
+        return ["%s: per-option 'feedback' only applies to single, multi and tf questions." % label]
+    expected = 2 if kind == "tf" else len(_options(q))
+    if not isinstance(feedback, list) or len(feedback) != expected:
+        return ["%s: 'feedback' must have one entry per option (%d)." % (label, expected)]
+    return []
+
+
+def _hints_problems(q: Dict[str, Any], label: str) -> List[str]:
+    hints = q.get("hints")
+    if hints is not None and not (isinstance(hints, list) and all(isinstance(h, str) for h in hints)):
+        return ["%s: 'hints' must be a list of strings." % label]
+    return []
+
+
 def quiz_item_problems(q: Any, label: str) -> List[str]:
-    """Every problem with one quiz item. Public so Studio can lean on the same rules."""
-    problems: List[str] = []
+    """Every problem with one quiz item. Public so Studio can lean on the same rules.
+
+    The shape every type shares is checked here; what each type's answer must look like is
+    one function per type in `ANSWER_CHECKS`."""
     if not isinstance(q, dict):
         return ["%s is not an object." % label]
     kind = q.get("type") or "single"
     if kind not in QUIZ_TYPES:
         return ["%s has unknown type %r. Known types: %s." % (label, kind, ", ".join(QUIZ_TYPES))]
+    problems: List[str] = []
     if not isinstance(q.get("q"), str) or not q["q"].strip():
         problems.append("%s has no question text ('q')." % label)
-    options = q.get("options") if isinstance(q.get("options"), list) else []
-    answer = q.get("answer")
-
-    if kind == "single":
-        if not isinstance(answer, int) or isinstance(answer, bool) or not 0 <= answer < len(options):
-            problems.append("%s: answer %r is not a valid index into %d options." % (label, answer, len(options)))
-    elif kind == "multi":
-        if len(options) < 2:
-            problems.append("%s: a multi-select question needs at least 2 options." % label)
-        if (not isinstance(answer, list) or not answer
-                or any(not isinstance(a, int) or isinstance(a, bool) or not 0 <= a < len(options) for a in answer)):
-            problems.append("%s: answer must be a non-empty list of option indexes." % label)
-    elif kind == "tf":
-        if not isinstance(answer, bool):
-            problems.append("%s: a true/false question needs answer true or false." % label)
-    elif kind == "numeric":
-        if not _is_number(answer):
-            problems.append("%s: a numeric question needs a number as its answer." % label)
-        tol = q.get("tolerance", 0)
-        if not _is_number(tol) or tol < 0:
-            problems.append("%s: tolerance must be a number >= 0." % label)
-    elif kind == "order":
-        if len(options) < 2:
-            problems.append("%s: an ordering question needs at least 2 options, listed in the correct order." % label)
-    elif kind == "match":
-        pairs = q.get("pairs")
-        ok = (isinstance(pairs, list) and len(pairs) >= 2
-              and all(isinstance(p, list) and len(p) == 2 and all(isinstance(x, str) and x.strip() for x in p)
-                      for p in pairs))
-        if not ok:
-            problems.append("%s: a matching question needs 'pairs', a list of at least 2 [left, right] strings." % label)
-    elif kind == "cloze":
-        if "___" not in str(q.get("q", "")):
-            problems.append("%s: a cloze question needs a blank written as ___ in its text." % label)
-        if not ((isinstance(answer, str) and answer.strip()) or _strings(answer)):
-            problems.append("%s: a cloze answer is a string, or a list of acceptable strings." % label)
-    elif kind == "short":
-        if not isinstance(q.get("model"), str) or not q["model"].strip():
-            problems.append("%s: a short-answer question needs a 'model' answer to compare against." % label)
-
+    problems += ANSWER_CHECKS[kind](q, label)
     if not q.get("why"):
         problems.append("%s has no 'why' explanation." % label)
-    feedback = q.get("feedback")
-    if feedback is not None:
-        expected = 2 if kind == "tf" else len(options)
-        if kind not in OPTION_TYPES:
-            problems.append("%s: per-option 'feedback' only applies to single, multi and tf questions." % label)
-        elif not isinstance(feedback, list) or len(feedback) != expected:
-            problems.append("%s: 'feedback' must have one entry per option (%d)." % (label, expected))
-    hints = q.get("hints")
-    if hints is not None and not (isinstance(hints, list) and all(isinstance(h, str) for h in hints)):
-        problems.append("%s: 'hints' must be a list of strings." % label)
+    problems += _feedback_problems(q, kind, label)
+    problems += _hints_problems(q, label)
     return problems
 
 

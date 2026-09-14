@@ -77,9 +77,20 @@ def normalise_plan(plan: Dict[str, Any], theme: str, hours: float,
 
     _normalise_parts(parts)
     _normalise_modules(modules, [p["id"] for p in parts])
-
     plan["parts"] = parts
     plan["modules"] = modules
+    _normalise_course(plan, theme, hours, brief)
+    plan["milestones"] = [m for m in (plan.get("milestones") or [])
+                          if isinstance(m, dict) and "text" in m]
+    plan["anchor"] = _normalise_anchor(plan.get("anchor"))
+    plan["notebooks"] = _normalise_notebooks(plan.get("notebooks"), brief)
+    return plan
+
+
+def _normalise_course(plan: Dict[str, Any], theme: str, hours: float,
+                      brief: Dict[str, Any]) -> None:
+    """The course-level texts: what the form said wins, then what the planner wrote, then a
+    default made from the theme."""
     plan["title"] = plan.get("title") or "%s Mastery" % theme.title()
     plan["tagline"] = plan.get("tagline") or "%g hours · beginner to practitioner" % hours
     plan["subject"] = theme.strip().lower()
@@ -89,21 +100,25 @@ def normalise_plan(plan: Dict[str, Any], theme: str, hours: float,
     plan["audience"] = brief.get("audience") or plan.get("audience") or "a complete beginner"
     plan["tutorPersona"] = (plan.get("tutorPersona")
                             or "You are a sharp, plain-spoken %s tutor." % plan["subject"])
-    plan["milestones"] = [m for m in (plan.get("milestones") or [])
-                          if isinstance(m, dict) and "text" in m]
-    anchor = plan.get("anchor") if isinstance(plan.get("anchor"), dict) else {}
-    plan["anchor"] = {k: str(anchor[k]).strip() for k in ck_config.DEFAULT_ANCHOR
-                      if anchor.get(k) and str(anchor[k]).strip()}
-    # The planner decides whether the subject is learned by running code; the person can
-    # overrule it either way from the form.
+
+
+def _normalise_anchor(raw: Any) -> Dict[str, str]:
+    """Whichever of the four anchor texts the planner filled in, trimmed."""
+    anchor = raw if isinstance(raw, dict) else {}
+    return {k: str(anchor[k]).strip() for k in ck_config.DEFAULT_ANCHOR
+            if anchor.get(k) and str(anchor[k]).strip()}
+
+
+def _normalise_notebooks(raw: Any, brief: Dict[str, Any]) -> Dict[str, Any]:
+    """The planner decides whether the subject is learned by running code; the person can
+    overrule it either way from the form."""
     wanted = wants_notebooks(brief)
-    runtime = ck_config.notebooks_setting(plan.get("notebooks"))
+    runtime = ck_config.notebooks_setting(raw)
     if wanted == "no":
-        runtime = {}
-    elif wanted == "yes" and not runtime:
-        runtime = ck_config.notebooks_setting(True)
-    plan["notebooks"] = runtime
-    return plan
+        return {}
+    if wanted == "yes" and not runtime:
+        return ck_config.notebooks_setting(True)
+    return runtime
 
 
 def wants_notebooks(brief: Dict[str, Any]) -> str:
@@ -140,25 +155,39 @@ def _normalise_modules(modules: List[Dict[str, Any]], part_ids: List[str]) -> No
         if mod.get("part") not in part_ids:
             spread = i * len(part_ids) // max(1, len(modules))
             mod["part"] = part_ids[min(spread, len(part_ids) - 1)]
-        mod["title"] = (mod.get("title") or "Module %d" % (i + 1)).strip()
-        mod["short"] = (mod.get("short") or mod["title"])[:60]
-        try:
-            mod["minutes"] = max(15, int(mod.get("minutes") or 60))
-        except (TypeError, ValueError):
-            mod["minutes"] = 60
-        mod["summary"] = mod.get("summary") or ""
-        sections = [str(s).strip() for s in (mod.get("sections") or []) if str(s).strip()]
-        mod["sections"] = sections or list(DEFAULT_SECTIONS)
-
+        _normalise_module_texts(mod, i)
     ids = [m["id"] for m in modules]
     for i, mod in enumerate(modules):
-        wanted = []
-        for ref in (mod.get("requires") or []):
-            found = _MODULE_REF.match(str(ref).strip().upper())     # models write "M3"
-            rid = "M%02d" % int(found.group(1)) if found else ""
-            if rid in ids[:i] and rid not in wanted:
-                wanted.append(rid)
-        mod["requires"] = wanted[:3]
+        mod["requires"] = _normalise_requires(mod.get("requires"), ids[:i])
+
+
+def _normalise_module_texts(mod: Dict[str, Any], i: int) -> None:
+    """Title, short title, minutes, summary and sections, each with a default."""
+    mod["title"] = (mod.get("title") or "Module %d" % (i + 1)).strip()
+    mod["short"] = (mod.get("short") or mod["title"])[:60]
+    mod["minutes"] = minutes_or(mod.get("minutes"), 60)
+    mod["summary"] = mod.get("summary") or ""
+    sections = [str(s).strip() for s in (mod.get("sections") or []) if str(s).strip()]
+    mod["sections"] = sections or list(DEFAULT_SECTIONS)
+
+
+def _normalise_requires(refs: Any, earlier: List[str]) -> List[str]:
+    """Up to three prerequisites, each an earlier module that exists; models write "M3"."""
+    wanted: List[str] = []
+    for ref in refs or []:
+        found = _MODULE_REF.match(str(ref).strip().upper())
+        rid = "M%02d" % int(found.group(1)) if found else ""
+        if rid in earlier and rid not in wanted:
+            wanted.append(rid)
+    return wanted[:3]
+
+
+def minutes_or(raw: Any, default: int) -> int:
+    """A module's minutes, at least 15, or the default when the value is not a number."""
+    try:
+        return max(15, int(raw or default))
+    except (TypeError, ValueError):
+        return default
 
 
 def plan_for_prompt(plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -177,21 +206,19 @@ def plan_for_prompt(plan: Dict[str, Any]) -> Dict[str, Any]:
         ready["hours"] = float(plan.get("hours") or 0) or 0
     except (TypeError, ValueError):
         ready["hours"] = 0
-    modules = []
-    for mod in plan.get("modules") or []:
-        if not isinstance(mod, dict) or mod.get("dropped"):
-            continue
-        one = dict(mod)
-        one["id"] = str(one.get("id") or "M??")
-        one["title"] = str(one.get("title") or "").strip() or "(untitled)"
-        one["part"] = str(one.get("part") or "")
-        try:
-            one["minutes"] = max(15, int(one.get("minutes") or 60))
-        except (TypeError, ValueError):
-            one["minutes"] = 60
-        modules.append(one)
-    ready["modules"] = modules
+    ready["modules"] = [_module_for_prompt(mod) for mod in plan.get("modules") or []
+                        if isinstance(mod, dict) and not mod.get("dropped")]
     return ready
+
+
+def _module_for_prompt(mod: Dict[str, Any]) -> Dict[str, Any]:
+    """One module as the gate holds it, with placeholders where a field is still empty."""
+    one = dict(mod)
+    one["id"] = str(one.get("id") or "M??")
+    one["title"] = str(one.get("title") or "").strip() or "(untitled)"
+    one["part"] = str(one.get("part") or "")
+    one["minutes"] = minutes_or(one.get("minutes"), 60)
+    return one
 
 
 def plan_to_manifest(plan: Dict[str, Any], course_id: str) -> Dict[str, Any]:

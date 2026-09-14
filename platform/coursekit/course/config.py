@@ -163,43 +163,7 @@ class CourseConfig:
 def load(root: str) -> CourseConfig:
     """Load and validate `<root>/course.json`."""
     path = os.path.join(root, MANIFEST)
-    if not os.path.isfile(path):
-        raise ManifestError(
-            "No %s in %s. A course folder needs one; run `build.py new` to scaffold." % (MANIFEST, root)
-        )
-    try:
-        with open(path, encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except json.JSONDecodeError as exc:
-        raise ManifestError("%s is not valid JSON: %s" % (path, exc)) from exc
-
-    missing = [k for k in REQUIRED if k not in raw]
-    if missing:
-        raise ManifestError("%s is missing required field(s): %s" % (path, ", ".join(missing)))
-
-    parts = []
-    for i, p in enumerate(raw["parts"]):
-        for key in ("id", "name", "dir"):
-            if key not in p:
-                raise ManifestError("%s: parts[%d] is missing '%s'" % (path, i, key))
-        parts.append(
-            Part(id=p["id"], name=p["name"], hours=p.get("hours", 0), dir=p["dir"], blurb=p.get("blurb", ""))
-        )
-    if not parts:
-        raise ManifestError("%s declares no parts" % path)
-
-    dup = _first_duplicate([p.id for p in parts])
-    if dup:
-        raise ManifestError("%s: two parts share the id '%s'" % (path, dup))
-
-    library = dict(DEFAULT_LIBRARY)
-    library.update(raw.get("library") or {})
-    data = dict(DEFAULT_DATA)
-    data.update(raw.get("data") or {})
-    anchor = dict(DEFAULT_ANCHOR)
-    if isinstance(raw.get("anchor"), dict):
-        anchor.update({k: str(v) for k, v in raw["anchor"].items() if k in DEFAULT_ANCHOR and v})
-
+    raw = _read_manifest(path, root)
     course_id = raw["id"]
     return CourseConfig(
         root=root,
@@ -207,7 +171,7 @@ def load(root: str) -> CourseConfig:
         title=raw["title"],
         subject=raw["subject"],
         hours=raw["hours"],
-        parts=parts,
+        parts=_parts(raw["parts"], path),
         tagline=raw.get("tagline") or "%s hours" % raw["hours"],
         lang=str(raw.get("lang") or "en"),
         practitioner=raw.get("practitioner", "practitioner"),
@@ -218,12 +182,61 @@ def load(root: str) -> CourseConfig:
         or "You are a sharp, plain-spoken %s tutor." % raw["subject"],
         short_titles=raw.get("shortTitles") or {},
         milestones=raw.get("milestones") or [],
-        anchor=anchor,
+        anchor=_anchor(raw.get("anchor")),
         notebooks=notebooks_setting(raw.get("notebooks")),
         order=[str(x) for x in (raw.get("order") or []) if isinstance(x, str)],
-        library=library,
-        data=data,
+        library=_over_defaults(DEFAULT_LIBRARY, raw.get("library")),
+        data=_over_defaults(DEFAULT_DATA, raw.get("data")),
     )
+
+
+def _read_manifest(path: str, root: str) -> Dict[str, Any]:
+    """The manifest as JSON, with every required field present."""
+    if not os.path.isfile(path):
+        raise ManifestError(
+            "No %s in %s. A course folder needs one; run `build.py new` to scaffold." % (MANIFEST, root)
+        )
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise ManifestError("%s is not valid JSON: %s" % (path, exc)) from exc
+    missing = [k for k in REQUIRED if k not in raw]
+    if missing:
+        raise ManifestError("%s is missing required field(s): %s" % (path, ", ".join(missing)))
+    return raw
+
+
+def _parts(rows: List[Dict[str, Any]], path: str) -> List[Part]:
+    """At least one part, each with an id, a name and a folder, no id used twice."""
+    parts = []
+    for i, p in enumerate(rows):
+        for key in ("id", "name", "dir"):
+            if key not in p:
+                raise ManifestError("%s: parts[%d] is missing '%s'" % (path, i, key))
+        parts.append(
+            Part(id=p["id"], name=p["name"], hours=p.get("hours", 0), dir=p["dir"], blurb=p.get("blurb", ""))
+        )
+    if not parts:
+        raise ManifestError("%s declares no parts" % path)
+    dup = _first_duplicate([p.id for p in parts])
+    if dup:
+        raise ManifestError("%s: two parts share the id '%s'" % (path, dup))
+    return parts
+
+
+def _anchor(raw: Any) -> Dict[str, str]:
+    """The neutral defaults, with whichever of the four texts the manifest sets."""
+    anchor = dict(DEFAULT_ANCHOR)
+    if isinstance(raw, dict):
+        anchor.update({k: str(v) for k, v in raw.items() if k in DEFAULT_ANCHOR and v})
+    return anchor
+
+
+def _over_defaults(defaults: Dict[str, Any], raw: Any) -> Dict[str, Any]:
+    merged = dict(defaults)
+    merged.update(raw or {})
+    return merged
 
 
 def _first_duplicate(values):

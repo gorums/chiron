@@ -179,34 +179,46 @@ def fix_assessment(raw: Any, mid: str) -> Dict[str, Any]:
     """A module's assessment into something the validator will accept, or fail loudly."""
     if not isinstance(raw, dict):
         raise GenerationError("%s assessment was not a JSON object." % mid)
-    out: Dict[str, Any] = {"id": mid}
-    out["predict"] = str(raw.get("predict") or "Before reading: what do you expect this to say?")
-
-    quiz = [item for item in (fix_quiz_item(q) for q in (raw.get("quiz") or [])[:QUIZ_ITEMS]) if item]
-    if not quiz:
-        raise GenerationError("%s assessment produced no usable quiz questions." % mid)
-    out["quiz"] = quiz
-
-    cards = [{"front": str(c.get("front") or "").strip(), "back": str(c.get("back") or "").strip()}
-             for c in (raw.get("cards") or [])[:CARD_ITEMS] if isinstance(c, dict)]
-    cards = [c for c in cards if c["front"] and c["back"]]
-    if not cards:
-        raise GenerationError("%s assessment produced no usable flashcards." % mid)
-    out["cards"] = cards
-
-    out["elaborate"] = strings(raw.get("elaborate"), 12) or [
-        "Explain this module's main idea in your own words."]
-
-    transfer = raw.get("transfer") or {}
-    out["transfer"] = {
-        "scenario": str(transfer.get("scenario") or "").strip(),
-        "prompt": str(transfer.get("prompt") or "Apply this module to the situation above.").strip(),
-        "model": str(transfer.get("model") or "").strip(),
+    out: Dict[str, Any] = {
+        "id": mid,
+        "predict": str(raw.get("predict") or "Before reading: what do you expect this to say?"),
+        "quiz": _fix_quiz(raw.get("quiz"), mid),
+        "cards": _fix_cards(raw.get("cards"), mid),
+        "elaborate": strings(raw.get("elaborate"), 12) or [
+            "Explain this module's main idea in your own words."],
+        "transfer": _fix_transfer(raw.get("transfer")),
     }
     roleplay = fix_roleplay(raw.get("roleplay"))
     if roleplay:
         out["roleplay"] = roleplay
     return out
+
+
+def _fix_quiz(raw: Any, mid: str) -> List[Dict[str, Any]]:
+    """Every usable question, at most `QUIZ_ITEMS`; none at all is a failure."""
+    quiz = [item for item in (fix_quiz_item(q) for q in (raw or [])[:QUIZ_ITEMS]) if item]
+    if not quiz:
+        raise GenerationError("%s assessment produced no usable quiz questions." % mid)
+    return quiz
+
+
+def _fix_cards(raw: Any, mid: str) -> List[Dict[str, str]]:
+    """Every card with both faces, at most `CARD_ITEMS`; none at all is a failure."""
+    cards = [{"front": str(c.get("front") or "").strip(), "back": str(c.get("back") or "").strip()}
+             for c in (raw or [])[:CARD_ITEMS] if isinstance(c, dict)]
+    cards = [c for c in cards if c["front"] and c["back"]]
+    if not cards:
+        raise GenerationError("%s assessment produced no usable flashcards." % mid)
+    return cards
+
+
+def _fix_transfer(raw: Any) -> Dict[str, str]:
+    transfer = raw or {}
+    return {
+        "scenario": str(transfer.get("scenario") or "").strip(),
+        "prompt": str(transfer.get("prompt") or "Apply this module to the situation above.").strip(),
+        "model": str(transfer.get("model") or "").strip(),
+    }
 
 
 def fix_suggestions(raw: Any, headings: List[str]) -> List[List[str]]:
@@ -271,13 +283,26 @@ def fix_figures(raw: Any, headings: List[str], cap: int) -> List[Dict[str, Any]]
         svg = ck_figures.sanitize(str(fig.get("svg") or ""))
         if not section or ck_figures.problems(svg):
             continue
-        caption = " ".join(str(fig.get("caption") or "").split())[:300]
-        caption = caption.replace("[", "(").replace("]", ")")
-        out.append({"section": section, "caption": caption, "svg": svg,
+        out.append({"section": section, "caption": _caption(fig.get("caption")), "svg": svg,
                     "steps": ck_figures.steps_in(svg)})
         if len(out) >= cap:
             break
     return out
+
+
+def _caption(raw: Any) -> str:
+    """One line, at most 300 characters, with no square brackets - a caption becomes the
+    alt text of a markdown image, where a bracket would end it early."""
+    caption = " ".join(str(raw or "").split())[:300]
+    return caption.replace("[", "(").replace("]", ")")
+
+
+def _cells(raw: Any, max_cells: int) -> List[Dict[str, str]]:
+    """The markdown and code cells with something in them, at most `max_cells`."""
+    cells = [{"type": c["type"], "source": str(c.get("source") or "").rstrip()}
+             for c in (raw or []) if isinstance(c, dict)
+             and c.get("type") in ("markdown", "code") and str(c.get("source") or "").strip()]
+    return cells[:max_cells]
 
 
 def fix_notebooks(raw: Any, headings: List[str], cap: int, max_cells: int) -> List[Dict[str, Any]]:
@@ -295,14 +320,10 @@ def fix_notebooks(raw: Any, headings: List[str], cap: int, max_cells: int) -> Li
         if not isinstance(nb, dict):
             continue
         section = by_lower.get(str(nb.get("section") or "").strip().lower())
-        cells = [{"type": c["type"], "source": str(c.get("source") or "").rstrip()}
-                 for c in (nb.get("cells") or []) if isinstance(c, dict)
-                 and c.get("type") in ("markdown", "code") and str(c.get("source") or "").strip()]
-        cells = cells[:max_cells]
+        cells = _cells(nb.get("cells"), max_cells)
         if not section or not any(c["type"] == "code" for c in cells):
             continue
-        caption = " ".join(str(nb.get("caption") or "").split())[:300]
-        caption = caption.replace("[", "(").replace("]", ")") or "Try it in the notebook"
+        caption = _caption(nb.get("caption")) or "Try it in the notebook"
         out.append({"section": section, "caption": caption, "cells": cells})
         if len(out) >= cap:
             break
