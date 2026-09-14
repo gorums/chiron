@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ..support.files import read_json, write_json
 from ..support.ids import DEFAULT_PROFILE, is_course_id, is_profile
@@ -116,31 +116,52 @@ def profiles(directory: str) -> list:
 
 def summarise(state: Dict[str, Any], ids) -> Dict[str, Any]:
     """Derive the headline numbers from a page's state, without loading the course."""
-    raw = state.get("progress")
-    progress = raw if isinstance(raw, dict) else {}
-    entry = lambda mid: progress.get(mid) if isinstance(progress.get(mid), dict) else {}  # noqa: E731
+    entry = _entries(state)
     done = [mid for mid in ids if entry(mid).get("done")]
     started = [mid for mid in ids if mid not in done and _touched(entry(mid))]
     seconds = sum(number(entry(mid).get("time")) for mid in ids)
-    raw_cards = state.get("cards")
-    cards = raw_cards if isinstance(raw_cards, dict) else {}
-    today = int(time.time() // 86400)
-    due = sum(1 for c in cards.values()
-              if isinstance(c, dict) and number(c.get("due")) <= today)
+    cards = _dict_at(state, "cards")
     # Continue where the reader left off: first started module, else first undone one.
     nxt = started[0] if started else next((mid for mid in ids if mid not in done), None)
-    streak = state.get("streak") if isinstance(state.get("streak"), dict) else {}
-    seen = [int(d) for d in (streak.get("seen") or []) if isinstance(d, (int, float))]
     return {
-        "seen": sorted(set(seen))[-400:],
+        "seen": _seen_days(state),
         "done": len(done),
         "started": len(started),
         "pct": (len(done) / len(ids)) if ids else 0.0,
         "minutes": int(seconds // 60),
         "cards": len(cards),
-        "due": due,
+        "due": _due(cards),
         "next": nxt,
     }
+
+
+def _dict_at(state: Dict[str, Any], key: str) -> Dict[str, Any]:
+    """A top-level object out of the state, {} when the page stored something else there."""
+    value = state.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _entries(state: Dict[str, Any]):
+    """A lookup of one module's progress entry, {} for a module never opened or stored oddly."""
+    progress = _dict_at(state, "progress")
+
+    def entry(mid: str) -> Dict[str, Any]:
+        value = progress.get(mid)
+        return value if isinstance(value, dict) else {}
+    return entry
+
+
+def _due(cards: Dict[str, Any]) -> int:
+    """How many cards are due today or earlier."""
+    today = int(time.time() // 86400)
+    return sum(1 for c in cards.values() if isinstance(c, dict) and number(c.get("due")) <= today)
+
+
+def _seen_days(state: Dict[str, Any]) -> List[int]:
+    """The study days the streak remembers, deduplicated, the last 400 of them."""
+    streak = _dict_at(state, "streak")
+    seen = [int(d) for d in (streak.get("seen") or []) if isinstance(d, (int, float))]
+    return sorted(set(seen))[-400:]
 
 
 def _touched(entry: Any) -> bool:

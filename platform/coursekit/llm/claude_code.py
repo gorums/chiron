@@ -73,25 +73,33 @@ def config_dir() -> str:
 def cached_rows(directory: str = "") -> List[Dict[str, str]]:
     """The picker rows from the catalogue it last fetched, newest file first; [] when it has
     not fetched one, or the shape is not the expected one."""
-    folder = os.path.join(directory or config_dir(), CACHE_DIR)
-    try:
-        files = sorted((os.path.join(folder, n) for n in os.listdir(folder) if n.endswith(".json")),
-                       key=os.path.getmtime, reverse=True)
-    except OSError:
-        return []
-    for path in files:
-        try:
-            with open(path, encoding="utf-8") as fh:
-                doc = json.load(fh)
-        except (OSError, ValueError):
-            continue
-        config = ((doc.get("catalog") or {}).get("config") or {}) if isinstance(doc, dict) else {}
-        rows = config.get("models") if isinstance(config, dict) else None
-        offered = [{"id": str(r["id"]), "label": label_for(str(r.get("name") or ""), str(r["id"]))}
-                   for r in (rows or []) if isinstance(r, dict) and r.get("id")]
+    for path in _catalogue_files(os.path.join(directory or config_dir(), CACHE_DIR)):
+        offered = _rows_in(path)
         if offered:
             return offered
     return []
+
+
+def _catalogue_files(folder: str) -> List[str]:
+    """The JSON files in the cache folder, newest first; none when there is no folder."""
+    try:
+        return sorted((os.path.join(folder, n) for n in os.listdir(folder) if n.endswith(".json")),
+                      key=os.path.getmtime, reverse=True)
+    except OSError:
+        return []
+
+
+def _rows_in(path: str) -> List[Dict[str, str]]:
+    """The picker rows one cached catalogue holds at `catalog.config.models`, or []."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    config = ((doc.get("catalog") or {}).get("config") or {}) if isinstance(doc, dict) else {}
+    rows = config.get("models") if isinstance(config, dict) else None
+    return [{"id": str(r["id"]), "label": label_for(str(r.get("name") or ""), str(r["id"]))}
+            for r in (rows or []) if isinstance(r, dict) and r.get("id")]
 
 
 def parse(data: bytes) -> Dict[str, Any]:

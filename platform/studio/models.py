@@ -55,19 +55,9 @@ def _entry(n: int, raw: Any, known: List[str]) -> Dict[str, str]:
     """One row, each field checked and tidied; `n` is its place in the list, for the message."""
     if not isinstance(raw, dict):
         raise ValueError("Model %d is not an object." % n)
-    model_id = str(raw.get("id") or "").strip()
-    if not MODEL_ID.match(model_id):
-        raise ValueError("Model %d: '%s' is not a model id (lowercase letters, digits and "
-                         ". _ : / -, like claude-sonnet-5 or gpt-5.6)." % (n, model_id))
-    provider = str(raw.get("provider") or "").strip() or SETTINGS.default_provider
-    if provider not in known:
-        raise ValueError("Model %d: there is no provider called '%s'. Configured: %s."
-                         % (n, provider, ", ".join(known)))
-    alias = str(raw.get("alias") or "").strip()
-    if alias and not MODEL_ALIAS.match(alias):
-        raise ValueError("Model %d: alias '%s' may only hold lowercase letters, digits and "
-                         "hyphens." % (n, alias))
-    entry = {"provider": provider, "id": model_id,
+    model_id = _model_id(n, raw)
+    alias = _alias(n, raw)
+    entry = {"provider": _provider(n, raw, known), "id": model_id,
              "label": str(raw.get("label") or "").strip()[:LABEL_CHARS] or model_id,
              "note": str(raw.get("note") or "").strip()[:NOTE_CHARS]}
     if alias and alias != model_id:
@@ -75,6 +65,31 @@ def _entry(n: int, raw: Any, known: List[str]) -> Dict[str, str]:
     if raw.get("price") is not None:
         entry["price"] = _price(n, raw["price"])
     return entry
+
+
+def _model_id(n: int, raw: Dict[str, Any]) -> str:
+    model_id = str(raw.get("id") or "").strip()
+    if not MODEL_ID.match(model_id):
+        raise ValueError("Model %d: '%s' is not a model id (lowercase letters, digits and "
+                         ". _ : / -, like claude-sonnet-5 or gpt-5.6)." % (n, model_id))
+    return model_id
+
+
+def _provider(n: int, raw: Dict[str, Any], known: List[str]) -> str:
+    """The provider named on the row, else the default; either way one that is configured."""
+    provider = str(raw.get("provider") or "").strip() or SETTINGS.default_provider
+    if provider not in known:
+        raise ValueError("Model %d: there is no provider called '%s'. Configured: %s."
+                         % (n, provider, ", ".join(known)))
+    return provider
+
+
+def _alias(n: int, raw: Dict[str, Any]) -> str:
+    alias = str(raw.get("alias") or "").strip()
+    if alias and not MODEL_ALIAS.match(alias):
+        raise ValueError("Model %d: alias '%s' may only hold lowercase letters, digits and "
+                         "hyphens." % (n, alias))
+    return alias
 
 
 def _claim_names(entry: Dict[str, str], seen: Dict[str, str]) -> None:

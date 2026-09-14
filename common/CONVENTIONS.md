@@ -2,6 +2,14 @@
 
 When reporting information to me, be extremely concise and sacrifice grammar for the sake of concision.
 
+**Follow CRAP on every piece of code we work on.** For each function touched, know its
+cyclomatic complexity and its CRAP before and after (see "Metrics" for how), and put both
+in the report to me. A change never leaves a function over a ceiling: complexity over 15
+gets split one function per case; CRAP over 30 with the complexity under the line gets
+tests. New code arrives with tests, so its CRAP is its complexity. After a session that
+touched code, report the repo-wide numbers - functions over each ceiling, mean CRAP,
+coverage - against where they were at the start.
+
 # Course platform
 
 A generic engine for building interactive study courses. You describe a theme and an hour
@@ -1375,6 +1383,32 @@ The rules below are what keeps the code readable. The ones a test can hold, a te
   replacing `modelcall.ask`; a provider is a stand-in object; `jupyter.probe` is the one
   route that would reach out and is stubbed for every HTTP test.
 - A test that guards a rule of this file names the rule in its docstring.
+
+### Metrics
+
+Two numbers are followed for every function (see "Remember this" at the top):
+
+| | ceiling | |
+|---|---|---|
+| cyclomatic complexity | 15 | how many paths run through it. Past the ceiling a function is a chain of cases wanting one function per case - `validate.quiz_item_problems` was 54 before it became `ANSWER_CHECKS`, a dict of one checker per quiz type with an import-time assert that the dict and `QUIZ_TYPES` agree. That is the shape to reach for: keep the public function for what every case shares. |
+| CRAP | 30 | Change Risk Anti-Patterns, `cc² × (1 − coverage)³ + cc`. A tested function scores its complexity and no more; an untested one scores it squared. Over the ceiling a function is either too tangled to test or too untested to touch, and the two need different work: tests first, a split only when the complexity alone is over the line. |
+
+They are measured with tools that are not part of the platform (`pip install radon
+coverage`), not with code of its own:
+
+```
+python -m radon cc -s -n C platform tools --exclude "platform/tests/*"     every function over 10, with its number
+python -m coverage run --branch --source=platform/coursekit,platform/studio,tools \
+    --omit="*/tests/*" -m unittest discover -s platform/tests
+python -m coverage report -m                                               the missed lines, per file
+npx -y eslint@8 --no-eslintrc --parser-options ecmaVersion:2022 --env browser,es2022 \
+    --rule "complexity: [error, 15]" "platform/web/js/**/*.js" "platform/studio/ui/js/**/*.js"
+```
+
+CRAP is the first two put together per function: radon's complexity, and the share of the
+function's lines that `coverage` did not list as missed. The front end has no coverage, so
+it gets complexity only, from eslint's rule; its ceiling is the same 15, and it is
+**reported and not yet met** - the render functions over it are the next things to split.
 
 ## Gotchas
 

@@ -116,24 +116,33 @@ def plan(current: List[Dict[str, Any]], found: Dict[str, Dict[str, Any]], today:
         if not source.get("ok"):
             continue
         mine = [m for m in current if m.get("provider") == name]
-        present = set()
-        for m in mine:
-            present.add(m["id"])
-            present.add(base_id(m["id"]))
-        for row in offerable(source, mine):
-            model_id = str(row.get("id") or "")
-            if not model_id or model_id in present or base_id(model_id) in present:
-                continue
-            present.add(model_id)
-            present.add(base_id(model_id))
-            added.append({
-                "provider": name, "id": model_id, "label": row.get("label") or model_id,
-                "note": "added automatically on %s from %s; test it before a long run"
-                        % (today, source.get("label") or name)})
+        added += _additions(name, source, mine, today)
         known = set(source["known"]) | {base_id(i) for i in source["known"]}
         candidates += [m for m in mine if not {m["id"], base_id(m["id"])} & known]
 
     return current + added, added, candidates
+
+
+def _additions(name: str, source: Dict[str, Any], mine: List[Dict[str, Any]],
+               today: str) -> List[Dict[str, Any]]:
+    """What the source offers that the provider's list lacks, a dated snapshot and its bare
+    id counting as one model, each added once."""
+    present = set()
+    for m in mine:
+        present.add(m["id"])
+        present.add(base_id(m["id"]))
+    added = []
+    for row in offerable(source, mine):
+        model_id = str(row.get("id") or "")
+        if not model_id or model_id in present or base_id(model_id) in present:
+            continue
+        present.add(model_id)
+        present.add(base_id(model_id))
+        added.append({
+            "provider": name, "id": model_id, "label": row.get("label") or model_id,
+            "note": "added automatically on %s from %s; test it before a long run"
+                    % (today, source.get("label") or name)})
+    return added
 
 
 def removals(candidates: List[Dict[str, Any]], complete: bool, probe,

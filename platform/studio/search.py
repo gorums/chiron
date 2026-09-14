@@ -42,33 +42,47 @@ def search(courses_dir: str, query: str, limit: int = 60) -> Dict[str, Any]:
         scanned += 1
         base = {"course": course_id, "title": cfg.title, "localFile": cfg.local_file}
         for m in modules:
-            if q in m.title.lower() or q in m.short.lower():
-                hits.append(dict(base, kind="module", mid=m.id, module=m.title, score=100,
-                                 text=m.title, sec=None))
-            for i, s in enumerate(m.sections):
-                if q in s.heading.lower():
-                    hits.append(dict(base, kind="section", mid=m.id, module=m.title, score=70,
-                                     text=s.heading, sec=i))
-                    continue
-                pos = s.text.lower().find(q)
-                if pos >= 0:
-                    hits.append(dict(base, kind="passage", mid=m.id, module=m.title, score=40,
-                                     text=_snippet(s.text, pos, len(q)), sec=i, heading=s.heading))
-        try:
-            glossary = ck_library.build(cfg).get("glossary") or []
-        except (CourseError, OSError):
-            glossary = []
-        for g in glossary:
-            term, definition = str(g.get("term", "")), str(g.get("def", ""))
-            if q in term.lower():
-                hits.append(dict(base, kind="term", mid=None, module="", score=80,
-                                 text=term + " — " + definition[:SNIPPET], sec=None))
-            elif q in definition.lower():
-                hits.append(dict(base, kind="term", mid=None, module="", score=30,
-                                 text=term + " — " + _snippet(definition, definition.lower().find(q), len(q)),
-                                 sec=None))
+            hits += _module_hits(q, base, m)
+        hits += _glossary_hits(q, base, cfg)
     hits.sort(key=lambda h: (-h["score"], h["course"], h["mid"] or "", h["sec"] or 0))
     return {"query": query, "hits": hits[:limit], "total": len(hits), "courses": scanned}
+
+
+def _module_hits(q: str, base: Dict[str, Any], m) -> List[Dict[str, Any]]:
+    """A module's title scores 100, a section heading 70, a passage of its text 40."""
+    hits = []
+    if q in m.title.lower() or q in m.short.lower():
+        hits.append(dict(base, kind="module", mid=m.id, module=m.title, score=100,
+                         text=m.title, sec=None))
+    for i, s in enumerate(m.sections):
+        if q in s.heading.lower():
+            hits.append(dict(base, kind="section", mid=m.id, module=m.title, score=70,
+                             text=s.heading, sec=i))
+            continue
+        pos = s.text.lower().find(q)
+        if pos >= 0:
+            hits.append(dict(base, kind="passage", mid=m.id, module=m.title, score=40,
+                             text=_snippet(s.text, pos, len(q)), sec=i, heading=s.heading))
+    return hits
+
+
+def _glossary_hits(q: str, base: Dict[str, Any], cfg) -> List[Dict[str, Any]]:
+    """A glossary term scores 80, a match inside its definition 30; no glossary, no hits."""
+    try:
+        glossary = ck_library.build(cfg).get("glossary") or []
+    except (CourseError, OSError):
+        return []
+    hits = []
+    for g in glossary:
+        term, definition = str(g.get("term", "")), str(g.get("def", ""))
+        if q in term.lower():
+            hits.append(dict(base, kind="term", mid=None, module="", score=80,
+                             text=term + " — " + definition[:SNIPPET], sec=None))
+        elif q in definition.lower():
+            hits.append(dict(base, kind="term", mid=None, module="", score=30,
+                             text=term + " — " + _snippet(definition, definition.lower().find(q), len(q)),
+                             sec=None))
+    return hits
 
 
 def _snippet(text: str, pos: int, length: int) -> str:

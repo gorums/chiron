@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from . import figures, notebooks
 from .config import CourseConfig
@@ -134,29 +134,9 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
         raw = fh.read()
 
     lines = raw.split("\n")
-    if not lines or not lines[0].startswith("#"):
-        raise ContentError("%s: first line must be '# <ID> — <Title>'." % path)
-
-    title_line = lines[0].lstrip("# ").strip()
-    head = title_line.split("—")
-    module_id = head[0].strip().split()[0] if head[0].strip() else ""
-    if not module_id:
-        raise ContentError("%s: could not read a module id from the title line." % path)
-    title = head[1].strip() if len(head) > 1 else title_line
-
+    module_id, title = _title_line(lines, path)
     head_lines = "\n".join(lines[1:8])
-    time_match = _TIME.search(head_lines)
-    meta = time_match.group(1).strip() if time_match else ""
-    minutes_match = _MINUTES.search(meta) if meta else None
-    minutes = int(minutes_match.group(1)) if minutes_match else 60
-    # An optional `**Requires:** M03, M04` line declares what this module builds on. The
-    # page uses it to warn when a prerequisite is weak; nothing is ever locked.
-    req_match = _REQUIRES.search(head_lines)
-    requires: List[str] = []
-    for rid in (_MODULE_ID.findall(req_match.group(1)) if req_match else []):
-        if rid != module_id and rid not in requires:
-            requires.append(rid)
-
+    meta, minutes = _time_line(head_lines)
     sections = parse_sections(raw, figures_dir=cfg.figures_dir, notebooks_dir=cfg.notebooks_dir,
                               notebooks_on=bool(cfg.notebooks))
     if not sections:
@@ -172,10 +152,41 @@ def parse_module(path: str, part_id: str, num: int, cfg: CourseConfig) -> Module
         minutes=minutes,
         sections=sections,
         source=path,
-        requires=requires,
+        requires=_requires_line(head_lines, module_id),
         figures=[f for s in sections for f in s.figures],
         notebooks=[n for s in sections for n in s.notebooks],
     )
+
+
+def _title_line(lines: List[str], path: str) -> Tuple[str, str]:
+    """`# <ID> — <Title>` on the first line: the id and the title."""
+    if not lines or not lines[0].startswith("#"):
+        raise ContentError("%s: first line must be '# <ID> — <Title>'." % path)
+    title_line = lines[0].lstrip("# ").strip()
+    head = title_line.split("—")
+    module_id = head[0].strip().split()[0] if head[0].strip() else ""
+    if not module_id:
+        raise ContentError("%s: could not read a module id from the title line." % path)
+    return module_id, head[1].strip() if len(head) > 1 else title_line
+
+
+def _time_line(head_lines: str) -> Tuple[str, int]:
+    """The `**Time:**` line, if any: its text, and the minutes read out of it (60 without)."""
+    time_match = _TIME.search(head_lines)
+    meta = time_match.group(1).strip() if time_match else ""
+    minutes_match = _MINUTES.search(meta) if meta else None
+    return meta, int(minutes_match.group(1)) if minutes_match else 60
+
+
+def _requires_line(head_lines: str, module_id: str) -> List[str]:
+    """An optional `**Requires:** M03, M04` line declares what this module builds on. The
+    page uses it to warn when a prerequisite is weak; nothing is ever locked."""
+    req_match = _REQUIRES.search(head_lines)
+    requires: List[str] = []
+    for rid in (_MODULE_ID.findall(req_match.group(1)) if req_match else []):
+        if rid != module_id and rid not in requires:
+            requires.append(rid)
+    return requires
 
 
 def parse_sections(raw: str, figures_dir: str = "", notebooks_dir: str = "",

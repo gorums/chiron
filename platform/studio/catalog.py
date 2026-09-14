@@ -191,22 +191,30 @@ def learner_view(state: Dict[str, Any], module_list: List[Dict[str, Any]]) -> Di
     raw = state.get("learner")
     mem = raw if isinstance(raw, dict) else {}
     titles = {m["id"]: m["title"] for m in module_list}
-    closed = mem.get("closed") if isinstance(mem.get("closed"), dict) else {}
-    gaps = []
-    for g in mem.get("gaps") if isinstance(mem.get("gaps"), list) else []:
-        if not isinstance(g, dict) or g.get("status") == "closed" or g.get("id") in closed:
-            continue
-        gaps.append({
-            "id": str(g.get("id") or ""), "mid": str(g.get("mid") or ""),
-            "title": titles.get(g.get("mid"), str(g.get("mid") or "")),
-            "topic": str(g.get("topic") or "")[:120], "why": str(g.get("why") or "")[:400],
-            "ask": str(g.get("ask") or "")[:200],
-        })
     return {
         "brief": str(mem.get("brief") or "")[:2000],
         "strengths": [str(s)[:200] for s in mem.get("strengths") or [] if isinstance(s, str)],
-        "gaps": gaps,
+        "gaps": [_gap_view(g, titles) for g in _open_gaps(mem)],
         "at": mem.get("at") if isinstance(mem.get("at"), (int, float)) else None,
+    }
+
+
+def _open_gaps(mem: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The gaps still open: not closed by status, nor by the reader's own `closed` map."""
+    closed = mem.get("closed") if isinstance(mem.get("closed"), dict) else {}
+    gaps = mem.get("gaps") if isinstance(mem.get("gaps"), list) else []
+    return [g for g in gaps
+            if isinstance(g, dict) and g.get("status") != "closed" and g.get("id") not in closed]
+
+
+def _gap_view(g: Dict[str, Any], titles: Dict[str, str]) -> Dict[str, str]:
+    """One gap as the Questions tab shows it, every field a bounded string."""
+    mid = str(g.get("mid") or "")
+    return {
+        "id": str(g.get("id") or ""), "mid": mid,
+        "title": titles.get(g.get("mid"), mid),
+        "topic": str(g.get("topic") or "")[:120], "why": str(g.get("why") or "")[:400],
+        "ask": str(g.get("ask") or "")[:200],
     }
 
 

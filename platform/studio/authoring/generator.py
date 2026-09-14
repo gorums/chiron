@@ -339,42 +339,52 @@ def _write_modules(job: Job, root: str, plan: Dict[str, Any], model: str, resume
     for mod in plan["modules"]:
         mid = mod["id"]
         kept = existing_module(root, plan, mod) if resume else ""
-        if kept:
-            steps.next("Keeping %s · %s" % (mid, mod["title"]))
-            job.log("%s is already written; keeping it." % mid)
-            bodies[mid] = kept
-        else:
-            steps.next("Writing %s · %s" % (mid, mod["title"]))
-            bodies[mid] = write_module(job, root, plan, mod, model)
-
+        body = _module_text(job, root, plan, mod, kept, model, steps)
         if with_figures:
-            path = existing_module_path(root, plan, mod) or module_path(root, plan, mod)
-            if kept and figures.references_in(kept, mid):
-                steps.next("Keeping the figures of %s" % mid)
-            else:
-                steps.next("Figures for %s" % mid)
-                bodies[mid] = draw_figures(job, root, plan, mod, bodies[mid], path, model)
-
+            body = _module_media(job, root, plan, mod, body, kept, model, steps,
+                                 "figures", figures.references_in, draw_figures)
         if with_notebooks:
-            path = existing_module_path(root, plan, mod) or module_path(root, plan, mod)
-            if kept and notebooks.references_in(kept, mid):
-                steps.next("Keeping the notebooks of %s" % mid)
-            else:
-                steps.next("Notebooks for %s" % mid)
-                bodies[mid] = draw_notebooks(job, root, plan, mod, bodies[mid], path, model)
+            body = _module_media(job, root, plan, mod, body, kept, model, steps,
+                                 "notebooks", notebooks.references_in, draw_notebooks)
+        bodies[mid] = body
 
         if kept and mid in had_assess and mid in had_suggest:
             steps.next("Keeping study data for %s" % mid)
             data = {"assess": had_assess[mid], "suggest": had_suggest[mid]}
         else:
             steps.next("Quiz and flashcards for %s" % mid)
-            data = write_study_data(job, root, plan, mod, bodies[mid], model)
+            data = write_study_data(job, root, plan, mod, body, model)
         assess_rows.append(data["assess"])
         suggest_rows[mid] = data["suggest"]
         # Written every iteration so an interrupted run still leaves valid data behind.
         write_json(os.path.join(root, ASSESSMENTS_FILE), assess_rows)
         write_json(os.path.join(root, SUGGESTIONS_FILE), suggest_rows)
     return bodies
+
+
+def _module_text(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any], kept: str,
+                 model: str, steps: _Steps) -> str:
+    """The module's text: what a resume found on disk, or what the model writes now."""
+    if kept:
+        steps.next("Keeping %s · %s" % (mod["id"], mod["title"]))
+        job.log("%s is already written; keeping it." % mod["id"])
+        return kept
+    steps.next("Writing %s · %s" % (mod["id"], mod["title"]))
+    return write_module(job, root, plan, mod, model)
+
+
+def _module_media(job: Job, root: str, plan: Dict[str, Any], mod: Dict[str, Any], body: str,
+                  kept: str, model: str, steps: _Steps, noun: str, references_in, draw) -> str:
+    """The module's figures or notebooks (`noun` says which, `references_in` and `draw` are
+    that kind's): kept when a resume found the text with references already in it, drawn
+    otherwise."""
+    mid = mod["id"]
+    if kept and references_in(kept, mid):
+        steps.next("Keeping the %s of %s" % (noun, mid))
+        return body
+    steps.next("%s for %s" % (noun.capitalize(), mid))
+    path = existing_module_path(root, plan, mod) or module_path(root, plan, mod)
+    return draw(job, root, plan, mod, body, path, model)
 
 
 def _write_reference(job: Job, root: str, plan: Dict[str, Any], bodies: Dict[str, str],
