@@ -1904,6 +1904,86 @@ class TestCodeConventions(unittest.TestCase):
                             offenders.append("%s:%d %s" % (os.path.basename(path), n, corner))
         self.assertEqual(offenders, [], "\n".join(offenders))
 
+    def test_the_content_column_is_one_measure_on_both_surfaces(self):
+        """The column the reader's screens sit in and the column Studio's sit in are the
+        same measure, taken from tokens.css. A width written at the rule is how the two
+        surfaces drift: `.btn` meant filled in one and outlined in the other
+        (CONVENTIONS.md "The design system")."""
+        import re
+
+        def source(*parts):
+            with open(os.path.join(self.REPO, *parts), encoding="utf-8") as fh:
+                return fh.read()
+
+        tokens = source("platform", "web", "css", "tokens.css")
+        for name in ("--measure-prose-narrow", "--measure-prose", "--measure-prose-wide",
+                     "--measure-content", "--gutter"):
+            self.assertIn(name + ":", tokens, "%s is not on the measure scale" % name)
+        wanted = [
+            (("platform", "studio", "ui", "studio.css"), "main", "--measure-content"),
+            (("platform", "web", "css", "shell.css"), ".wrap", "--measure-prose"),
+            (("platform", "web", "css", "shell.css"), ".wrap-wide", "--measure-content"),
+            (("platform", "web", "css", "practice.css"), "body.w-narrow .wrap",
+             "--measure-prose-narrow"),
+            (("platform", "web", "css", "practice.css"), "body.w-wide .wrap",
+             "--measure-prose-wide"),
+            (("platform", "web", "css", "notebooks.css"), "body.nb-wide .wrap",
+             "--measure-prose-wide"),
+        ]
+        for parts, selector, token in wanted:
+            block = re.search(r"(?m)^%s \{([^}]*)\}" % re.escape(selector), source(*parts))
+            self.assertIsNotNone(block, "%s has no %s rule" % (parts[-1], selector))
+            self.assertIn("max-width: var(%s)" % token, block.group(1),
+                          "%s %s does not take its width from %s" % (parts[-1], selector, token))
+
+    def test_the_scrollbar_is_one_primitive_on_both_surfaces(self):
+        """A scrollbar is a primitive, so it is written once in base.css and nowhere else.
+        Its own colours are the neutral veil, not the palette: it runs down the edge of
+        whatever it scrolls, and a palette colour would be right against one surface and
+        wrong against the next (CONVENTIONS.md "The design system")."""
+        import re
+
+        wanted = ("scrollbar-width:", "scrollbar-color:", "::-webkit-scrollbar-thumb")
+        offenders = []
+        for path in self._css_files():
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            said = [w for w in wanted if w in text]
+            if said and os.path.basename(path) != "base.css":
+                offenders.append("%s: %s" % (os.path.basename(path), ", ".join(said)))
+            if os.path.basename(path) == "base.css":
+                for word in wanted:
+                    self.assertIn(word, text, "base.css has no %s" % word)
+                thumb = re.search(r"::-webkit-scrollbar-thumb \{([^}]*)\}", text)
+                self.assertIsNotNone(thumb, "base.css has no scrollbar thumb rule")
+                self.assertIn("var(--scroll-thumb)", thumb.group(1))
+        joined = chr(10).join(offenders)
+        self.assertEqual(offenders, [], "the scrollbar is written outside base.css: " + joined)
+
+    def test_a_prose_measure_is_a_range_that_follows_the_column(self):
+        """Every prose rung is `clamp(floor, <n>cqi, ceiling)`. `cqi` and not `vw` because
+        the reading column follows `#main`, not the window - with the tutor rail open a
+        1200px screen leaves #main about 500px wide, and a measure read off the viewport
+        would widen the text it was meant to protect (CONVENTIONS.md "The design system")."""
+        import re
+
+        with open(os.path.join(self.REPO, "platform", "web", "css", "tokens.css"),
+                  encoding="utf-8") as fh:
+            tokens = fh.read()
+        rung = re.compile(r"clamp\(\s*(\d+)px\s*,\s*(\d+)cqi\s*,\s*(\d+)px\s*\)")
+        floors = []
+        for name in ("--measure-prose-narrow", "--measure-prose", "--measure-prose-wide"):
+            value = re.search(r"%s:\s*([^;]+);" % name, tokens)
+            self.assertIsNotNone(value, "%s is not on the measure scale" % name)
+            said = rung.match(value.group(1).strip())
+            self.assertIsNotNone(said, "%s is not clamp(floor, <n>cqi, ceiling): %s"
+                                 % (name, value.group(1).strip()))
+            floor, _share, ceiling = (int(x) for x in said.groups())
+            self.assertLess(floor, ceiling, "%s has no room to grow" % name)
+            floors.append((name, floor))
+        for (lower, small), (upper, big) in zip(floors, floors[1:]):
+            self.assertLess(small, big, "%s is not narrower than %s" % (lower, upper))
+
     def test_no_button_variant_outside_the_family(self):
         """`.btn` has one family. A variant defined nowhere is a button that looks like a
         mistake on one screen and nothing at all on another. The markup is read too:

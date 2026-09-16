@@ -7,3 +7,7 @@ __pycache__/
 # Reader progress synced from courses served by Studio. Personal, not content.
 state/
 node_modules/
+# Measured with tools that are not part of the platform (see "Metrics"); the database
+# is a local artifact of one run, not a number to commit.
+.coverage
+htmlcov/

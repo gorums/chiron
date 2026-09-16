@@ -22,15 +22,16 @@
   container-type: inline-size;
 }
 .view {
-  padding: 26px 22px 100px;
+  padding: 26px var(--gutter) 100px;
   flex: 1;
 }
+/* Prose keeps its measure at any window size; a layout grows into one (see tokens.css). */
 .wrap {
-  max-width: 780px;
+  max-width: var(--measure-prose);
   margin: 0 auto;
 }
 .wrap-wide {
-  max-width: 1080px;
+  max-width: var(--measure-content);
   margin: 0 auto;
 }
 /* the reading column keeps its own, slightly smaller, input type */

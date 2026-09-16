@@ -541,11 +541,14 @@ body.sz-xl .prose {
   font-size: var(--fs-2xl);
   line-height: 1.8;
 }
+/* The reader's own line width: three rungs of the measure scale, not three numbers
+   written here. Each one is fluid (tokens.css), so the preference picks how much of the
+   column the text may take rather than pinning it to a width the window may not have. */
 body.w-narrow .wrap {
-  max-width: 660px;
+  max-width: var(--measure-prose-narrow);
 }
 body.w-wide .wrap {
-  max-width: 960px;
+  max-width: var(--measure-prose-wide);
 }
 body.font-serif .prose {
   font-family: var(--serif);

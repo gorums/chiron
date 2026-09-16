@@ -67,6 +67,45 @@ a {
   font-size: var(--fs-sm);
 }
 
+/* ---------- scrollbars: one on both surfaces ----------
+   Left alone, a scroll container wears the operating system's widget: on Windows a 15px
+   grey trough with a square thumb and a border of its own, which lands right beside the
+   sidebar's border and reads as a second, wider divider between the module list and the
+   text. It is also the one part of either surface that changes shape per machine.
+   So: no track, and a thin thumb of the neutral veil.
+   It is `*` and not `html` because `scrollbar-color` inherits and `scrollbar-width` does
+   not, so the root alone recolours every scroller and narrows none of them. The two
+   standard properties are the whole rule where they are understood - a browser that has
+   them ignores `::-webkit-scrollbar` entirely, which is why the old pseudo-elements sit
+   behind `@supports not` rather than beside them as dead weight. There they can do the
+   one thing the standard properties cannot: darken the thumb under the pointer. The
+   transparent border with `background-clip: padding-box` is what insets it from the edge
+   without a track to sit in. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scroll-thumb);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: var(--radius-pill);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scroll-thumb-hover);
+    background-clip: padding-box;
+  }
+}
+
 /* ---------- type ---------- */
 h2.big {
   font-family: var(--serif);

@@ -494,8 +494,8 @@ to mean *filled* in Studio and *outlined* in the page.
 
 | | |
 |---|---|
-| `web/css/tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--control-line` for a control's own boundary, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-display`, the radius scale `--radius-xxs..--radius-pill`, and the two breakpoint ladders as a comment |
-| `web/css/base.css` | the primitives: reset, one `:focus-visible` ring, the `.btn` family, the form block, `.card`, `.tag`, `.pill`, `.badge`, `.bar`, `.chip`, `.note`, `.problems`, `.toast`, `.menu`, `.empty`, `.scrim`, `.spin`/`.pulse`, `.topbar`, and the spacing utilities (`.gap-top`, `.rowline`, `.grow`, …) that keep `style=` out of the markup |
+| `web/css/tokens.css` | every colour, shadow, radius, font and size the platform has: the palette in both themes, `--on-accent` for text on a strong fill, `--control-line` for a control's own boundary, `--overlay`, the spacing scale `--s1..--s6`, the type scale `--fs-xxs..--fs-display`, the radius scale `--radius-xxs..--radius-pill`, the measure scale `--measure-prose` / `--measure-prose-wide` / `--measure-content` with `--gutter`, and the two breakpoint ladders as a comment |
+| `web/css/base.css` | the primitives: reset, one `:focus-visible` ring, the `.btn` family, the form block, `.card`, `.tag`, `.pill`, `.badge`, `.bar`, `.chip`, `.note`, `.problems`, `.toast`, `.menu`, `.empty`, `.scrim`, `.spin`/`.pulse`, `.topbar`, the scrollbar every scroller wears, and the spacing utilities (`.gap-top`, `.rowline`, `.grow`, …) that keep `style=` out of the markup |
 | `web/js/core/dom.js` | `$`, `esc`, `toast(msg, {kind, sticky})`, `ico`, `clock`, `ago`, `fmtH`, `fmtDur`, `scrollBehavior`, `HELP` / `help(term)`, the hint engine behind `data-help`, and the dialog: `showModal`, `confirmModal`, `promptModal`, `closeModal` |
 
 `web/css/shell.css` holds the reader's own frame (the three-column grid, the sidebar) and
@@ -510,9 +510,36 @@ Studio's `studio.css` holds Studio's; neither surface loads the other's.
   edge that says "this is a button" may not — WCAG 1.4.11 asks for 3:1, and `--line-2` on
   `--surface` is 1.66:1. `.ghost` is the one button with no boundary at all, so its colour
   and weight have to carry it and it belongs beside another button, never alone.
+- **A scrollbar is a primitive, so it is written once in `base.css`.** Left alone it is
+  the operating system's widget - on Windows a 15px grey trough with a square thumb and a
+  border of its own, which lands beside the sidebar's border and reads as a second, wider
+  divider between the module list and the text, and which looks different on every
+  machine. It is `scrollbar-width: thin` and `scrollbar-color` on `*`, not on `html`,
+  because `scrollbar-color` inherits and `scrollbar-width` does not: the root alone
+  recolours every scroller and narrows none of them. The thumb is `--scroll-thumb`, the
+  neutral veil rather than a palette colour, for the reason `--hover-veil` is - a
+  scrollbar runs down the edge of the sidebar, the rail and a code block alike. The
+  `::-webkit-` pseudo-elements sit behind `@supports not (scrollbar-width: thin)`, because
+  a browser that has the standard properties ignores them anyway.
+  `test_the_scrollbar_is_one_primitive_on_both_surfaces` says so.
 - **Nothing cancels the focus ring.** There is no `outline: none` anywhere in the design
   system, and a test would be the next thing to write if one appeared. A menu item's hover
   fill is not a focus indicator: `--surface-2` on `--surface` is 1.16:1.
+- **Prose has a measure, and a measure is a range; a layout has a ceiling.**
+  `--measure-prose` is `clamp(780px, 92cqi, 1440px)` - a floor, a share of the column, and
+  a ceiling - with `--measure-prose-narrow` and `--measure-prose-wide` the rungs the
+  reader's Line width preference picks. A measure still refuses to run the width of a large
+  monitor; what it no longer does is describe two columns with one number. The reading
+  column carries its section list *inside* it, 190px and a gap, so a fixed 780px was about
+  560px of prose on the Read step and 780px on every other screen. The middle term is
+  `cqi`, not `vw`, because the column follows `#main`, not the window - with the tutor rail
+  open a 1200px screen leaves `#main` about 500px - and each rung's floor is what that rung
+  used to be, so no column got narrower. `--measure-content` (1600px) is what Studio's
+  screens and the reader's dashboard sit in: a layout of cards, grids and rows, which a
+  fixed width leaves stranded in the middle of a large monitor. `--gutter` grows with the
+  viewport so neither ever runs to the edge. They are tokens rather than numbers at the
+  rule because the content column has to mean the same width on both surfaces -
+  `test_the_content_column_is_one_measure_on_both_surfaces` says so.
 - **The radius scale is six rungs, named by what a corner belongs to**: `--radius-xxs` a
   mark in running text, `--radius-xs` a key or an inline chip, `--radius-sm` a control,
   `--radius` a panel, `--radius-lg` a surface floating over the page, `--radius-pill`. A
@@ -556,8 +583,10 @@ Studio's `studio.css` holds Studio's; neither surface loads the other's.
   block between a media query and a selector, and the theme is three-state — light, dark, and
   the attribute being absent. `test_the_dark_palette_is_written_once_in_two_places` keeps the
   two copies identical, so a token added to one and forgotten in the other fails the suite.
-- Eight guards in `TestCodeConventions` hold this: no colour outside `tokens.css`, no raw
-  px font size anywhere, no raw radius anywhere, no `.btn` variant without a rule (in the CSS
+- Eleven guards in `TestCodeConventions` hold this: no colour outside `tokens.css`, no raw
+  px font size anywhere, no raw radius anywhere, no content column that is not the shared
+  measure, no prose measure that is not a range following its column, no scrollbar written
+  outside `base.css`, no `.btn` variant without a rule (in the CSS
   or the markup), no class used in a template that no stylesheet defines, no `title` where a
   `data-help` belongs, the two dark blocks identical, and a ceiling on inline `style=` per
   tree.

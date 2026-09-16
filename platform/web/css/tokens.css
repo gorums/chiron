@@ -33,6 +33,13 @@
   /* a hover that works on any surface without knowing which one it is on */
   --hover-veil: rgba(127, 127, 127, 0.35);
   --hover-veil-2: rgba(127, 127, 127, 0.4);
+  /* the scrollbar thumb, the same veil for the same reason: a scrollbar runs down the
+     edge of whatever it is scrolling - the sidebar, the rail, a code block - and a
+     palette colour would be right against one of them and wrong against the next. Two
+     rungs, resting and under the pointer, and no track at all: the track is the one part
+     of an operating system's scrollbar that draws a second border beside a real one. */
+  --scroll-thumb: rgba(127, 127, 127, 0.32);
+  --scroll-thumb-hover: rgba(127, 127, 127, 0.6);
   --shadow: 0 1px 2px rgba(25, 24, 23, 0.05), 0 8px 24px rgba(25, 24, 23, 0.06);
   --shadow-lg: 0 2px 6px rgba(25, 24, 23, 0.07), 0 24px 60px rgba(25, 24, 23, 0.13);
   --fig-1: #0f6b60;
@@ -75,6 +82,31 @@
   --fs-4xl: 28px;
   --fs-5xl: 32px;
   --fs-display: 52px;
+
+  /* The content measures. Four rungs and a gutter, named by what the column is for
+     rather than how wide it is. A measure is still a measure: it has a floor and a
+     ceiling, so a line of text never runs the width of a large monitor. What it is not
+     any more is one number. The reading column carries its section list inside the same
+     column, which took 216px off every line, so a fixed 780px meant about 560px of prose
+     on the Read step and 780px everywhere else - one token describing two widths. The
+     middle term is `cqi`, not `vw`, because the column follows `#main` and not the
+     window: with the tutor rail open a 1200px screen leaves #main about 500px wide, and
+     a measure read off the viewport would not know. Each rung's floor is what that rung
+     used to be, so no column is narrower than it was. The last is a layout - cards,
+     grids, rows of modules - and a layout that stops dead leaves a wide screen mostly
+     empty, so it takes a ceiling only a large monitor reaches; the gutter grows with the
+     viewport so nothing ever runs to the edge. They are here rather than in either
+     stylesheet because the reader and Studio are one product: a content column that
+     means one width in the page and another in Studio is the bug `.btn` was.
+       prose-narrow a line of text, for the reader who asked for less of it
+       prose        a line of text, plus the section list beside it
+       prose-wide   prose traded for width, for a notebook
+       content      a layout: what Studio's screens and the reader's dashboard sit in */
+  --measure-prose-narrow: clamp(660px, 76cqi, 1080px);
+  --measure-prose: clamp(780px, 92cqi, 1440px);
+  --measure-prose-wide: clamp(960px, 96cqi, 1760px);
+  --measure-content: 1600px;
+  --gutter: clamp(24px, 2.4vw, 60px);
 
   /* The two breakpoint ladders. A media query may not read a custom property, so these
      are documented here and written as numbers at the rule; the point is that there are

@@ -23,9 +23,9 @@ a.brand {
   color: inherit;
 }
 main {
-  max-width: 1080px;
+  max-width: var(--measure-content);
   margin: 0 auto;
-  padding: 30px 26px 90px;
+  padding: 30px var(--gutter) 90px;
 }
 .topnav {
   display: flex;

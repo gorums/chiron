@@ -109,7 +109,7 @@
    reader wants it. It is the whole Read step that widens - a notebook alone, breaking out
    of its column, would leave the prose around it hanging. */
 body.nb-wide .wrap {
-  max-width: 1180px;
+  max-width: var(--measure-prose-wide);
 }
 body.nb-wide .readgrid {
   grid-template-columns: 1fr;
