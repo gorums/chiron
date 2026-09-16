@@ -40,6 +40,29 @@ PLAN_SCHEMA = """{
 }"""
 
 
+def asked_for(notes: str) -> str:
+    """The person's own direction, stated above the structure rules rather than below them.
+
+    It used to be the last bullet of a long rule list, which is where a planner has stopped
+    reading: a course asked for a named topic came back with no module covering it. Putting
+    it first is not enough on its own - the rules under it are prescriptive enough to win a
+    disagreement, so they are named as defaults that yield.
+    """
+    notes = (notes or "").strip()
+    if not notes:
+        return ""
+    return """What the person asked for, in their own words. This is the brief. Everything
+below it is a default, and a default yields where the two disagree:
+
+%s
+
+Before you return the JSON, read that again against the modules you have written, and check
+that every topic it names is the "summary" of some module. A topic asked for and missing
+from the curriculum is the one failure this step can make that nothing later can repair.
+
+""" % notes
+
+
 def plan(theme: str, hours: float, audience: str, practitioner: str,
          part_hint: List[Dict[str, Any]], notes: str = "", notebooks: str = "auto") -> str:
     notebooks_rule = {
@@ -52,7 +75,7 @@ studied in {hours} focused hours. Design the whole curriculum before any of it i
 
 {VOICE}
 
-How to structure it:
+{asked_for(notes)}How to structure it:
 - Work at roughly 60 minutes per module. A 90 or 120 minute module is fine where the
   material earns it.
 - Part 1 is what does not expire: definitions, the mental model, the arithmetic. If every
@@ -60,7 +83,8 @@ How to structure it:
 - Part 2 is the working middle - the actual doing. Most hours belong here.
 - Part 3 is judgement: the calls a senior person makes that a junior does not know exist.
   Not "advanced tactics" - the reasoning behind choosing between tactics.
-- The final module is a capstone: one end-to-end deliverable that consumes everything before it.
+- The final module is a capstone: one end-to-end deliverable that consumes everything
+  before it - unless the brief above says what the course should end on.
 - Order by dependency, not by interest. A reader cannot judge a technique before they have
   the means to tell whether it worked.
 
@@ -88,7 +112,6 @@ Rules:
   analysis, statistics, machine learning, scientific computing, SQL through a driver. Then
   name the kernel and the packages the notebooks will import. For every other subject -
   and most subjects are every other subject - it is null. {notebooks_rule}
-{("- Additional direction from the person requesting the course: " + notes) if notes else ""}
 
 Return ONLY a JSON object of this shape, no prose and no code fence:
 {PLAN_SCHEMA}"""

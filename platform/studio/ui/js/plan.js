@@ -44,6 +44,7 @@ function reviewPlanHTML() {
       <label class="planhours">The course is <input class="phrs" type="number" value="${hours}" min="1" step="1" aria-label="Course hours"> hours long</label>
       <span class="sub">every module is written as part of a course that size</span>
     </div>
+    ${planDirectionHTML(plan)}
     <div class="note gap-top">Nothing is written until you press the button below. Edit titles, minutes, hours and part names in place, open a module to change the brief it is written from, skip modules you do not want, or add one. Writing ${total} modules takes a while, so it is worth a minute here. Reloading this page does not lose the run — it reattaches to it.</div>
     <p class="budget ${budget.over ? "over" : ""}" id="planbudget">${budgetLine(budget)}</p>
     <div class="gap-top">${parts}</div>
@@ -52,6 +53,17 @@ function reviewPlanHTML() {
       <button class="btn danger" onclick="askStop()">Stop</button>
     </div>
   </div>`;
+}
+
+/* The standing direction: what the new-course form asked the course to cover or avoid. It
+   is editable here because this is the one screen where you can see whether the planner
+   honoured it — and it goes on to every module, so a topic added here is still written. */
+function planDirectionHTML(plan) {
+  return `<div class="field gap-top">
+      <label for="pnotes">What this course must cover or avoid</label>
+      <textarea id="pnotes" rows="3" placeholder="A last module on running a company of AI agents. Skip the legal chapter.">${esc(plan.notes || "")}</textarea>
+      <span class="fhint">Every module is written to this, not only the curriculum. Check the modules below cover what it names — adding it here does not move a module that is already listed.</span>
+    </div>`;
 }
 
 function planModuleHTML(mod) {
@@ -139,6 +151,9 @@ function harvestPlan() {
   const plan = JSON.parse(JSON.stringify(job.plan));
   const hours = $(".phrs");
   if (hours) plan.hours = Number(hours.value) || plan.hours;
+  // Cleared on purpose means cleared, so the key is set whenever the field is on screen.
+  const notes = $("#pnotes");
+  if (notes) plan.notes = notes.value.trim();
   document.querySelectorAll(".part").forEach(el => {
     const part = plan.parts.find(p => p.id === el.dataset.part);
     if (!part) return;

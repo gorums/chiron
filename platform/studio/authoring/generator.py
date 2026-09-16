@@ -75,6 +75,12 @@ def module_prompt(plan: Dict[str, Any], mod: Dict[str, Any], notes: str = "",
     what a person is asked to approve is a curriculum, and a curriculum is only worth editing
     if you can read what each line of it turns into - and change it (`overrides`). A prompt
     assembled anywhere else would drift from the one the run sends.
+
+    Two directions reach a module and both are appended here, the course's first: what the
+    person asked the whole course to cover or avoid (`plan["notes"]`, from the new-course
+    form) and what this one call asked for (a rewrite's notes). Honouring the first only in
+    the planner is how a course came out covering none of what was asked for - the plan is
+    one call and the modules are twenty.
     """
     spec = dict(mod)
     spec["sections"] = [s for s in (spec.get("sections") or []) if str(s).strip()] or list(
@@ -82,7 +88,9 @@ def module_prompt(plan: Dict[str, Any], mod: Dict[str, Any], notes: str = "",
     prompt = prompts.module(plan, plan["modules"], spec)
     if spec["id"] == "M01":
         prompt += prompts.module_first(plan)
-    return overrides.apply(root, spec["id"], "module", prompt + prompts.direction(notes))
+    standing = str(plan.get("notes") or "").strip()
+    asked = "\n\n".join(d for d in (standing, (notes or "").strip()) if d)
+    return overrides.apply(root, spec["id"], "module", prompt + prompts.direction(asked))
 
 
 def assessment_prompt(plan: Dict[str, Any], mod: Dict[str, Any], body: str,

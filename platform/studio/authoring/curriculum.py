@@ -90,7 +90,13 @@ def normalise_plan(plan: Dict[str, Any], theme: str, hours: float,
 def _normalise_course(plan: Dict[str, Any], theme: str, hours: float,
                       brief: Dict[str, Any]) -> None:
     """The course-level texts: what the form said wins, then what the planner wrote, then a
-    default made from the theme."""
+    default made from the theme.
+
+    `notes` is what the person asked the course to cover or avoid. It is kept on the plan,
+    and therefore in `plan/plan.json`, because it is the direction the whole course is
+    written from: the planner is not the only call that needs it, and a resume a week later
+    is still writing the course that was asked for.
+    """
     plan["title"] = plan.get("title") or "%s Mastery" % theme.title()
     plan["tagline"] = plan.get("tagline") or "%g hours · beginner to practitioner" % hours
     plan["subject"] = theme.strip().lower()
@@ -100,6 +106,12 @@ def _normalise_course(plan: Dict[str, Any], theme: str, hours: float,
     plan["audience"] = brief.get("audience") or plan.get("audience") or "a complete beginner"
     plan["tutorPersona"] = (plan.get("tutorPersona")
                             or "You are a sharp, plain-spoken %s tutor." % plan["subject"])
+    # The gate edits the direction like the hours, and clearing it there has to mean
+    # cleared - so what decides is whether the plan carries the key at all, not whether it
+    # is empty. A planner's reply never carries one; a plan coming back from the gate always
+    # does.
+    asked = plan["notes"] if "notes" in plan else brief.get("notes")
+    plan["notes"] = str(asked or "").strip()
 
 
 def _normalise_anchor(raw: Any) -> Dict[str, str]:
@@ -245,10 +257,34 @@ def plan_to_manifest(plan: Dict[str, Any], course_id: str) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- from a course
 
 
+def saved_notes(root: str) -> str:
+    """What the course was asked to cover or avoid, off the saved curriculum.
+
+    It is read from `plan/plan.json` rather than the manifest because it is authoring
+    intent, not something the reader ever sees - the same argument that puts the prompt
+    overrides there. A course written before it was saved simply has none.
+    """
+    path = os.path.join(root, PLAN_FILE)
+    if not os.path.isfile(path):
+        return ""
+    try:
+        plan = read_json(path)
+    except (OSError, ValueError):
+        # An unreadable plan is a lost brief, never a failed rewrite: `load_plan` is where
+        # that file has to be good, because a resume is written from nothing else.
+        return ""
+    return str(plan.get("notes") or "").strip() if isinstance(plan, dict) else ""
+
+
 def plan_from_course(cfg, modules) -> Dict[str, Any]:
-    """The plan-shaped view of an existing course that the module prompts expect."""
+    """The plan-shaped view of an existing course that the module prompts expect.
+
+    It carries the standing direction, so a rewrite next year is written to the same brief
+    the first run was given - the rule `plan/prompts.json` already follows.
+    """
     return {
         "title": cfg.title,
+        "notes": saved_notes(cfg.root),
         "tagline": cfg.tagline,
         "subject": cfg.subject,
         "hours": cfg.hours,

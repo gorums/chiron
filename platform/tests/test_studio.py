@@ -262,6 +262,33 @@ class TestPlanNormalisation(unittest.TestCase):
         self.assertTrue(out["tutorPersona"].endswith("."))
         self.assertEqual(len(out["modules"][0]["sections"]), 7)
 
+    def test_the_form_notes_are_kept_on_the_plan(self):
+        """What the person asked the course to cover is direction for every module, not only
+        for the planner, so it is saved with the curriculum (see "Authoring content")."""
+        brief = dict(self.BRIEF, notes="  Cover how AI agents run a company.  ")
+        out = curriculum.normalise_plan(self.plan(), "bread", 6, brief)
+        self.assertEqual(out["notes"], "Cover how AI agents run a company.")
+
+    def test_a_resumed_plan_keeps_its_direction_when_the_brief_has_none(self):
+        """A resume's brief carries no notes; the saved curriculum still has to be written
+        to the direction the first run was given."""
+        plan = self.plan(notes="Weighted toward salary talks.")
+        out = curriculum.normalise_plan(plan, "bread", 6, self.BRIEF)
+        self.assertEqual(out["notes"], "Weighted toward salary talks.")
+
+    def test_the_direction_edited_at_the_gate_wins_over_the_form(self):
+        """The gate is where the course is really decided, as it is for the hours."""
+        brief = dict(self.BRIEF, notes="What the form said.")
+        out = curriculum.normalise_plan(self.plan(notes="What I typed at the gate."),
+                                        "bread", 6, brief)
+        self.assertEqual(out["notes"], "What I typed at the gate.")
+
+    def test_clearing_the_direction_at_the_gate_clears_it(self):
+        """An empty field the person emptied is not a missing field: the key decides."""
+        brief = dict(self.BRIEF, notes="What the form said.")
+        out = curriculum.normalise_plan(self.plan(notes="  "), "bread", 6, brief)
+        self.assertEqual(out["notes"], "")
+
     def test_requires_only_points_backwards_at_real_modules(self):
         plan = {"parts": [{"id": "p1", "name": "P", "dir": "d"}],
                 "modules": [{"id": "M01", "part": "p1", "title": "A", "requires": ["M2"]},
@@ -422,6 +449,23 @@ class TestPromptOverrides(unittest.TestCase):
         sent = generator.assessment_prompt(self.plan, self.mod, "THE BODY", self.root)
         self.assertIn("Return ONLY", sent)
         self.assertIn("THE BODY", sent)
+
+    def test_every_module_prompt_carries_the_courses_standing_direction(self):
+        """The new-course form's notes reach every module, not only the planner: one plan
+        call cannot make twenty modules cover what was asked for."""
+        plan = dict(self.plan, notes="Cover how AI agents run a company.")
+        sent = generator.module_prompt(plan, self.mod, root=self.root)
+        self.assertIn("Cover how AI agents run a company.", sent)
+        self.assertIn("overrides the defaults above", sent)
+
+    def test_a_rewrites_notes_follow_the_courses_direction(self):
+        plan = dict(self.plan, notes="Standing direction.")
+        sent = generator.module_prompt(plan, self.mod, "Just this rewrite.", self.root)
+        self.assertLess(sent.index("Standing direction."), sent.index("Just this rewrite."))
+
+    def test_a_course_with_no_direction_gets_no_direction_block(self):
+        sent = generator.module_prompt(self.plan, self.mod, root=self.root)
+        self.assertNotIn("overrides the defaults above", sent)
 
     def test_the_review_stage_gets_its_quiz(self):
         overrides.put(self.root, "M01", "review",
@@ -821,6 +865,24 @@ class TestPrompts(unittest.TestCase):
         self.assertEqual(prompts.direction(""), "")
         self.assertEqual(prompts.direction("   "), "")
         self.assertIn("go deeper on X", prompts.direction("go deeper on X"))
+
+    def test_the_plan_prompt_states_the_direction_above_the_defaults(self):
+        """The notes used to be the last bullet of the rule list and came back unhonoured:
+        they are stated before the structure rules, which yield to them."""
+        from studio.authoring import prompts
+        text = prompts.plan("business", 20, "a founder", "founder", [],
+                            notes="A last module on running a company of AI agents.")
+        self.assertIn("A last module on running a company of AI agents.", text)
+        self.assertLess(text.index("running a company of AI agents"),
+                        text.index("How to structure it:"))
+        self.assertNotIn("Additional direction", text)
+        self.assertIn("a default yields", text)
+
+    def test_the_plan_prompt_says_nothing_about_direction_without_notes(self):
+        from studio.authoring import prompts
+        text = prompts.plan("business", 20, "a founder", "founder", [])
+        self.assertNotIn("What the person asked for", text)
+        self.assertIn("How to structure it:", text)
 
     def test_module_spec_prompt_names_topic_and_part(self):
         from studio.authoring import prompts
@@ -1447,6 +1509,27 @@ class TestCourseEditing(unittest.TestCase):
         self.fixture = CourseFixture(self.tmp)
         self.cfg = ck_config.load(self.fixture.root)
         self.modules = ck_loader.load_modules(self.cfg)
+
+    def test_a_rewrite_reads_the_courses_standing_direction(self):
+        """The brief the course was asked for travels with it, so a rewrite next year is
+        written to the same instructions as the first run (see "Authoring content")."""
+        from studio.support.files import write_json
+        write_json(os.path.join(self.fixture.root, curriculum.PLAN_FILE),
+                   {"modules": [{"id": "M01"}], "notes": "  Cover AI-run companies.  "})
+        plan = curriculum.plan_from_course(self.cfg, self.modules)
+        self.assertEqual(plan["notes"], "Cover AI-run companies.")
+        sent = generator.module_prompt(plan, plan["modules"][0], "And fix the numbers.")
+        self.assertLess(sent.index("Cover AI-run companies."), sent.index("And fix the numbers."))
+
+    def test_a_course_with_no_saved_plan_has_no_direction(self):
+        """A course made before the plan was saved, or one whose plan is unreadable, still
+        rewrites: a lost brief is not a failed job."""
+        self.assertEqual(curriculum.plan_from_course(self.cfg, self.modules)["notes"], "")
+        path = os.path.join(self.fixture.root, curriculum.PLAN_FILE)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("{not json")
+        self.assertEqual(curriculum.saved_notes(self.fixture.root), "")
 
     def test_next_module_id_never_reuses(self):
         self.assertEqual(curriculum.next_module_id(self.modules), "M07")
